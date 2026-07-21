@@ -1,0 +1,168 @@
+/* ============================================================
+   BR Técnico — estilo base (Fase 0)
+   Mobile-first: pensado primeiro para a tela do celular.
+   ============================================================ */
+
+/* Variáveis de cor — mudar aqui muda o jogo inteiro */
+:root {
+  --verde-campo: #0b3d24;
+  --verde-escuro: #072a19;
+  --verde-claro: #12643c;
+  --amarelo: #ffd23f;
+  --amarelo-escuro: #e6b800;
+  --branco: #f4f7f5;
+  --cinza-texto: #a9c2b4;
+
+  --raio: 14px;
+  --toque-min: 52px; /* altura mínima confortável para o dedo */
+}
+
+/* Reset simples */
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html, body {
+  height: 100%;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  color: var(--branco);
+  background:
+    radial-gradient(circle at 50% 0%, var(--verde-claro) 0%, var(--verde-campo) 45%, var(--verde-escuro) 100%);
+  /* Faixas sutis de gramado */
+  background-color: var(--verde-campo);
+  min-height: 100dvh;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Faixas de gramado por cima do fundo */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  background: repeating-linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.03) 0px,
+    rgba(255, 255, 255, 0.03) 40px,
+    transparent 40px,
+    transparent 80px
+  );
+  pointer-events: none;
+}
+
+/* ---------- Tela ---------- */
+.tela {
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  align-items: center;
+  padding: calc(env(safe-area-inset-top) + 8vh) 24px
+           calc(env(safe-area-inset-bottom) + 24px);
+  text-align: center;
+  gap: 24px;
+}
+
+/* ---------- Cabeçalho ---------- */
+.cabecalho {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+}
+
+.escudo {
+  font-size: 64px;
+  line-height: 1;
+  filter: drop-shadow(0 4px 10px rgba(0, 0, 0, 0.4));
+}
+
+.titulo {
+  font-size: clamp(38px, 12vw, 56px);
+  font-weight: 800;
+  letter-spacing: 1px;
+  text-shadow: 0 3px 12px rgba(0, 0, 0, 0.45);
+}
+
+.titulo span {
+  color: var(--amarelo);
+}
+
+.subtitulo {
+  color: var(--cinza-texto);
+  font-size: clamp(13px, 4vw, 16px);
+  font-weight: 500;
+  letter-spacing: 0.5px;
+}
+
+/* ---------- Menu / botões ---------- */
+.menu {
+  width: 100%;
+  max-width: 420px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.btn {
+  width: 100%;
+  min-height: var(--toque-min);
+  border: none;
+  border-radius: var(--raio);
+  font-size: 18px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: transform 0.08s ease, filter 0.15s ease, opacity 0.15s ease;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.btn:active:not([disabled]) {
+  transform: scale(0.97);
+}
+
+.btn-primario {
+  background: linear-gradient(180deg, var(--amarelo), var(--amarelo-escuro));
+  color: #3a2b00;
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.35);
+}
+
+.btn-secundario {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--branco);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+}
+
+.btn[disabled] {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* ---------- Rodapé ---------- */
+.rodape {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  color: var(--cinza-texto);
+  font-size: 12px;
+}
+
+.status-salvamento {
+  font-weight: 600;
+}
+
+.status-salvamento.ok {
+  color: #7ee0a5;
+}
+
+.status-salvamento.erro {
+  color: #ff8f8f;
+}
+
+.versao {
+  opacity: 0.6;
+}

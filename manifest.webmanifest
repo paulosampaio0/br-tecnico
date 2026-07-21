@@ -1,0 +1,12 @@
+{
+  "name": "BR Técnico",
+  "short_name": "BR Técnico",
+  "description": "Simulador de futebol inspirado no Brasfoot.",
+  "lang": "pt-BR",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#0b3d24",
+  "theme_color": "#0b3d24",
+  "icons": []
+}

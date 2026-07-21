@@ -1,0 +1,7 @@
+# Arquivos de sistema
+Thumbs.db
+Desktop.ini
+.DS_Store
+
+# Pastas de ferramentas (não usamos, mas por segurança)
+node_modules/
