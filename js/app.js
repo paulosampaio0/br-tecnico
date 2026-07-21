@@ -706,7 +706,7 @@ function alternarPausaPartida() {
   if (partidaAtual.status === "jogando") {
     partidaAtual.status = "pausada";
     pararIntervaloPartida();
-    renderizarControlesPartida();
+    renderizarPartida(); // atualiza também a etiqueta de status ("Pausada"), não só o botão
   } else if (partidaAtual.status === "pausada" || partidaAtual.status === "intervalo") {
     iniciarSimulacao();
   }
