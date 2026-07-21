@@ -1,8 +1,9 @@
 /* ============================================================
-   BR Técnico — app.js (Fase 4)
-   Objetivo desta fase: escalar os 11 titulares num campo, definir
-   formação, tática, o sistema de setas e simular uma partida amistosa
-   com relógio, eventos, estatísticas e pausa. Tudo salvo no celular.
+   BR Técnico — app.js (Fase 5)
+   Objetivo desta fase: escalar os 11 titulares, tática, setas,
+   simular uma partida amistosa (relógio, eventos, estatísticas,
+   pausa) e, ao mesmo tempo, os outros jogos da rodada, com os
+   placares atualizando ao lado. Tudo salvo no celular.
    ============================================================ */
 
 "use strict";
@@ -63,6 +64,7 @@ let partidaAtual = null;
 let timeCasaSimulado = null;
 let timeForaSimulado = null;
 let intervaloPartida = null;
+let partidasRodada = []; // os outros jogos da mesma divisão, simulados em paralelo (Fase 5)
 
 const estado = {
   timeAtual: null, // { divisaoChave, nome, jogadores }
@@ -629,14 +631,47 @@ async function iniciarAmistoso() {
   const oponente = candidatos[Math.floor(Math.random() * candidatos.length)];
 
   atualizarTimeCasaSimulado();
-
-  const titularesOponenteMap = autoEscalarMelhores(oponente.jogadores, "4-4-2");
-  const titularesFora = resolverTitulares(oponente.jogadores, "4-4-2", titularesOponenteMap);
-  timeForaSimulado = criarTimeSimulado(oponente.nome, titularesFora, taticaPadrao(), {});
+  timeForaSimulado = criarTimeSimuladoAutomatico(oponente);
 
   partidaAtual = novaPartida();
+  partidasRodada = montarRodadaParalela(divisao, estado.timeAtual.nome, oponente.nome);
+
   abrirTelaPartida();
   iniciarSimulacao();
+}
+
+/** Monta um "time simulado" de força automática (escalação e tática padrão), pra CPU. */
+function criarTimeSimuladoAutomatico(time) {
+  const titularesMap = autoEscalarMelhores(time.jogadores, "4-4-2");
+  const titulares = resolverTitulares(time.jogadores, "4-4-2", titularesMap);
+  return criarTimeSimulado(time.nome, titulares, taticaPadrao(), {});
+}
+
+/**
+ * Pega o resto dos times da divisão (menos o meu time e o adversário),
+ * embaralha e forma pares — são "os outros jogos da rodada", simulados
+ * ao lado da minha partida.
+ */
+function montarRodadaParalela(divisao, nomeMeuTime, nomeOponente) {
+  const resto = divisao.times.filter(function (t) {
+    return t.nome !== nomeMeuTime && t.nome !== nomeOponente;
+  });
+
+  // Embaralha (Fisher-Yates) pra sortear os confrontos.
+  for (let i = resto.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    const tmp = resto[i]; resto[i] = resto[j]; resto[j] = tmp;
+  }
+
+  const jogos = [];
+  for (let i = 0; i + 1 < resto.length; i += 2) {
+    jogos.push({
+      casa: criarTimeSimuladoAutomatico(resto[i]),
+      fora: criarTimeSimuladoAutomatico(resto[i + 1]),
+      partida: novaPartida(),
+    });
+  }
+  return jogos;
 }
 
 /**
@@ -655,6 +690,7 @@ function abrirTelaPartida() {
   document.getElementById("partida-nome-fora").textContent = timeForaSimulado.nome;
   montarLinhasEstatisticasPartida();
   renderizarPartida();
+  renderizarRodadaParalela();
 }
 
 function montarLinhasEstatisticasPartida() {
@@ -691,7 +727,33 @@ function tickPartida() {
     pararIntervaloPartida();
   }
 
+  // Os outros jogos da rodada acontecem junto — cada um para sozinho aos 90'.
+  partidasRodada.forEach(function (jogo) {
+    if (jogo.partida.minuto < 90) {
+      simularMinuto(jogo.partida, jogo.casa, jogo.fora);
+    }
+  });
+
   renderizarPartida();
+  renderizarRodadaParalela();
+}
+
+/** Mostra a lista de placares dos outros jogos da rodada, atualizada a cada minuto. */
+function renderizarRodadaParalela() {
+  const listaEl = document.getElementById("lista-rodada-paralela");
+  if (!listaEl) return;
+
+  listaEl.innerHTML = "";
+  partidasRodada.forEach(function (jogo) {
+    const item = document.createElement("li");
+    item.className = "item-jogo-rodada" + (jogo.partida.minuto >= 90 ? " encerrado" : "");
+    item.innerHTML =
+      "<span class=\"time-rodada\">" + escaparHtml(jogo.casa.nome) + "</span>" +
+      "<span class=\"placar-rodada\">" + jogo.partida.placarCasa + " x " + jogo.partida.placarFora + "</span>" +
+      "<span class=\"time-rodada\">" + escaparHtml(jogo.fora.nome) + "</span>" +
+      "<span class=\"minuto-rodada\">" + (jogo.partida.minuto >= 90 ? "Fim" : jogo.partida.minuto + "'") + "</span>";
+    listaEl.appendChild(item);
+  });
 }
 
 function pararIntervaloPartida() {
@@ -970,6 +1032,7 @@ function ligarBotoes() {
   if (btnVoltarEscalacaoFim) {
     btnVoltarEscalacaoFim.addEventListener("click", function () {
       partidaAtual = null;
+      partidasRodada = [];
       abrirTelaEscalacao();
     });
   }
@@ -986,7 +1049,7 @@ function ligarBotoes() {
 }
 
 document.addEventListener("DOMContentLoaded", function () {
-  console.log("BR Técnico — Fase 4 carregada.");
+  console.log("BR Técnico — Fase 5 carregada.");
   mostrarStatusSalvamento();
   atualizarBotaoContinuar();
   ligarBotoes();
