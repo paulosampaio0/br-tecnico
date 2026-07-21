@@ -68,6 +68,13 @@ body::before {
   gap: 24px;
 }
 
+/* O navegador já esconde [hidden] por padrão, mas ".tela { display: flex }"
+   tem a mesma prioridade e podia vencer dependendo da ordem. Esta regra
+   garante que a tela escondida realmente some. */
+.tela[hidden] {
+  display: none;
+}
+
 /* ---------- Cabeçalho ---------- */
 .cabecalho {
   display: flex;
@@ -165,4 +172,191 @@ body::before {
 
 .versao {
   opacity: 0.6;
+}
+
+/* ============================================================
+   Telas de lista (times / elenco) — Fase 1
+   ============================================================ */
+
+.tela-times,
+.tela-elenco {
+  justify-content: flex-start;
+  align-items: stretch;
+  text-align: left;
+  padding: calc(env(safe-area-inset-top) + 16px) 16px
+           calc(env(safe-area-inset-bottom) + 16px);
+  gap: 12px;
+}
+
+.cabecalho-lista {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.btn-voltar {
+  flex-shrink: 0;
+  width: 44px;
+  height: 44px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--branco);
+  font-size: 20px;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.btn-voltar:active {
+  transform: scale(0.94);
+}
+
+.titulo-lista {
+  font-size: clamp(20px, 6vw, 26px);
+  font-weight: 800;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Abas Série A / Série B */
+.abas {
+  display: flex;
+  gap: 8px;
+}
+
+.aba {
+  flex: 1;
+  min-height: 44px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--cinza-texto);
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.aba.ativa {
+  background: var(--amarelo);
+  border-color: var(--amarelo);
+  color: #3a2b00;
+}
+
+/* Listas genéricas */
+.lista {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  overflow-y: auto;
+  padding-bottom: 12px;
+}
+
+.mensagem {
+  color: var(--cinza-texto);
+  font-size: 14px;
+  text-align: center;
+  padding: 24px 0;
+}
+
+/* Cartão de time */
+.item-time {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  min-height: var(--toque-min);
+  padding: 12px 16px;
+  border-radius: var(--raio);
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: var(--branco);
+  font-size: 16px;
+  font-weight: 700;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.item-time:active {
+  transform: scale(0.98);
+}
+
+.item-time .qtd-jogadores {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--cinza-texto);
+}
+
+/* Contagem no topo do elenco */
+.contagem-elenco {
+  color: var(--cinza-texto);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+/* Cartão de jogador */
+.item-jogador {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.item-jogador .pos {
+  flex-shrink: 0;
+  width: 44px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+  background: var(--verde-claro);
+  color: var(--branco);
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.item-jogador .info {
+  flex: 1;
+  min-width: 0;
+}
+
+.item-jogador .nome {
+  font-size: 15px;
+  font-weight: 700;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.item-jogador .detalhes {
+  font-size: 12px;
+  color: var(--cinza-texto);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.item-jogador .forca {
+  flex-shrink: 0;
+  text-align: center;
+  min-width: 34px;
+}
+
+.item-jogador .forca .valor {
+  font-size: 17px;
+  font-weight: 800;
+  color: var(--amarelo);
+  line-height: 1;
+}
+
+.item-jogador .forca .rotulo {
+  font-size: 9px;
+  color: var(--cinza-texto);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
 }

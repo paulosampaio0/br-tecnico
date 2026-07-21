@@ -33,11 +33,44 @@
 
     <footer class="rodape">
       <p class="status-salvamento" id="status-salvamento">Verificando salvamento…</p>
-      <p class="versao">Fase 0 · Esqueleto · v0.1.0</p>
+      <p class="versao">Fase 1 · Dados dos times · v0.2.0</p>
     </footer>
 
   </main>
 
+  <!-- Tela: escolher time -->
+  <main class="tela tela-times" id="tela-times" hidden>
+
+    <header class="cabecalho cabecalho-lista">
+      <button class="btn-voltar" id="btn-voltar-inicio" type="button" aria-label="Voltar">←</button>
+      <h2 class="titulo-lista">Escolha seu time</h2>
+    </header>
+
+    <div class="abas" id="abas-divisao" role="tablist">
+      <!-- As abas Série A / Série B são criadas pelo JavaScript -->
+    </div>
+
+    <p class="mensagem" id="mensagem-times" hidden></p>
+
+    <ul class="lista lista-times" id="lista-times"></ul>
+
+  </main>
+
+  <!-- Tela: elenco do time escolhido -->
+  <main class="tela tela-elenco" id="tela-elenco" hidden>
+
+    <header class="cabecalho cabecalho-lista">
+      <button class="btn-voltar" id="btn-voltar-times" type="button" aria-label="Voltar">←</button>
+      <h2 class="titulo-lista" id="titulo-elenco">Elenco</h2>
+    </header>
+
+    <p class="contagem-elenco" id="contagem-elenco"></p>
+
+    <ul class="lista lista-jogadores" id="lista-jogadores"></ul>
+
+  </main>
+
+  <script src="js/dados.js"></script>
   <script src="js/app.js"></script>
 </body>
 </html>
