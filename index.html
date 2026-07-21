@@ -33,7 +33,7 @@
 
     <footer class="rodape">
       <p class="status-salvamento" id="status-salvamento">Verificando salvamento…</p>
-      <p class="versao">Fase 1 · Dados dos times · v0.2.0</p>
+      <p class="versao">Fase 2 · Escalação e tática · v0.3.0</p>
     </footer>
 
   </main>
@@ -68,9 +68,60 @@
 
     <ul class="lista lista-jogadores" id="lista-jogadores"></ul>
 
+    <button class="btn btn-primario btn-escalar" id="btn-escalar-time" type="button">
+      Escalar este time ▶
+    </button>
+
   </main>
 
+  <!-- Tela: escalação e tática -->
+  <main class="tela tela-escalacao" id="tela-escalacao" hidden>
+
+    <header class="cabecalho cabecalho-lista">
+      <button class="btn-voltar" id="btn-voltar-elenco-escalacao" type="button" aria-label="Voltar">←</button>
+      <h2 class="titulo-lista" id="titulo-escalacao">Escalação</h2>
+    </header>
+
+    <div class="controle-formacao">
+      <label for="select-formacao">Formação</label>
+      <select id="select-formacao"></select>
+    </div>
+
+    <div class="campo" id="campo-titular"></div>
+
+    <section class="secao-tatica">
+      <h3>Estilo de jogo</h3>
+      <div class="grupo-opcoes" id="opcoes-estilo"></div>
+
+      <h3>Marcação</h3>
+      <div class="grupo-opcoes" id="opcoes-marcacao"></div>
+
+      <h3>Concentrar ataques</h3>
+      <div class="grupo-opcoes" id="opcoes-concentrar"></div>
+    </section>
+
+    <section class="secao-banco">
+      <h3>Banco de reservas (<span id="qtd-banco">0</span>)</h3>
+      <ul class="lista lista-banco" id="lista-banco"></ul>
+    </section>
+
+    <p class="aviso-salvo" id="aviso-salvo">✓ Progresso salvo automaticamente neste celular.</p>
+
+  </main>
+
+  <!-- Seletor de jogador para uma vaga do campo -->
+  <div class="sobreposicao" id="sobreposicao-seletor" hidden>
+    <div class="folha-seletor">
+      <header class="cabecalho-seletor">
+        <h3 id="titulo-seletor">Escolher jogador</h3>
+        <button class="btn-fechar" id="btn-fechar-seletor" type="button" aria-label="Fechar">✕</button>
+      </header>
+      <ul class="lista lista-seletor" id="lista-seletor"></ul>
+    </div>
+  </div>
+
   <script src="js/dados.js"></script>
+  <script src="js/formacoes.js"></script>
   <script src="js/app.js"></script>
 </body>
 </html>

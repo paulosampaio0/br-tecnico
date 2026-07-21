@@ -26,7 +26,24 @@ async function carregarDados() {
     throw new Error("Não foi possível carregar " + CAMINHO_DADOS + " (HTTP " + resposta.status + ")");
   }
   cacheDados = await resposta.json();
+  atribuirIdsJogadores(cacheDados);
   return cacheDados;
+}
+
+/**
+ * Dá um "_id" único a cada jogador dentro do seu time (a posição dele na
+ * lista). Existem jogadores reais com nomes iguais (ex.: dois "Dudu"), então
+ * não dá pra usar o nome como identificador — precisa de algo que nunca se
+ * repita.
+ */
+function atribuirIdsJogadores(dados) {
+  Object.values(dados.divisoes).forEach(function (divisao) {
+    divisao.times.forEach(function (time) {
+      time.jogadores.forEach(function (jogador, indice) {
+        jogador._id = indice;
+      });
+    });
+  });
 }
 
 /** Devolve a lista [{chave, nome, times}] das duas divisões. */
@@ -44,4 +61,16 @@ function ordenarElenco(jogadores) {
     if (posA !== posB) return posA - posB;
     return b.forca - a.forca; // dentro da mesma posição, mais forte primeiro
   });
+}
+
+/** Encontra um time pelo nome dentro de uma divisão ("serie_a" ou "serie_b"). */
+function buscarTime(dados, chaveDivisao, nomeTime) {
+  const divisao = dados.divisoes[chaveDivisao];
+  if (!divisao) return null;
+  return divisao.times.find(function (t) { return t.nome === nomeTime; }) || null;
+}
+
+/** Encontra um jogador pelo _id dentro de uma lista de jogadores. */
+function encontrarJogadorPorId(jogadores, id) {
+  return jogadores.find(function (j) { return j._id === id; }) || null;
 }

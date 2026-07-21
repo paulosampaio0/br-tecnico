@@ -360,3 +360,263 @@ body::before {
   text-transform: uppercase;
   letter-spacing: 0.5px;
 }
+
+/* ============================================================
+   Tela de Escalação e Tática — Fase 2
+   ============================================================ */
+
+.btn-escalar {
+  margin-top: 4px;
+}
+
+.tela-escalacao {
+  justify-content: flex-start;
+  align-items: stretch;
+  text-align: left;
+  padding: calc(env(safe-area-inset-top) + 16px) 16px
+           calc(env(safe-area-inset-bottom) + 16px);
+  gap: 16px;
+}
+
+/* Seletor de formação */
+.controle-formacao {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.controle-formacao label {
+  font-size: 13px;
+  color: var(--cinza-texto);
+  font-weight: 600;
+}
+
+.controle-formacao select {
+  min-height: 40px;
+  padding: 0 12px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--branco);
+  font-size: 14px;
+  font-weight: 700;
+}
+
+/* Campo de futebol */
+.campo {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 3 / 4;
+  border-radius: 12px;
+  border: 2px solid rgba(255, 255, 255, 0.2);
+  background:
+    linear-gradient(rgba(255, 255, 255, 0.25) 1px, transparent 1px) 0 50% / 100% 1px no-repeat,
+    repeating-linear-gradient(
+      180deg,
+      var(--verde-claro) 0px,
+      var(--verde-claro) 11.111%,
+      var(--verde-campo) 11.111%,
+      var(--verde-campo) 22.222%
+    );
+  overflow: hidden;
+}
+
+/* Círculo central, só decorativo */
+.campo::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 26%;
+  aspect-ratio: 1 / 1;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+}
+
+.vaga {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  z-index: 1;
+}
+
+.vaga:active .bolinha {
+  transform: scale(0.9);
+}
+
+.vaga .bolinha {
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--amarelo);
+  color: #3a2b00;
+  font-size: 10px;
+  font-weight: 800;
+  border: 2px solid rgba(255, 255, 255, 0.7);
+  box-shadow: 0 3px 8px rgba(0, 0, 0, 0.4);
+  transition: transform 0.08s ease;
+}
+
+.vaga.vazia .bolinha {
+  background: rgba(255, 255, 255, 0.15);
+  color: var(--cinza-texto);
+  border-style: dashed;
+}
+
+.vaga .nome-vaga {
+  font-size: 9px;
+  font-weight: 700;
+  color: var(--branco);
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.9);
+  max-width: 68px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Tática — grupos de opções (chips) */
+.secao-tatica h3,
+.secao-banco h3 {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--cinza-texto);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 8px;
+}
+
+.secao-tatica h3:not(:first-child) {
+  margin-top: 14px;
+}
+
+.grupo-opcoes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.opcao {
+  min-height: 40px;
+  padding: 0 16px;
+  border-radius: 20px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--cinza-texto);
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.opcao.ativa {
+  background: var(--amarelo);
+  border-color: var(--amarelo);
+  color: #3a2b00;
+}
+
+.aviso-salvo {
+  text-align: center;
+  font-size: 12px;
+  font-weight: 600;
+  color: #7ee0a5;
+}
+
+/* Seletor de jogador (folha que sobe de baixo) */
+.sobreposicao {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: flex-end;
+  z-index: 50;
+}
+
+.sobreposicao[hidden] {
+  display: none;
+}
+
+.folha-seletor {
+  width: 100%;
+  max-height: 80vh;
+  background: var(--verde-escuro);
+  border-radius: 18px 18px 0 0;
+  padding: 16px 16px calc(env(safe-area-inset-bottom) + 16px);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  box-shadow: 0 -10px 30px rgba(0, 0, 0, 0.5);
+}
+
+.cabecalho-seletor {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.cabecalho-seletor h3 {
+  font-size: 16px;
+  font-weight: 800;
+}
+
+.btn-fechar {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--branco);
+  font-size: 15px;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.lista-seletor {
+  overflow-y: auto;
+}
+
+.separador-seletor {
+  padding: 6px 2px;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--cinza-texto);
+}
+
+.item-jogador.selecionavel {
+  cursor: pointer;
+}
+
+.item-jogador.selecionavel:active {
+  transform: scale(0.98);
+}
+
+.item-jogador .tag-titular {
+  flex-shrink: 0;
+  font-size: 10px;
+  font-weight: 700;
+  background: var(--verde-claro);
+  color: var(--branco);
+  padding: 3px 8px;
+  border-radius: 8px;
+}
+
+.item-jogador.item-vazio {
+  justify-content: center;
+  color: var(--cinza-texto);
+  font-size: 13px;
+  font-style: italic;
+}
