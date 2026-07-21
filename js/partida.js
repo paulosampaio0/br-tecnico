@@ -100,6 +100,8 @@ function novaPartida() {
       casa: criarEstatisticasVazias(),
       fora: criarEstatisticasVazias(),
     },
+    ehRodadaOficial: false, // true quando é uma rodada de verdade da temporada (Fase 6), não amistoso
+    numeroRodadaOficial: null,
   };
 }
 

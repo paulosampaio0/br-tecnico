@@ -1005,3 +1005,128 @@ body::before {
   color: #7ee0a5;
   font-weight: 700;
 }
+
+/* ============================================================
+   Temporada e Tabela — Fase 6
+   ============================================================ */
+
+.secao-temporada {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.proxima-rodada {
+  text-align: center;
+  font-size: 13px;
+  color: var(--cinza-texto);
+}
+
+.tela-tabela {
+  justify-content: flex-start;
+  align-items: stretch;
+  text-align: left;
+  padding: calc(env(safe-area-inset-top) + 16px) 16px
+           calc(env(safe-area-inset-bottom) + 16px);
+  gap: 14px;
+}
+
+.tabela-classificacao-wrap {
+  overflow-x: auto;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.tabela-classificacao {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.tabela-classificacao th,
+.tabela-classificacao td {
+  padding: 8px 6px;
+  text-align: center;
+}
+
+.tabela-classificacao th {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--cinza-texto);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.tabela-classificacao .col-pos {
+  width: 24px;
+}
+
+.tabela-classificacao .col-time {
+  text-align: left;
+  min-width: 120px;
+}
+
+.tabela-classificacao tbody tr {
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.tabela-classificacao tbody tr.meu-time {
+  background: rgba(255, 210, 63, 0.15);
+  font-weight: 700;
+}
+
+.tabela-classificacao tbody tr.zona-rebaixamento td.col-pos {
+  color: #ff8f8f;
+  font-weight: 800;
+}
+
+.tabela-classificacao tbody tr.zona-acesso td.col-pos {
+  color: #7ee0a5;
+  font-weight: 800;
+}
+
+.tabela-classificacao .pontos {
+  font-weight: 800;
+  color: var(--amarelo);
+}
+
+.secao-resultados-rodada {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.cabecalho-resultados {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.cabecalho-resultados h3 {
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.btn-navegar-rodada {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--branco);
+  font-size: 18px;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.btn-navegar-rodada:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.lista-resultados-rodada {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}

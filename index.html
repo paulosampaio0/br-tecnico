@@ -33,7 +33,7 @@
 
     <footer class="rodape">
       <p class="status-salvamento" id="status-salvamento">Verificando salvamento…</p>
-      <p class="versao">Fase 5 · Rodada paralela · v0.6.0</p>
+      <p class="versao">Fase 6 · Temporada completa · v0.7.0</p>
     </footer>
 
   </main>
@@ -118,9 +118,53 @@
 
     <p class="aviso-salvo" id="aviso-salvo">✓ Progresso salvo automaticamente neste celular.</p>
 
-    <button class="btn btn-primario btn-jogar-amistoso" id="btn-jogar-amistoso" type="button">
-      ⚽ Jogar amistoso
+    <section class="secao-temporada">
+      <p class="proxima-rodada" id="texto-proxima-rodada"></p>
+      <button class="btn btn-primario" id="btn-jogar-rodada" type="button">
+        🏆 Jogar rodada
+      </button>
+      <button class="btn btn-secundario" id="btn-ver-tabela" type="button">
+        📊 Ver tabela
+      </button>
+    </section>
+
+    <button class="btn btn-secundario btn-jogar-amistoso" id="btn-jogar-amistoso" type="button">
+      ⚽ Jogar amistoso (sem afetar a tabela)
     </button>
+
+  </main>
+
+  <!-- Tela: tabela do campeonato -->
+  <main class="tela tela-tabela" id="tela-tabela" hidden>
+
+    <header class="cabecalho cabecalho-lista">
+      <button class="btn-voltar" id="btn-voltar-escalacao-tabela" type="button" aria-label="Voltar">←</button>
+      <h2 class="titulo-lista">Tabela</h2>
+    </header>
+
+    <div class="abas" id="abas-tabela-divisao" role="tablist"></div>
+
+    <div class="tabela-classificacao-wrap">
+      <table class="tabela-classificacao">
+        <thead>
+          <tr>
+            <th class="col-pos">#</th>
+            <th class="col-time">Time</th>
+            <th>PG</th><th>J</th><th>V</th><th>E</th><th>D</th><th>GP</th><th>GC</th><th>SG</th>
+          </tr>
+        </thead>
+        <tbody id="corpo-tabela-classificacao"></tbody>
+      </table>
+    </div>
+
+    <section class="secao-resultados-rodada">
+      <div class="cabecalho-resultados">
+        <button class="btn-navegar-rodada" id="btn-rodada-anterior" type="button" aria-label="Rodada anterior">‹</button>
+        <h3 id="titulo-resultados-rodada">Rodada 1</h3>
+        <button class="btn-navegar-rodada" id="btn-rodada-seguinte" type="button" aria-label="Próxima rodada">›</button>
+      </div>
+      <ul class="lista lista-resultados-rodada" id="lista-resultados-rodada"></ul>
+    </section>
 
   </main>
 
@@ -177,6 +221,7 @@
   <script src="js/formacoes.js"></script>
   <script src="js/setas.js"></script>
   <script src="js/partida.js"></script>
+  <script src="js/temporada.js"></script>
   <script src="js/app.js"></script>
 </body>
 </html>

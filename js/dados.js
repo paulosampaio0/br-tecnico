@@ -70,6 +70,17 @@ function buscarTime(dados, chaveDivisao, nomeTime) {
   return divisao.times.find(function (t) { return t.nome === nomeTime; }) || null;
 }
 
+/**
+ * Encontra um time pelo nome em QUALQUER divisão do arquivo de dados.
+ * Usado a partir da Fase 6: depois de um acesso/rebaixamento, a divisão
+ * "de verdade" do time (na temporada simulada) pode não ser mais a mesma
+ * de onde ele está listado no arquivo — mas o elenco (jogadores) é o
+ * mesmo de qualquer forma, então buscar só pelo nome resolve.
+ */
+function buscarTimePorNome(dados, nomeTime) {
+  return buscarTime(dados, "serie_a", nomeTime) || buscarTime(dados, "serie_b", nomeTime);
+}
+
 /** Encontra um jogador pelo _id dentro de uma lista de jogadores. */
 function encontrarJogadorPorId(jogadores, id) {
   return jogadores.find(function (j) { return j._id === id; }) || null;
