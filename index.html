@@ -33,7 +33,7 @@
 
     <footer class="rodape">
       <p class="status-salvamento" id="status-salvamento">Verificando salvamento…</p>
-      <p class="versao">Fase 3 · Sistema de setas · v0.4.0</p>
+      <p class="versao">Fase 4 · Simulação de partida · v0.5.0</p>
     </footer>
 
   </main>
@@ -80,6 +80,7 @@
     <header class="cabecalho cabecalho-lista">
       <button class="btn-voltar" id="btn-voltar-elenco-escalacao" type="button" aria-label="Voltar">←</button>
       <h2 class="titulo-lista" id="titulo-escalacao">Escalação</h2>
+      <button class="btn-voltar-partida" id="btn-voltar-partida" type="button" hidden>Voltar pro jogo ▶</button>
     </header>
 
     <div class="controle-formacao">
@@ -117,6 +118,43 @@
 
     <p class="aviso-salvo" id="aviso-salvo">✓ Progresso salvo automaticamente neste celular.</p>
 
+    <button class="btn btn-primario btn-jogar-amistoso" id="btn-jogar-amistoso" type="button">
+      ⚽ Jogar amistoso
+    </button>
+
+  </main>
+
+  <!-- Tela: partida ao vivo -->
+  <main class="tela tela-partida" id="tela-partida" hidden>
+
+    <header class="cabecalho-partida">
+      <div class="placar-partida">
+        <span class="nome-time-partida" id="partida-nome-casa">Casa</span>
+        <span class="numero-placar" id="partida-placar">0 x 0</span>
+        <span class="nome-time-partida" id="partida-nome-fora">Fora</span>
+      </div>
+      <div class="relogio-partida">
+        <span class="minuto-partida" id="partida-minuto">0'</span>
+        <span class="status-partida" id="partida-status">Prestes a começar</span>
+      </div>
+    </header>
+
+    <div class="controles-partida">
+      <button class="btn btn-primario" id="btn-pausar-partida" type="button">⏸ Pausar</button>
+      <button class="btn btn-secundario" id="btn-mexer-time-partida" type="button" hidden>🔧 Mexer no time</button>
+      <button class="btn btn-primario" id="btn-voltar-escalacao-fim" type="button" hidden>Voltar à escalação</button>
+    </div>
+
+    <section class="secao-estatisticas-partida">
+      <h3>Estatísticas</h3>
+      <div id="linhas-estatisticas-partida"></div>
+    </section>
+
+    <section class="secao-eventos-partida">
+      <h3>Eventos</h3>
+      <ul class="lista lista-eventos-partida" id="lista-eventos-partida"></ul>
+    </section>
+
   </main>
 
   <!-- Seletor de jogador para uma vaga do campo -->
@@ -133,6 +171,7 @@
   <script src="js/dados.js"></script>
   <script src="js/formacoes.js"></script>
   <script src="js/setas.js"></script>
+  <script src="js/partida.js"></script>
   <script src="js/app.js"></script>
 </body>
 </html>

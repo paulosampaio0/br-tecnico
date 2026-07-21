@@ -1,8 +1,8 @@
 /* ============================================================
-   BR Técnico — app.js (Fase 3)
+   BR Técnico — app.js (Fase 4)
    Objetivo desta fase: escalar os 11 titulares num campo, definir
-   formação, tática básica e o sistema de setas (arrastar um jogador
-   pra até 2 direções). Tudo salvo localmente no celular.
+   formação, tática, o sistema de setas e simular uma partida amistosa
+   com relógio, eventos, estatísticas e pausa. Tudo salvo no celular.
    ============================================================ */
 
 "use strict";
@@ -10,6 +10,24 @@
 const CHAVE_SALVAMENTO = "br-tecnico:teste-salvamento";
 const CHAVE_SAVE = "br-tecnico:save:v1";
 const LIMIAR_ARRASTO_PX = 16; // quanto o dedo precisa se mover pra virar "arrasto" e não "toque"
+const MS_POR_MINUTO_PARTIDA = 450; // velocidade da simulação (real x jogo)
+
+const ESTATISTICAS_PARTIDA_DEF = [
+  { chave: "posse", rotulo: "Posse de bola" },
+  { chave: "finalizacoes", rotulo: "Finalizações" },
+  { chave: "noGol", rotulo: "No gol" },
+  { chave: "chutesFora", rotulo: "Pra fora" },
+  { chave: "desarmes", rotulo: "Desarmes" },
+  { chave: "errosPasse", rotulo: "Erros de passe" },
+];
+
+const ROTULO_STATUS_PARTIDA = {
+  "nao-iniciada": "Prestes a começar",
+  jogando: "Em andamento",
+  pausada: "Pausada",
+  intervalo: "Intervalo",
+  fim: "Fim de jogo",
+};
 
 const OPCOES_TATICA = {
   estilo: [
@@ -39,6 +57,12 @@ let divisaoAtual = "serie_a";
 let timeExibidoNoElenco = null; // time visto na tela de elenco (para o botão "Escalar")
 let vagaEmEdicao = null; // id da vaga que o seletor de jogador está preenchendo
 let arrasto = null; // informações do arrasto de seta em andamento (ou null)
+
+// Estado da partida amistosa em andamento (ou null se nenhuma).
+let partidaAtual = null;
+let timeCasaSimulado = null;
+let timeForaSimulado = null;
+let intervaloPartida = null;
 
 const estado = {
   timeAtual: null, // { divisaoChave, nome, jogadores }
@@ -255,6 +279,7 @@ function escalarEsteTime(time) {
 function abrirTelaEscalacao() {
   mostrarTela("tela-escalacao");
   document.getElementById("titulo-escalacao").textContent = estado.timeAtual.nome;
+  document.getElementById("btn-voltar-partida").hidden = !(partidaAtual && partidaAtual.status !== "fim");
 
   montarSelectFormacao();
   renderizarCampo();
@@ -594,6 +619,166 @@ function definirTatica(campo, valor) {
   renderizarTatica();
 }
 
+/* ---------- Partida ao vivo (Fase 4) ---------- */
+
+/** Sorteia um adversário da mesma divisão e começa uma partida amistosa. */
+async function iniciarAmistoso() {
+  const dados = await carregarDados();
+  const divisao = dados.divisoes[estado.timeAtual.divisaoChave];
+  const candidatos = divisao.times.filter(function (t) { return t.nome !== estado.timeAtual.nome; });
+  const oponente = candidatos[Math.floor(Math.random() * candidatos.length)];
+
+  atualizarTimeCasaSimulado();
+
+  const titularesOponenteMap = autoEscalarMelhores(oponente.jogadores, "4-4-2");
+  const titularesFora = resolverTitulares(oponente.jogadores, "4-4-2", titularesOponenteMap);
+  timeForaSimulado = criarTimeSimulado(oponente.nome, titularesFora, taticaPadrao(), {});
+
+  partidaAtual = novaPartida();
+  abrirTelaPartida();
+  iniciarSimulacao();
+}
+
+/**
+ * Recalcula a força do time da casa a partir do estado ATUAL (formação,
+ * escalação, tática, setas). Chamado ao começar e sempre que a simulação
+ * é retomada, pra que mudanças feitas com o jogo pausado valham de verdade.
+ */
+function atualizarTimeCasaSimulado() {
+  const titularesCasa = resolverTitulares(estado.timeAtual.jogadores, estado.formacaoId, estado.titulares);
+  timeCasaSimulado = criarTimeSimulado(estado.timeAtual.nome, titularesCasa, estado.tatica, estado.setas);
+}
+
+function abrirTelaPartida() {
+  mostrarTela("tela-partida");
+  document.getElementById("partida-nome-casa").textContent = timeCasaSimulado.nome;
+  document.getElementById("partida-nome-fora").textContent = timeForaSimulado.nome;
+  montarLinhasEstatisticasPartida();
+  renderizarPartida();
+}
+
+function montarLinhasEstatisticasPartida() {
+  const container = document.getElementById("linhas-estatisticas-partida");
+  if (container.childElementCount > 0) return; // já montado, só atualiza os valores depois
+  ESTATISTICAS_PARTIDA_DEF.forEach(function (def) {
+    const linha = document.createElement("div");
+    linha.className = "linha-estatistica";
+    linha.innerHTML =
+      "<span class=\"valor-esquerda\" id=\"est-" + def.chave + "-casa\">0</span>" +
+      "<span class=\"rotulo-estatistica\">" + escaparHtml(def.rotulo) + "</span>" +
+      "<span class=\"valor-direita\" id=\"est-" + def.chave + "-fora\">0</span>";
+    container.appendChild(linha);
+  });
+}
+
+function iniciarSimulacao() {
+  atualizarTimeCasaSimulado();
+  partidaAtual.status = "jogando";
+  pararIntervaloPartida();
+  intervaloPartida = setInterval(tickPartida, MS_POR_MINUTO_PARTIDA);
+  renderizarPartida();
+}
+
+function tickPartida() {
+  simularMinuto(partidaAtual, timeCasaSimulado, timeForaSimulado);
+
+  if (partidaAtual.minuto === 45 && partidaAtual.tempo === 1) {
+    partidaAtual.tempo = 2;
+    partidaAtual.status = "intervalo";
+    pararIntervaloPartida();
+  } else if (partidaAtual.minuto >= 90) {
+    partidaAtual.status = "fim";
+    pararIntervaloPartida();
+  }
+
+  renderizarPartida();
+}
+
+function pararIntervaloPartida() {
+  if (intervaloPartida) {
+    clearInterval(intervaloPartida);
+    intervaloPartida = null;
+  }
+}
+
+/** Botão único que alterna entre pausar e retomar (ou avançar do intervalo). */
+function alternarPausaPartida() {
+  if (partidaAtual.status === "jogando") {
+    partidaAtual.status = "pausada";
+    pararIntervaloPartida();
+    renderizarControlesPartida();
+  } else if (partidaAtual.status === "pausada" || partidaAtual.status === "intervalo") {
+    iniciarSimulacao();
+  }
+}
+
+function renderizarPartida() {
+  document.getElementById("partida-placar").textContent = partidaAtual.placarCasa + " x " + partidaAtual.placarFora;
+  document.getElementById("partida-minuto").textContent = partidaAtual.minuto + "'";
+  document.getElementById("partida-status").textContent = ROTULO_STATUS_PARTIDA[partidaAtual.status];
+
+  const posse = calcularPosse(partidaAtual);
+  document.getElementById("est-posse-casa").textContent = posse.casa + "%";
+  document.getElementById("est-posse-fora").textContent = posse.fora + "%";
+
+  ["finalizacoes", "noGol", "chutesFora", "desarmes", "errosPasse"].forEach(function (chave) {
+    document.getElementById("est-" + chave + "-casa").textContent = partidaAtual.estatisticas.casa[chave];
+    document.getElementById("est-" + chave + "-fora").textContent = partidaAtual.estatisticas.fora[chave];
+  });
+
+  renderizarEventosPartida();
+  renderizarControlesPartida();
+}
+
+function renderizarEventosPartida() {
+  const listaEl = document.getElementById("lista-eventos-partida");
+  listaEl.innerHTML = "";
+
+  if (partidaAtual.eventos.length === 0) {
+    const vazio = document.createElement("li");
+    vazio.className = "item-evento item-vazio";
+    vazio.textContent = "Ainda não rolou nada.";
+    listaEl.appendChild(vazio);
+    return;
+  }
+
+  partidaAtual.eventos.slice().reverse().forEach(function (evento) {
+    const li = document.createElement("li");
+    li.className = "item-evento item-evento-" + evento.tipo;
+    li.innerHTML =
+      "<span class=\"minuto-evento\">" + evento.minuto + "'</span>" +
+      "<span class=\"texto-evento\">" + escaparHtml(evento.texto) + "</span>";
+    listaEl.appendChild(li);
+  });
+}
+
+function renderizarControlesPartida() {
+  const btnPausar = document.getElementById("btn-pausar-partida");
+  const btnMexer = document.getElementById("btn-mexer-time-partida");
+  const btnVoltarFim = document.getElementById("btn-voltar-escalacao-fim");
+
+  if (partidaAtual.status === "fim") {
+    btnPausar.hidden = true;
+    btnMexer.hidden = true;
+    btnVoltarFim.hidden = false;
+    return;
+  }
+
+  btnVoltarFim.hidden = true;
+  btnPausar.hidden = false;
+
+  if (partidaAtual.status === "intervalo") {
+    btnPausar.textContent = "▶ Continuar 2º tempo";
+    btnMexer.hidden = false;
+  } else if (partidaAtual.status === "pausada") {
+    btnPausar.textContent = "▶ Retomar";
+    btnMexer.hidden = false;
+  } else {
+    btnPausar.textContent = "⏸ Pausar";
+    btnMexer.hidden = true;
+  }
+}
+
 /* ---------- Seletor de jogador (folha de baixo) ---------- */
 
 function abrirSeletorJogador(vaga) {
@@ -765,6 +950,30 @@ function ligarBotoes() {
     });
   }
 
+  const btnVoltarPartida = document.getElementById("btn-voltar-partida");
+  if (btnVoltarPartida) {
+    btnVoltarPartida.addEventListener("click", function () {
+      mostrarTela("tela-partida");
+    });
+  }
+
+  const btnJogarAmistoso = document.getElementById("btn-jogar-amistoso");
+  if (btnJogarAmistoso) btnJogarAmistoso.addEventListener("click", iniciarAmistoso);
+
+  const btnPausarPartida = document.getElementById("btn-pausar-partida");
+  if (btnPausarPartida) btnPausarPartida.addEventListener("click", alternarPausaPartida);
+
+  const btnMexerTimePartida = document.getElementById("btn-mexer-time-partida");
+  if (btnMexerTimePartida) btnMexerTimePartida.addEventListener("click", abrirTelaEscalacao);
+
+  const btnVoltarEscalacaoFim = document.getElementById("btn-voltar-escalacao-fim");
+  if (btnVoltarEscalacaoFim) {
+    btnVoltarEscalacaoFim.addEventListener("click", function () {
+      partidaAtual = null;
+      abrirTelaEscalacao();
+    });
+  }
+
   const btnFecharSeletor = document.getElementById("btn-fechar-seletor");
   if (btnFecharSeletor) btnFecharSeletor.addEventListener("click", fecharSeletorJogador);
 
@@ -777,7 +986,7 @@ function ligarBotoes() {
 }
 
 document.addEventListener("DOMContentLoaded", function () {
-  console.log("BR Técnico — Fase 3 carregada.");
+  console.log("BR Técnico — Fase 4 carregada.");
   mostrarStatusSalvamento();
   atualizarBotaoContinuar();
   ligarBotoes();
