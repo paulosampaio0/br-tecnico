@@ -447,11 +447,20 @@ body::before {
   padding: 0;
   cursor: pointer;
   -webkit-tap-highlight-color: transparent;
+  touch-action: none;
   z-index: 1;
 }
 
 .vaga:active .bolinha {
   transform: scale(0.9);
+}
+
+/* Envolve a bolinha pra dar um "ponto de referência" fixo (38x38) onde
+   as setinhas ativas podem ser encaixadas nas bordas. */
+.vaga .bolinha-wrap {
+  position: relative;
+  width: 38px;
+  height: 38px;
 }
 
 .vaga .bolinha {
@@ -470,6 +479,26 @@ body::before {
   transition: transform 0.08s ease;
 }
 
+/* Setinha permanente indicando uma seta já ativa naquele jogador */
+.seta-indicador {
+  position: absolute;
+  font-size: 13px;
+  font-weight: 900;
+  line-height: 1;
+  color: var(--amarelo);
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.9);
+  pointer-events: none;
+}
+
+.seta-indicador.nao-combina {
+  color: #ff8f8f;
+}
+
+.seta-indicador.cima { top: -12px; left: 50%; transform: translateX(-50%); }
+.seta-indicador.baixo { bottom: -12px; left: 50%; transform: translateX(-50%); }
+.seta-indicador.esquerda { left: -12px; top: 50%; transform: translateY(-50%); }
+.seta-indicador.direita { right: -12px; top: 50%; transform: translateY(-50%); }
+
 .vaga.vazia .bolinha {
   background: rgba(255, 255, 255, 0.15);
   color: var(--cinza-texto);
@@ -485,6 +514,130 @@ body::before {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+/* ============================================================
+   Setas — Fase 3
+   ============================================================ */
+
+.dica-setas {
+  font-size: 12px;
+  color: var(--cinza-texto);
+  text-align: center;
+  line-height: 1.4;
+}
+
+/* "Cruz" que aparece flutuando enquanto o técnico arrasta um jogador */
+.cruz-direcoes {
+  position: fixed;
+  width: 0;
+  height: 0;
+  z-index: 80;
+  pointer-events: none;
+}
+
+.alvo-direcao {
+  position: absolute;
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  background: rgba(7, 42, 25, 0.9);
+  border: 2px solid rgba(255, 255, 255, 0.35);
+  color: var(--branco);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+  font-weight: 800;
+  text-align: center;
+  line-height: 1.1;
+}
+
+.alvo-direcao small {
+  font-size: 8px;
+  font-weight: 700;
+  margin-top: 2px;
+}
+
+.alvo-direcao.cima { top: -56px; left: 0; transform: translate(-50%, -50%); }
+.alvo-direcao.baixo { top: 56px; left: 0; transform: translate(-50%, -50%); }
+.alvo-direcao.esquerda { top: 0; left: -56px; transform: translate(-50%, -50%); }
+.alvo-direcao.direita { top: 0; left: 56px; transform: translate(-50%, -50%); }
+
+.alvo-direcao.ativa-agora {
+  background: var(--amarelo);
+  border-color: var(--amarelo);
+  color: #3a2b00;
+  box-shadow: 0 0 0 4px rgba(255, 210, 63, 0.35);
+}
+
+.alvo-direcao.ja-ligada {
+  border-color: #7ee0a5;
+}
+
+.alvo-direcao.bloqueada {
+  opacity: 0.45;
+}
+
+/* Resumo de setas ativas, logo abaixo do campo */
+.secao-resumo-setas h3 {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--cinza-texto);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 8px;
+}
+
+.lista-resumo-setas {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.item-resumo-seta {
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.item-resumo-seta .cabecalho-resumo {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 4px;
+}
+
+.item-resumo-seta .nome-jogador-resumo {
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.item-resumo-seta .vaga-jogador-resumo {
+  font-size: 11px;
+  color: var(--cinza-texto);
+}
+
+.item-resumo-seta .linha-efeito {
+  font-size: 12px;
+  color: var(--branco);
+  padding: 2px 0;
+}
+
+.item-resumo-seta .linha-efeito.combina {
+  color: #7ee0a5;
+}
+
+.item-resumo-seta .linha-efeito.fraca {
+  color: #ffb85c;
+}
+
+.item-resumo-seta .nota-espaco {
+  font-size: 11px;
+  color: #ff8f8f;
+  margin-top: 4px;
 }
 
 /* Tática — grupos de opções (chips) */

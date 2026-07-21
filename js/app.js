@@ -1,13 +1,15 @@
 /* ============================================================
-   BR Técnico — app.js (Fase 2)
+   BR Técnico — app.js (Fase 3)
    Objetivo desta fase: escalar os 11 titulares num campo, definir
-   formação e tática básica, e salvar tudo localmente no celular.
+   formação, tática básica e o sistema de setas (arrastar um jogador
+   pra até 2 direções). Tudo salvo localmente no celular.
    ============================================================ */
 
 "use strict";
 
 const CHAVE_SALVAMENTO = "br-tecnico:teste-salvamento";
 const CHAVE_SAVE = "br-tecnico:save:v1";
+const LIMIAR_ARRASTO_PX = 16; // quanto o dedo precisa se mover pra virar "arrasto" e não "toque"
 
 const OPCOES_TATICA = {
   estilo: [
@@ -36,12 +38,14 @@ function taticaPadrao() {
 let divisaoAtual = "serie_a";
 let timeExibidoNoElenco = null; // time visto na tela de elenco (para o botão "Escalar")
 let vagaEmEdicao = null; // id da vaga que o seletor de jogador está preenchendo
+let arrasto = null; // informações do arrasto de seta em andamento (ou null)
 
 const estado = {
   timeAtual: null, // { divisaoChave, nome, jogadores }
   formacaoId: "4-4-2",
-  titulares: {}, // { idDaVaga: nomeDoJogador }
+  titulares: {}, // { idDaVaga: _id do jogador }
   tatica: taticaPadrao(),
+  setas: {}, // { idDaVaga: ["frente", "meio", ...] } — no máximo 2 chaves por vaga
 };
 
 /* ---------- Salvamento local ---------- */
@@ -82,6 +86,7 @@ function salvarProgresso() {
     formacaoId: estado.formacaoId,
     titulares: estado.titulares,
     tatica: estado.tatica,
+    setas: estado.setas,
     atualizadoEm: new Date().toISOString(),
   };
   try {
@@ -239,6 +244,7 @@ function escalarEsteTime(time) {
   estado.formacaoId = "4-4-2";
   estado.titulares = autoEscalarMelhores(time.jogadores, estado.formacaoId);
   estado.tatica = taticaPadrao();
+  estado.setas = {};
 
   salvarProgresso();
   abrirTelaEscalacao();
@@ -252,6 +258,7 @@ function abrirTelaEscalacao() {
 
   montarSelectFormacao();
   renderizarCampo();
+  renderizarResumoSetas();
   renderizarTatica();
   renderizarBanco();
 }
@@ -275,8 +282,10 @@ function montarSelectFormacao() {
 function trocarFormacao(novaFormacaoId) {
   estado.formacaoId = novaFormacaoId;
   estado.titulares = autoEscalarMelhores(estado.timeAtual.jogadores, novaFormacaoId);
+  estado.setas = {}; // as vagas mudam de função na nova formação, então as setas recomeçam
   salvarProgresso();
   renderizarCampo();
+  renderizarResumoSetas();
   renderizarBanco();
 }
 
@@ -292,22 +301,247 @@ function renderizarCampo() {
     const botao = document.createElement("button");
     botao.type = "button";
     botao.className = "vaga" + (jogador ? "" : " vazia");
+    botao.dataset.vagaId = vaga.id;
     botao.style.left = vaga.x + "%";
     botao.style.top = vaga.y + "%";
     botao.innerHTML =
-      "<span class=\"bolinha\">" + vaga.rotulo + "</span>" +
+      "<span class=\"bolinha-wrap\">" +
+        "<span class=\"bolinha\">" + vaga.rotulo + "</span>" +
+        (jogador ? montarIndicadoresSetas(vaga, jogador) : "") +
+      "</span>" +
       "<span class=\"nome-vaga\">" + (jogador ? escaparHtml(sobrenomeCurto(jogador.nome)) : "Vazio") + "</span>";
+
     botao.addEventListener("click", function () {
+      // Um arrasto de verdade que acabou de acontecer NESTE botão não deve
+      // também abrir o seletor de jogador (senão os dois gestos se confundem).
+      if (botao.dataset.gestoArrasto === "1") {
+        delete botao.dataset.gestoArrasto;
+        return;
+      }
       abrirSeletorJogador(vaga);
     });
+
+    // O goleiro não recebe setas — não faz sentido táticamente.
+    if (jogador && vaga.pos !== "GOL") {
+      anexarArrastoSeta(botao, vaga, jogador);
+    }
+
     campoEl.appendChild(botao);
   });
+}
+
+/** Monta o HTML das setinhas já ativas de um jogador, encaixadas na bolinha. */
+function montarIndicadoresSetas(vaga, jogador) {
+  const chaves = estado.setas[vaga.id] || [];
+  return chaves.map(function (chave) {
+    const tela = obterTelaParaChave(vaga, chave);
+    const combina = jogadorCombinaComSeta(jogador, chave);
+    return "<span class=\"seta-indicador " + tela + (combina ? "" : " nao-combina") + "\">" +
+      iconeDirecaoTela(tela) + "</span>";
+  }).join("");
+}
+
+function iconeDirecaoTela(tela) {
+  return { cima: "▲", baixo: "▼", esquerda: "◀", direita: "▶" }[tela] || "";
 }
 
 /** Nome curto para caber embaixo da bolinha no campo. */
 function sobrenomeCurto(nomeCompleto) {
   const partes = nomeCompleto.trim().split(/\s+/);
   return partes[partes.length - 1];
+}
+
+/* ---------- Arrastar pra criar seta (Fase 3) ---------- */
+
+/** Liga o gesto de segurar-e-arrastar num botão de vaga do campo. */
+function anexarArrastoSeta(botaoVaga, vaga, jogador) {
+  botaoVaga.addEventListener("pointerdown", function (evento) {
+    if (evento.button !== undefined && evento.button !== 0) return; // só clique/toque principal
+    evento.preventDefault();
+
+    arrasto = {
+      pointerId: evento.pointerId,
+      vaga: vaga,
+      jogador: jogador,
+      inicioX: evento.clientX,
+      inicioY: evento.clientY,
+      direcaoAtual: null,
+      arrastouDeVerdade: false,
+      elementoCruz: null,
+      bolinhaWrap: botaoVaga.querySelector(".bolinha-wrap"),
+    };
+
+    window.addEventListener("pointermove", moverArrastoSeta);
+    window.addEventListener("pointerup", finalizarArrastoSeta);
+    window.addEventListener("pointercancel", cancelarArrastoSeta);
+  });
+}
+
+function moverArrastoSeta(evento) {
+  if (!arrasto || evento.pointerId !== arrasto.pointerId) return;
+
+  const dx = evento.clientX - arrasto.inicioX;
+  const dy = evento.clientY - arrasto.inicioY;
+  const distancia = Math.hypot(dx, dy);
+
+  if (!arrasto.arrastouDeVerdade) {
+    if (distancia < LIMIAR_ARRASTO_PX) return;
+    arrasto.arrastouDeVerdade = true;
+    arrasto.elementoCruz = criarCruzDirecoes(arrasto.bolinhaWrap);
+  }
+
+  const telaDirecao = Math.abs(dx) > Math.abs(dy)
+    ? (dx > 0 ? "direita" : "esquerda")
+    : (dy > 0 ? "baixo" : "cima");
+
+  arrasto.direcaoAtual = telaDirecao;
+  atualizarDestaqueCruz(arrasto.elementoCruz, arrasto.vaga, telaDirecao);
+}
+
+/** Cria a "cruz" flutuante com as 4 direções, centrada na bolinha do jogador. */
+function criarCruzDirecoes(bolinhaWrap) {
+  const retangulo = bolinhaWrap.getBoundingClientRect();
+  const centroX = retangulo.left + retangulo.width / 2;
+  const centroY = retangulo.top + retangulo.height / 2;
+
+  const container = document.createElement("div");
+  container.className = "cruz-direcoes";
+  container.style.left = centroX + "px";
+  container.style.top = centroY + "px";
+
+  ["cima", "baixo", "esquerda", "direita"].forEach(function (telaLado) {
+    const alvo = document.createElement("div");
+    alvo.className = "alvo-direcao " + telaLado;
+    alvo.dataset.tela = telaLado;
+    container.appendChild(alvo);
+  });
+
+  document.body.appendChild(container);
+  return container;
+}
+
+/** Atualiza o texto e o destaque de cada um dos 4 alvos da cruz. */
+function atualizarDestaqueCruz(elementoCruz, vaga, telaDirecaoAtual) {
+  const alvosDirecao = obterAlvosDirecao(vaga);
+  const setasDoJogador = estado.setas[vaga.id] || [];
+
+  elementoCruz.querySelectorAll(".alvo-direcao").forEach(function (elAlvo) {
+    const telaLado = elAlvo.dataset.tela;
+    const info = alvosDirecao.find(function (a) { return a.tela === telaLado; });
+    const def = DEFINICAO_SETAS[info.chave];
+    const jaLigada = setasDoJogador.indexOf(info.chave) !== -1;
+    const bloqueada = !jaLigada && setasDoJogador.length >= MAX_SETAS_POR_JOGADOR;
+
+    elAlvo.innerHTML = iconeDirecaoTela(telaLado) + "<small>" + escaparHtml(def.rotulo) + "</small>";
+    elAlvo.classList.toggle("ativa-agora", telaLado === telaDirecaoAtual);
+    elAlvo.classList.toggle("ja-ligada", jaLigada);
+    elAlvo.classList.toggle("bloqueada", bloqueada);
+  });
+}
+
+function finalizarArrastoSeta(evento) {
+  if (!arrasto || evento.pointerId !== arrasto.pointerId) return;
+
+  const vagaId = arrasto.vaga.id;
+  const houveArrastoReal = arrasto.arrastouDeVerdade;
+
+  if (houveArrastoReal && arrasto.direcaoAtual) {
+    const alvoInfo = obterAlvosDirecao(arrasto.vaga).find(function (a) { return a.tela === arrasto.direcaoAtual; });
+    if (alvoInfo) alternarSeta(vagaId, alvoInfo.chave); // isso reconstrói os botões do campo
+  }
+
+  if (houveArrastoReal) {
+    // O botão pode ter sido recriado pelo alternarSeta acima — pega o atual.
+    const botaoAtual = document.querySelector('#campo-titular .vaga[data-vaga-id="' + vagaId + '"]');
+    if (botaoAtual) botaoAtual.dataset.gestoArrasto = "1";
+  }
+
+  limparArrasto();
+}
+
+function cancelarArrastoSeta() {
+  limparArrasto();
+}
+
+function limparArrasto() {
+  if (arrasto && arrasto.elementoCruz) arrasto.elementoCruz.remove();
+  window.removeEventListener("pointermove", moverArrastoSeta);
+  window.removeEventListener("pointerup", finalizarArrastoSeta);
+  window.removeEventListener("pointercancel", cancelarArrastoSeta);
+  arrasto = null;
+}
+
+/** Liga/desliga uma seta numa vaga, respeitando o máximo de 2 por jogador. */
+function alternarSeta(vagaId, chave) {
+  const atuais = estado.setas[vagaId] || [];
+  const jaTem = atuais.indexOf(chave) !== -1;
+
+  if (jaTem) {
+    estado.setas[vagaId] = atuais.filter(function (c) { return c !== chave; });
+  } else {
+    if (atuais.length >= MAX_SETAS_POR_JOGADOR) return; // já tem 2, ignora a 3ª
+    estado.setas[vagaId] = atuais.concat([chave]);
+  }
+
+  salvarProgresso();
+  renderizarCampo();
+  renderizarResumoSetas();
+}
+
+/** Lista, em texto simples, o efeito de cada seta ativa — os bônus e as contrapartidas. */
+function renderizarResumoSetas() {
+  const secao = document.getElementById("secao-resumo-setas");
+  const listaEl = document.getElementById("lista-resumo-setas");
+  listaEl.innerHTML = "";
+
+  const idsVagaComSeta = Object.keys(estado.setas).filter(function (id) {
+    return (estado.setas[id] || []).length > 0;
+  });
+
+  if (idsVagaComSeta.length === 0) {
+    secao.hidden = true;
+    return;
+  }
+  secao.hidden = false;
+
+  const vagas = obterFormacao(estado.formacaoId);
+  idsVagaComSeta.forEach(function (vagaId) {
+    const vaga = vagas.find(function (v) { return v.id === vagaId; });
+    const idJogador = estado.titulares[vagaId];
+    if (!vaga || idJogador === undefined) return;
+    const jogador = encontrarJogadorPorId(estado.timeAtual.jogadores, idJogador);
+    if (!jogador) return;
+
+    const chaves = estado.setas[vagaId];
+    let temSetaOfensiva = false;
+    let linhasHtml = "";
+
+    chaves.forEach(function (chave) {
+      const def = DEFINICAO_SETAS[chave];
+      const combina = jogadorCombinaComSeta(jogador, chave);
+      if (def.ofensiva) temSetaOfensiva = true;
+      linhasHtml +=
+        "<p class=\"linha-efeito " + (combina ? "combina" : "fraca") + "\">" +
+        iconeDirecaoTela(obterTelaParaChave(vaga, chave)) + " <strong>" + escaparHtml(def.rotulo) + "</strong> — " +
+        escaparHtml(def.efeito) +
+        (combina ? "" : " Ele não tem essa característica: o efeito é fraco e pode atrapalhar.") +
+        "</p>";
+    });
+
+    const notaHtml = temSetaOfensiva
+      ? "<p class=\"nota-espaco\">⚠ Abre espaço atrás — fica mais vulnerável a contra-ataque. Consome mais energia.</p>"
+      : "<p class=\"nota-espaco\">Consome mais energia.</p>";
+
+    const item = document.createElement("li");
+    item.className = "item-resumo-seta";
+    item.innerHTML =
+      "<div class=\"cabecalho-resumo\">" +
+        "<span class=\"nome-jogador-resumo\">" + escaparHtml(jogador.nome) + "</span>" +
+        "<span class=\"vaga-jogador-resumo\">" + escaparHtml(vaga.rotulo) + "</span>" +
+      "</div>" +
+      linhasHtml + notaHtml;
+    listaEl.appendChild(item);
+  });
 }
 
 function renderizarBanco() {
@@ -376,8 +610,10 @@ function abrirSeletorJogador(vaga) {
   itemVazio.textContent = "— Deixar vaga vazia —";
   itemVazio.addEventListener("click", function () {
     delete estado.titulares[vagaEmEdicao];
+    delete estado.setas[vagaEmEdicao];
     salvarProgresso();
     renderizarCampo();
+    renderizarResumoSetas();
     renderizarBanco();
     fecharSeletorJogador();
   });
@@ -431,16 +667,25 @@ function criarItemSeletor(jogador) {
 }
 
 function escolherJogadorParaVaga(idVaga, idJogador) {
-  // Se o jogador já estava em outra vaga, libera a vaga antiga.
+  const idAntigoNaVaga = estado.titulares[idVaga];
+
+  // Se o jogador já estava em outra vaga, libera a vaga antiga (e as setas dela).
   Object.keys(estado.titulares).forEach(function (id) {
     if (id !== idVaga && estado.titulares[id] === idJogador) {
       delete estado.titulares[id];
+      delete estado.setas[id];
     }
   });
   estado.titulares[idVaga] = idJogador;
 
+  // Trocou o jogador dessa vaga: as setas eram do jogador anterior, então zeram.
+  if (idAntigoNaVaga !== idJogador) {
+    delete estado.setas[idVaga];
+  }
+
   salvarProgresso();
   renderizarCampo();
+  renderizarResumoSetas();
   renderizarBanco();
   fecharSeletorJogador();
 }
@@ -468,6 +713,7 @@ async function continuarJogoSalvo() {
     estado.formacaoId = registro.formacaoId || "4-4-2";
     estado.titulares = registro.titulares || {};
     estado.tatica = registro.tatica || taticaPadrao();
+    estado.setas = registro.setas || {};
 
     abrirTelaEscalacao();
   } catch (erro) {
@@ -531,7 +777,7 @@ function ligarBotoes() {
 }
 
 document.addEventListener("DOMContentLoaded", function () {
-  console.log("BR Técnico — Fase 2 carregada.");
+  console.log("BR Técnico — Fase 3 carregada.");
   mostrarStatusSalvamento();
   atualizarBotaoContinuar();
   ligarBotoes();
