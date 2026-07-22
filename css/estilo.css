@@ -366,9 +366,14 @@ body::before {
 .item-jogador .info {
   flex: 1;
   min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
 }
 
 .item-jogador .nome {
+  display: block;
+  min-width: 0;
   font-size: 15px;
   font-weight: 700;
   white-space: nowrap;
@@ -377,6 +382,8 @@ body::before {
 }
 
 .item-jogador .detalhes {
+  display: block;
+  min-width: 0;
   font-size: 12px;
   color: var(--cinza-texto);
   white-space: nowrap;
