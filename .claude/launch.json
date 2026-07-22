@@ -5,7 +5,8 @@
       "name": "br-tecnico",
       "runtimeExecutable": "node",
       "runtimeArgs": ["server-dev.js"],
-      "port": 5173
+      "port": 5173,
+      "autoPort": true
     }
   ]
 }

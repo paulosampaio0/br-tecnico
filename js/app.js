@@ -775,22 +775,32 @@ function montarLinhasEstatisticasPartida() {
 
 function iniciarSimulacao() {
   recalcularForcaUsuario();
+  const primeiroInicio = partidaAtual.minuto === 0;
   partidaAtual.status = "jogando";
   pararIntervaloPartida();
+  if (primeiroInicio) tocarSom("apito-inicio");
   intervaloPartida = setInterval(tickPartida, MS_POR_MINUTO_PARTIDA);
   renderizarPartida();
 }
 
 function tickPartida() {
+  const qtdEventosAntes = partidaAtual.eventos.length;
   simularMinuto(partidaAtual, timeCasaSimulado, timeForaSimulado);
+  partidaAtual.eventos.slice(qtdEventosAntes).forEach(function (evento) {
+    if (evento.tipo === "gol") tocarSom("gol");
+    else if (evento.tipo === "cartao-amarelo") tocarSom("cartao-amarelo");
+    else if (evento.tipo === "cartao-vermelho") tocarSom("cartao-vermelho");
+  });
 
   if (partidaAtual.minuto === 45 && partidaAtual.tempo === 1) {
     partidaAtual.tempo = 2;
     partidaAtual.status = "intervalo";
     pararIntervaloPartida();
+    tocarSom("apito-curto");
   } else if (partidaAtual.minuto >= 90) {
     partidaAtual.status = "fim";
     pararIntervaloPartida();
+    tocarSom("apito-fim");
   }
 
   // Os outros jogos da rodada acontecem junto — cada um para sozinho aos 90'.
@@ -831,6 +841,7 @@ function pararIntervaloPartida() {
 
 /** Botão único que alterna entre pausar e retomar (ou avançar do intervalo). */
 function alternarPausaPartida() {
+  tocarSom("clique");
   if (partidaAtual.status === "jogando") {
     partidaAtual.status = "pausada";
     pararIntervaloPartida();
@@ -841,7 +852,14 @@ function alternarPausaPartida() {
 }
 
 function renderizarPartida() {
-  document.getElementById("partida-placar").textContent = partidaAtual.placarCasa + " x " + partidaAtual.placarFora;
+  const elPlacar = document.getElementById("partida-placar");
+  const novoPlacar = partidaAtual.placarCasa + " x " + partidaAtual.placarFora;
+  if (elPlacar.textContent !== novoPlacar && elPlacar.textContent !== "") {
+    elPlacar.classList.remove("placar-gol-anim");
+    void elPlacar.offsetWidth; // força o navegador a reiniciar a animação
+    elPlacar.classList.add("placar-gol-anim");
+  }
+  elPlacar.textContent = novoPlacar;
   document.getElementById("partida-minuto").textContent = partidaAtual.minuto + "'";
   document.getElementById("partida-status").textContent = ROTULO_STATUS_PARTIDA[partidaAtual.status];
 
@@ -1449,6 +1467,16 @@ function escaparHtml(texto) {
 /* ---------- Ligações dos botões ---------- */
 
 function ligarBotoes() {
+  const btnSom = document.getElementById("btn-alternar-som");
+  if (btnSom) {
+    btnSom.textContent = sonsEstaoAtivos() ? "🔊 Som ligado" : "🔇 Som desligado";
+    btnSom.addEventListener("click", function () {
+      alternarSons(!sonsEstaoAtivos());
+      btnSom.textContent = sonsEstaoAtivos() ? "🔊 Som ligado" : "🔇 Som desligado";
+      tocarSom("clique");
+    });
+  }
+
   const btnNovo = document.getElementById("btn-novo-jogo");
   if (btnNovo) btnNovo.addEventListener("click", abrirTelaTimes);
 

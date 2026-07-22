@@ -13,7 +13,7 @@ const http = require("http");
 const fs = require("fs");
 const path = require("path");
 
-const PORTA = 5173;
+const PORTA = process.env.PORT || 5173;
 const RAIZ = __dirname;
 
 const TIPOS = {
