@@ -593,6 +593,27 @@ body::before {
   text-overflow: ellipsis;
 }
 
+/* Barrinha de energia embaixo do nome, visível ao montar/mexer na escalação */
+.barra-energia-vaga {
+  display: block;
+  width: 34px;
+  height: 4px;
+  border-radius: 3px;
+  background: rgba(0, 0, 0, 0.4);
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  overflow: hidden;
+}
+
+.preenchimento-energia-vaga {
+  display: block;
+  height: 100%;
+  border-radius: 2px;
+}
+
+.energia-vaga-alta { background: #7ee0a5; }
+.energia-vaga-media { background: #ffb85c; }
+.energia-vaga-baixa { background: #ff8f8f; }
+
 /* ============================================================
    Setas — Fase 3
    ============================================================ */
@@ -933,6 +954,19 @@ body::before {
   gap: 10px;
 }
 
+.linha-controles-partida {
+  display: flex;
+  gap: 10px;
+}
+
+.linha-controles-partida .btn {
+  flex: 1;
+}
+
+.btn-velocidade {
+  flex: 0 0 84px !important;
+}
+
 .secao-estatisticas-partida h3,
 .secao-eventos-partida h3 {
   font-size: 12px;
@@ -999,7 +1033,8 @@ body::before {
   color: var(--branco);
 }
 
-.item-evento-gol {
+.item-evento-gol,
+.item-evento-penalti {
   border-color: var(--amarelo);
   background: rgba(255, 210, 63, 0.12);
   animation: piscar-gol 0.6s ease;

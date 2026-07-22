@@ -102,6 +102,7 @@ function novaPartida() {
     },
     ehRodadaOficial: false, // true quando é uma rodada de verdade da temporada (Fase 6), não amistoso
     numeroRodadaOficial: null,
+    pendencia: null, // { lado } quando há um pênalti do usuário esperando o cobrador ser escolhido
   };
 }
 
@@ -124,7 +125,7 @@ function registrarEvento(partida, tipo, lado, texto) {
 }
 
 /** Roda os sorteios de UM time atacando no minuto atual (chances, cartões, etc.). */
-function processarLadoPartida(partida, atacante, defensor, ladoAtacante) {
+function processarLadoPartida(partida, atacante, defensor, ladoAtacante, permitirPausaPenalti) {
   const ladoDefensor = ladoAtacante === "casa" ? "fora" : "casa";
   const estatAtacante = partida.estatisticas[ladoAtacante];
   const estatDefensor = partida.estatisticas[ladoDefensor];
@@ -140,6 +141,30 @@ function processarLadoPartida(partida, atacante, defensor, ladoAtacante) {
     const jogador = jogadorAleatorio(atacante);
 
     if (rolagem < chanceGol) {
+      // Uma pequena fração das chances de gol vira pênalti.
+      const ehPenalti = Math.random() < 0.09;
+
+      if (ehPenalti && permitirPausaPenalti) {
+        // O time do usuário ganhou o pênalti: pausa a simulação pra ele escolher o cobrador.
+        estatAtacante.noGol++;
+        partida.pendencia = { lado: ladoAtacante };
+        registrarEvento(partida, "penalti", ladoAtacante, "🎯 Pênalti marcado!");
+        return;
+      }
+
+      if (ehPenalti) {
+        // Pênalti do adversário (ou de um jogo da CPU): resolve na hora.
+        estatAtacante.noGol++;
+        const converteu = Math.random() < 0.76;
+        if (converteu) {
+          if (ladoAtacante === "casa") partida.placarCasa++; else partida.placarFora++;
+          registrarEvento(partida, "gol", ladoAtacante, "⚽ Pênalti convertido por " + jogador.nome + "!");
+        } else {
+          registrarEvento(partida, "chance", ladoAtacante, jogador.nome + " bate o pênalti… e perde!");
+        }
+        return;
+      }
+
       estatAtacante.noGol++;
       if (ladoAtacante === "casa") partida.placarCasa++; else partida.placarFora++;
       registrarEvento(partida, "gol", ladoAtacante, "⚽ Gol de " + jogador.nome + "!");
@@ -166,12 +191,21 @@ function processarLadoPartida(partida, atacante, defensor, ladoAtacante) {
   }
 }
 
-/** Avança a partida em exatamente 1 minuto. */
-function simularMinuto(partida, timeCasa, timeFora) {
+/**
+ * Avança a partida em exatamente 1 minuto.
+ * `ladoComEscolhaCobranca` ("casa"/"fora"/undefined) diz de qual lado o
+ * usuário está jogando nesta partida — só nesse lado um pênalti pausa a
+ * simulação pra escolher o cobrador; nos demais casos (jogos da CPU, ou
+ * pênalti do adversário) o pênalti é resolvido na hora.
+ */
+function simularMinuto(partida, timeCasa, timeFora, ladoComEscolhaCobranca) {
   partida.minuto += 1;
 
-  processarLadoPartida(partida, timeCasa, timeFora, "casa");
-  processarLadoPartida(partida, timeFora, timeCasa, "fora");
+  processarLadoPartida(partida, timeCasa, timeFora, "casa", ladoComEscolhaCobranca === "casa");
+  if (partida.pendencia) return partida; // pênalti pausou a simulação — não processa o outro lado neste minuto
+
+  processarLadoPartida(partida, timeFora, timeCasa, "fora", ladoComEscolhaCobranca === "fora");
+  if (partida.pendencia) return partida;
 
   const pesoCasa = timeCasa.ataque + timeCasa.defesa * 0.5 + Math.random() * 3;
   const pesoFora = timeFora.ataque + timeFora.defesa * 0.5 + Math.random() * 3;

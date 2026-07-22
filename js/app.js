@@ -30,7 +30,10 @@ const ROTULO_STATUS_PARTIDA = {
   pausada: "Pausada",
   intervalo: "Intervalo",
   fim: "Fim de jogo",
+  penalti: "Pênalti!",
 };
+
+const VELOCIDADES_PARTIDA = [1, 2, 3];
 
 const OPCOES_TATICA = {
   estilo: [
@@ -66,6 +69,7 @@ let partidaAtual = null;
 let timeCasaSimulado = null;
 let timeForaSimulado = null;
 let intervaloPartida = null;
+let velocidadePartida = 1; // 1x, 2x ou 3x — acelera o setInterval da simulação
 let partidasRodada = []; // os outros jogos da mesma divisão, simulados em paralelo (Fase 5)
 let meuLadoNaPartida = "casa"; // se o meu time é "casa" ou "fora" na partida atual (Fase 6)
 
@@ -376,7 +380,8 @@ function renderizarCampo() {
         "<span class=\"bolinha\">" + vaga.rotulo + "</span>" +
         (jogador ? montarIndicadoresSetas(vaga, jogador) : "") +
       "</span>" +
-      "<span class=\"nome-vaga\">" + (jogador ? escaparHtml(sobrenomeCurto(jogador.nome)) : "Vazio") + "</span>";
+      "<span class=\"nome-vaga\">" + (jogador ? escaparHtml(sobrenomeCurto(jogador.nome)) : "Vazio") + "</span>" +
+      (jogador ? montarBarraEnergiaVaga(jogador) : "");
 
     botao.addEventListener("click", function () {
       // Um arrasto de verdade que acabou de acontecer NESTE botão não deve
@@ -395,6 +400,15 @@ function renderizarCampo() {
 
     campoEl.appendChild(botao);
   });
+}
+
+/** Barrinha de energia embaixo da bolinha, pra ver o cansaço direto no campo (ex.: ao "mexer no time"). */
+function montarBarraEnergiaVaga(jogador) {
+  const energia = obterEnergiaJogador(jogador._id);
+  const nivel = energia >= 70 ? "alta" : energia >= 40 ? "media" : "baixa";
+  return "<span class=\"barra-energia-vaga\" title=\"Energia: " + energia + "%\">" +
+    "<span class=\"preenchimento-energia-vaga energia-vaga-" + nivel + "\" style=\"width:" + energia + "%\"></span>" +
+  "</span>";
 }
 
 /** Monta o HTML das setinhas já ativas de um jogador, encaixadas na bolinha. */
@@ -776,21 +790,47 @@ function montarLinhasEstatisticasPartida() {
 function iniciarSimulacao() {
   recalcularForcaUsuario();
   const primeiroInicio = partidaAtual.minuto === 0;
+  if (primeiroInicio) {
+    // Guarda a escalação de saída: trocas feitas durante a partida ("mexer no
+    // time") não devem valer permanentemente pra próxima rodada.
+    partidaAtual.escalacaoInicial = Object.assign({}, estado.titulares);
+  }
   partidaAtual.status = "jogando";
   pararIntervaloPartida();
   if (primeiroInicio) tocarSom("apito-inicio");
-  intervaloPartida = setInterval(tickPartida, MS_POR_MINUTO_PARTIDA);
+  intervaloPartida = setInterval(tickPartida, MS_POR_MINUTO_PARTIDA / velocidadePartida);
   renderizarPartida();
+}
+
+/** Alterna a velocidade da simulação entre 1x, 2x e 3x (botão na tela de partida). */
+function alternarVelocidadePartida() {
+  tocarSom("clique");
+  const indiceAtual = VELOCIDADES_PARTIDA.indexOf(velocidadePartida);
+  velocidadePartida = VELOCIDADES_PARTIDA[(indiceAtual + 1) % VELOCIDADES_PARTIDA.length];
+  if (partidaAtual && partidaAtual.status === "jogando") {
+    pararIntervaloPartida();
+    intervaloPartida = setInterval(tickPartida, MS_POR_MINUTO_PARTIDA / velocidadePartida);
+  }
+  renderizarControlesPartida();
 }
 
 function tickPartida() {
   const qtdEventosAntes = partidaAtual.eventos.length;
-  simularMinuto(partidaAtual, timeCasaSimulado, timeForaSimulado);
+  simularMinuto(partidaAtual, timeCasaSimulado, timeForaSimulado, meuLadoNaPartida);
   partidaAtual.eventos.slice(qtdEventosAntes).forEach(function (evento) {
     if (evento.tipo === "gol") tocarSom("gol");
     else if (evento.tipo === "cartao-amarelo") tocarSom("cartao-amarelo");
     else if (evento.tipo === "cartao-vermelho") tocarSom("cartao-vermelho");
+    else if (evento.tipo === "penalti") tocarSom("apito-curto");
   });
+
+  if (partidaAtual.pendencia) {
+    partidaAtual.status = "penalti";
+    pararIntervaloPartida();
+    renderizarPartida();
+    abrirCobrancaPenalti();
+    return;
+  }
 
   if (partidaAtual.minuto === 45 && partidaAtual.tempo === 1) {
     partidaAtual.tempo = 2;
@@ -812,6 +852,46 @@ function tickPartida() {
 
   renderizarPartida();
   renderizarRodadaParalela();
+}
+
+/** Abre o seletor de jogador (já existente) pro usuário escolher quem bate o pênalti. */
+function abrirCobrancaPenalti() {
+  const titularesResolvidos = resolverTitulares(estado.timeAtual.jogadores, estado.formacaoId, estado.titulares)
+    .filter(function (item) { return item.vaga.pos !== "GOL"; });
+
+  document.getElementById("titulo-seletor").textContent = "🎯 Pênalti! Quem vai bater?";
+  const listaEl = document.getElementById("lista-seletor");
+  listaEl.innerHTML = "";
+  titularesResolvidos.forEach(function (item) {
+    const li = criarItemJogador(item.jogador, true);
+    li.classList.add("selecionavel");
+    li.addEventListener("click", function () {
+      resolverPenaltiUsuario(item.jogador);
+    });
+    listaEl.appendChild(li);
+  });
+  document.getElementById("sobreposicao-seletor").hidden = false;
+}
+
+/** Sorteia o resultado da cobrança conforme a força do jogador escolhido e resolve a pausa. */
+function resolverPenaltiUsuario(jogadorCobrador) {
+  const chance = clamp(0.55 + (jogadorCobrador.forca - 38) * 0.02, 0.35, 0.9);
+  const converteu = Math.random() < chance;
+  const lado = partidaAtual.pendencia.lado;
+
+  if (converteu) {
+    if (lado === "casa") partidaAtual.placarCasa++; else partidaAtual.placarFora++;
+    registrarEvento(partidaAtual, "gol", lado, "⚽ Pênalti convertido por " + jogadorCobrador.nome + "!");
+    tocarSom("gol");
+  } else {
+    registrarEvento(partidaAtual, "chance", lado, jogadorCobrador.nome + " bate o pênalti… e perde!");
+    tocarSom("cartao-amarelo");
+  }
+
+  partidaAtual.pendencia = null;
+  partidaAtual.status = "pausada";
+  fecharSeletorJogador();
+  renderizarPartida();
 }
 
 /** Mostra a lista de placares dos outros jogos da rodada, atualizada a cada minuto. */
@@ -902,17 +982,30 @@ function renderizarControlesPartida() {
   const btnPausar = document.getElementById("btn-pausar-partida");
   const btnMexer = document.getElementById("btn-mexer-time-partida");
   const btnVoltarFim = document.getElementById("btn-voltar-escalacao-fim");
+  const btnVelocidade = document.getElementById("btn-velocidade-partida");
+
+  if (btnVelocidade) btnVelocidade.textContent = "⏩ " + velocidadePartida + "x";
 
   if (partidaAtual.status === "fim") {
     btnPausar.hidden = true;
     btnMexer.hidden = true;
+    if (btnVelocidade) btnVelocidade.hidden = true;
     btnVoltarFim.hidden = false;
     btnVoltarFim.textContent = partidaAtual.ehRodadaOficial ? "Ver tabela ▶" : "Voltar à escalação";
     return;
   }
 
+  if (partidaAtual.status === "penalti") {
+    btnPausar.hidden = true;
+    btnMexer.hidden = true;
+    if (btnVelocidade) btnVelocidade.hidden = true;
+    btnVoltarFim.hidden = true;
+    return;
+  }
+
   btnVoltarFim.hidden = true;
   btnPausar.hidden = false;
+  if (btnVelocidade) btnVelocidade.hidden = false;
 
   if (partidaAtual.status === "intervalo") {
     btnPausar.textContent = "▶ Continuar 2º tempo";
@@ -1094,6 +1187,9 @@ async function iniciarRodadaOficial() {
 /** Chamado ao fim de uma rodada oficial: fecha os resultados na tabela e avança a temporada. */
 async function concluirRodadaOficial() {
   aplicarDesgastePosPartida();
+  // A escalação titular volta a ser a de saída — trocas feitas "mexendo no
+  // time" durante a partida valem só pra essa partida, não pra próxima rodada.
+  if (partidaAtual.escalacaoInicial) estado.titulares = partidaAtual.escalacaoInicial;
 
   const divisaoChave = estado.timeAtual.divisaoChave;
   const temporadaDivisao = estado.temporada[divisaoChave];
@@ -1409,6 +1505,8 @@ function escolherJogadorParaVaga(idVaga, idJogador) {
 }
 
 function fecharSeletorJogador() {
+  // Enquanto há um pênalti pendente, o cobrador é obrigatório — não deixa fechar sem escolher.
+  if (partidaAtual && partidaAtual.status === "penalti") return;
   document.getElementById("sobreposicao-seletor").hidden = true;
   vagaEmEdicao = null;
 }
@@ -1548,6 +1646,9 @@ function ligarBotoes() {
   const btnPausarPartida = document.getElementById("btn-pausar-partida");
   if (btnPausarPartida) btnPausarPartida.addEventListener("click", alternarPausaPartida);
 
+  const btnVelocidadePartida = document.getElementById("btn-velocidade-partida");
+  if (btnVelocidadePartida) btnVelocidadePartida.addEventListener("click", alternarVelocidadePartida);
+
   const btnMexerTimePartida = document.getElementById("btn-mexer-time-partida");
   if (btnMexerTimePartida) btnMexerTimePartida.addEventListener("click", abrirTelaEscalacao);
 
@@ -1559,6 +1660,7 @@ function ligarBotoes() {
         return;
       }
       aplicarDesgastePosPartida();
+      if (partidaAtual.escalacaoInicial) estado.titulares = partidaAtual.escalacaoInicial;
       partidaAtual = null;
       partidasRodada = [];
       salvarProgresso();
