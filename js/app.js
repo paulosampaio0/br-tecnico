@@ -773,14 +773,26 @@ function montarRodadaParalela(divisao, nomeMeuTime, nomeOponente) {
   return jogos;
 }
 
+/**
+ * Fator de fadiga aplicado à força efetiva de um jogador em campo. Acima de
+ * 60% de energia, o cansaço quase não pesa (jogador ainda "inteiro"). Abaixo
+ * de 60%, a força efetiva cai visivelmente — entre 20% e 30%, ficando pior
+ * quanto mais zerada a energia — pra que titular cansado x reserva descansado
+ * seja uma decisão tática real, não só um número decorativo.
+ */
+function calcularFatorFadiga(energia) {
+  if (energia >= 60) return 1;
+  return 0.8 - 0.1 * ((60 - energia) / 60); // 0.80 (perto de 60%) até 0.70 (energia 0)
+}
+
 /** Calcula a força do MEU time a partir do estado atual (formação, escalação, tática, setas). */
 function calcularTimeSimuladoUsuario() {
   const titulares = resolverTitulares(estado.timeAtual.jogadores, estado.formacaoId, estado.titulares);
 
-  // A energia baixa (cansaço) reduz um pouco a força efetiva em campo.
+  // A energia baixa (cansaço) reduz a força efetiva em campo.
   const titularesComFadiga = titulares.map(function (item) {
     const energia = obterEnergiaJogador(item.jogador._id);
-    const fatorFadiga = 0.85 + 0.15 * (energia / 100);
+    const fatorFadiga = calcularFatorFadiga(energia);
     const jogadorAjustado = Object.assign({}, item.jogador, { forca: item.jogador.forca * fatorFadiga });
     return { vaga: item.vaga, jogador: jogadorAjustado };
   });
