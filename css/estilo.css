@@ -1696,3 +1696,130 @@ body::before {
   border: 1px solid rgba(255, 143, 143, 0.3);
   color: #ffcaca;
 }
+
+/* ============================================================
+   Finanças — Fase 9
+   ============================================================ */
+
+.tela-financas {
+  justify-content: flex-start;
+  align-items: stretch;
+  text-align: left;
+  padding: calc(env(safe-area-inset-top) + 16px) 16px
+           calc(env(safe-area-inset-bottom) + 16px);
+  gap: 14px;
+}
+
+.cartao-caixa-financas {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 18px;
+  border-radius: 14px;
+  background: linear-gradient(135deg, rgba(255, 210, 63, 0.16), rgba(255, 255, 255, 0.04));
+  border: 1px solid rgba(255, 210, 63, 0.3);
+}
+
+.rotulo-caixa-financas {
+  font-size: 12px;
+  color: var(--cinza-texto);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.valor-caixa-financas {
+  font-size: 28px;
+  font-weight: 800;
+  color: var(--amarelo);
+}
+
+.grade-resumo-financas {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.campo-resumo-financas {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.campo-resumo-financas-largo {
+  grid-column: 1 / -1;
+}
+
+.rotulo-resumo-financas {
+  font-size: 11px;
+  color: var(--cinza-texto);
+}
+
+.valor-resumo-financas {
+  font-size: 17px;
+  font-weight: 800;
+  color: var(--branco);
+}
+
+.valor-positivo-financas { color: #3ddc7a; }
+.valor-negativo-financas { color: #ff8f8f; }
+
+.secao-detalhe-financas h3,
+.secao-historico-financas h3 {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--cinza-texto);
+  margin-bottom: 6px;
+}
+
+.lista-detalhe-financas,
+.lista-historico-financas {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.item-detalhe-financas {
+  display: flex;
+  justify-content: space-between;
+  padding: 8px 12px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.04);
+  font-size: 13px;
+}
+
+.item-historico-financas {
+  display: grid;
+  grid-template-columns: auto auto 1fr;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.04);
+  font-size: 12px;
+}
+
+.rodada-historico-financas {
+  font-weight: 700;
+  color: var(--branco);
+}
+
+.saldo-historico-financas {
+  font-weight: 800;
+}
+
+.caixa-historico-financas {
+  text-align: right;
+  color: var(--cinza-texto);
+}
+
+.lista-detalhe-financas .item-vazio,
+.lista-historico-financas .item-vazio {
+  text-align: center;
+  color: var(--cinza-texto);
+  font-style: italic;
+  font-size: 13px;
+}

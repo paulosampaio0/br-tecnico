@@ -91,6 +91,7 @@ const estado = {
   evolucao: {}, // { _id: { forca, idade } } — os ajustes que ficam de temporada em temporada
   cartoesAmarelos: {}, // { _id: contagem atual, zera ao suspender }
   suspensoAte: {}, // { _id: número da última rodada em que ainda está suspenso }
+  financas: null, // { caixa, caixaInicialClube, historico } — ver js/financas.js (Fase 9)
 };
 
 /* ---------- Salvamento local ---------- */
@@ -135,6 +136,9 @@ function salvarProgresso() {
     temporada: estado.temporada,
     energiaPorJogador: estado.energiaPorJogador,
     evolucao: estado.evolucao,
+    cartoesAmarelos: estado.cartoesAmarelos,
+    suspensoAte: estado.suspensoAte,
+    financas: estado.financas,
     atualizadoEm: new Date().toISOString(),
   };
   try {
@@ -323,6 +327,7 @@ async function escalarEsteTime(time) {
   estado.evolucao = {};
   estado.cartoesAmarelos = {};
   estado.suspensoAte = {};
+  estado.financas = criarFinancasIniciais(time.jogadores, divisaoAtual);
 
   await garantirTemporada();
   salvarProgresso();
@@ -1451,6 +1456,11 @@ async function concluirRodadaOficial() {
   const temporadaDivisao = estado.temporada[divisaoChave];
   const numeroRodada = partidaAtual.numeroRodadaOficial;
 
+  // Cota de TV entra, folha salarial e custos fixos saem — toda rodada oficial.
+  if (estado.financas) {
+    aplicarFinancasDaRodada(estado.financas, estado.timeAtual.jogadores, divisaoChave, numeroRodada);
+  }
+
   const resultados = [
     { casa: timeCasaSimulado.nome, fora: timeForaSimulado.nome, golsCasa: partidaAtual.placarCasa, golsFora: partidaAtual.placarFora },
   ];
@@ -1527,6 +1537,83 @@ function processarFimDeTemporada() {
 }
 
 /* ---------- Tela: tabela do campeonato (Fase 6) ---------- */
+
+/* ---------- Tela: finanças do clube (Fase 9) ---------- */
+
+function formatarReais(valor) {
+  const arredondado = Math.round(valor * 10) / 10;
+  return "R$ " + arredondado.toLocaleString("pt-BR", { minimumFractionDigits: 1, maximumFractionDigits: 1 }) + "mi";
+}
+
+function abrirTelaFinancas() {
+  mostrarTela("tela-financas");
+  renderizarFinancas();
+}
+
+function renderizarFinancas() {
+  if (!estado.financas) return;
+  const financas = estado.financas;
+  const ultimaRodada = financas.historico[financas.historico.length - 1] || null;
+
+  document.getElementById("financas-caixa-atual").textContent = formatarReais(financas.caixa);
+
+  const receitaEl = document.getElementById("financas-receita-rodada");
+  const despesaEl = document.getElementById("financas-despesa-rodada");
+  receitaEl.textContent = ultimaRodada ? formatarReais(ultimaRodada.receita) : "—";
+  despesaEl.textContent = ultimaRodada ? formatarReais(ultimaRodada.despesa) : "—";
+
+  const totalRodadas = estado.temporada ? estado.temporada[estado.timeAtual.divisaoChave].calendario.length : 0;
+  const rodadaAtual = estado.temporada ? estado.temporada.rodadaAtual : 1;
+  const projecao = calcularProjecaoFimTemporada(financas, rodadaAtual, totalRodadas);
+  const projecaoEl = document.getElementById("financas-projecao-temporada");
+  projecaoEl.textContent = formatarReais(projecao);
+  projecaoEl.classList.toggle("valor-negativo-financas", projecao < 0);
+  projecaoEl.classList.toggle("valor-positivo-financas", projecao >= 0);
+
+  const listaDetalheEl = document.getElementById("lista-detalhe-financas");
+  listaDetalheEl.innerHTML = "";
+  if (!ultimaRodada) {
+    const vazio = document.createElement("li");
+    vazio.className = "item-vazio";
+    vazio.textContent = "Ainda não teve nenhuma rodada oficial.";
+    listaDetalheEl.appendChild(vazio);
+  } else {
+    [
+      ["🏆 Cota de TV", ultimaRodada.cotaTv, true],
+      ["👕 Folha salarial", -ultimaRodada.folha, false],
+      ["🏟 Custos fixos", -ultimaRodada.custosFixos, false],
+    ].forEach(function (linha) {
+      const li = document.createElement("li");
+      li.className = "item-detalhe-financas";
+      const positivo = linha[1] >= 0;
+      li.innerHTML = "<span class=\"rotulo-detalhe-financas\">" + linha[0] + "</span>" +
+        "<span class=\"valor-detalhe-financas " + (positivo ? "valor-positivo-financas" : "valor-negativo-financas") + "\">" +
+        (positivo ? "+" : "") + formatarReais(linha[1]) + "</span>";
+      listaDetalheEl.appendChild(li);
+    });
+  }
+
+  const listaHistoricoEl = document.getElementById("lista-historico-financas");
+  listaHistoricoEl.innerHTML = "";
+  if (financas.historico.length === 0) {
+    const vazio = document.createElement("li");
+    vazio.className = "item-vazio";
+    vazio.textContent = "O histórico aparece depois da primeira rodada oficial.";
+    listaHistoricoEl.appendChild(vazio);
+  } else {
+    financas.historico.slice().reverse().forEach(function (item) {
+      const li = document.createElement("li");
+      li.className = "item-historico-financas";
+      const saldoPositivo = item.saldo >= 0;
+      li.innerHTML =
+        "<span class=\"rodada-historico-financas\">Rodada " + item.rodada + "</span>" +
+        "<span class=\"saldo-historico-financas " + (saldoPositivo ? "valor-positivo-financas" : "valor-negativo-financas") + "\">" +
+        (saldoPositivo ? "+" : "") + formatarReais(item.saldo) + "</span>" +
+        "<span class=\"caixa-historico-financas\">caixa: " + formatarReais(item.caixaDepois) + "</span>";
+      listaHistoricoEl.appendChild(li);
+    });
+  }
+}
 
 function abrirTelaTabela() {
   mostrarTela("tela-tabela");
@@ -1853,6 +1940,10 @@ async function continuarJogoSalvo() {
     estado.temporada = registro.temporada || null;
     estado.energiaPorJogador = registro.energiaPorJogador || {};
     estado.evolucao = registro.evolucao || {};
+    estado.cartoesAmarelos = registro.cartoesAmarelos || {};
+    estado.suspensoAte = registro.suspensoAte || {};
+    // Saves antigos (de antes da Fase 9) não têm financas — cria do zero nesse caso.
+    estado.financas = registro.financas || criarFinancasIniciais(estado.timeAtual.jogadores, estado.timeAtual.divisaoChave);
 
     // Reaplica a evolução de força/idade acumulada de temporadas passadas
     // por cima do elenco "de fábrica" que acabou de vir do arquivo de dados.
@@ -1944,6 +2035,12 @@ function ligarBotoes() {
 
   const btnVoltarEscalacaoTabela = document.getElementById("btn-voltar-escalacao-tabela");
   if (btnVoltarEscalacaoTabela) btnVoltarEscalacaoTabela.addEventListener("click", abrirTelaEscalacao);
+
+  const btnVerFinancas = document.getElementById("btn-ver-financas");
+  if (btnVerFinancas) btnVerFinancas.addEventListener("click", abrirTelaFinancas);
+
+  const btnVoltarEscalacaoFinancas = document.getElementById("btn-voltar-escalacao-financas");
+  if (btnVoltarEscalacaoFinancas) btnVoltarEscalacaoFinancas.addEventListener("click", abrirTelaEscalacao);
 
   const btnRodadaAnterior = document.getElementById("btn-rodada-anterior");
   if (btnRodadaAnterior) {

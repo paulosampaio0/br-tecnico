@@ -129,6 +129,9 @@
       <button class="btn btn-secundario" id="btn-ver-tabela" type="button">
         📊 Ver tabela
       </button>
+      <button class="btn btn-secundario" id="btn-ver-financas" type="button">
+        💰 Finanças
+      </button>
     </section>
 
     <button class="btn btn-secundario btn-jogar-amistoso" id="btn-jogar-amistoso" type="button">
@@ -173,6 +176,46 @@
         <button class="btn-navegar-rodada" id="btn-rodada-seguinte" type="button" aria-label="Próxima rodada">›</button>
       </div>
       <ul class="lista lista-resultados-rodada" id="lista-resultados-rodada"></ul>
+    </section>
+
+  </main>
+
+  <!-- Tela: finanças do clube -->
+  <main class="tela tela-financas" id="tela-financas" hidden>
+
+    <header class="cabecalho cabecalho-lista">
+      <button class="btn-voltar" id="btn-voltar-escalacao-financas" type="button" aria-label="Voltar">←</button>
+      <h2 class="titulo-lista">Finanças</h2>
+    </header>
+
+    <div class="cartao-caixa-financas">
+      <span class="rotulo-caixa-financas">Caixa atual</span>
+      <span class="valor-caixa-financas" id="financas-caixa-atual">R$ 0mi</span>
+    </div>
+
+    <div class="grade-resumo-financas">
+      <div class="campo-resumo-financas">
+        <span class="rotulo-resumo-financas">Receita / rodada</span>
+        <span class="valor-resumo-financas valor-positivo-financas" id="financas-receita-rodada">R$ 0mi</span>
+      </div>
+      <div class="campo-resumo-financas">
+        <span class="rotulo-resumo-financas">Despesa / rodada</span>
+        <span class="valor-resumo-financas valor-negativo-financas" id="financas-despesa-rodada">R$ 0mi</span>
+      </div>
+      <div class="campo-resumo-financas campo-resumo-financas-largo">
+        <span class="rotulo-resumo-financas">Saldo previsto no fim da temporada</span>
+        <span class="valor-resumo-financas" id="financas-projecao-temporada">R$ 0mi</span>
+      </div>
+    </div>
+
+    <section class="secao-detalhe-financas">
+      <h3>Detalhe da última rodada</h3>
+      <ul class="lista lista-detalhe-financas" id="lista-detalhe-financas"></ul>
+    </section>
+
+    <section class="secao-historico-financas">
+      <h3>Histórico de rodadas</h3>
+      <ul class="lista lista-historico-financas" id="lista-historico-financas"></ul>
     </section>
 
   </main>
@@ -276,6 +319,7 @@
 
   <script src="js/sons.js"></script>
   <script src="js/dados.js"></script>
+  <script src="js/financas.js"></script>
   <script src="js/formacoes.js"></script>
   <script src="js/setas.js"></script>
   <script src="js/radar-engine.js"></script>
