@@ -145,10 +145,48 @@ function encontrarGoleiro(timeSimulado) {
 }
 
 function registrarEvento(partida, tipo, lado, texto, idJogador) {
-  partida.eventos.push({
+  const evento = {
     minuto: partida.minuto, tipo: tipo, lado: lado, texto: texto,
     idJogador: idJogador !== undefined ? idJogador : null,
+  };
+  partida.eventos.push(evento);
+  return evento;
+}
+
+/**
+ * Quantos minutos cada jogador do MEU time ficou em campo nesta partida.
+ * Reconstrói os intervalos a partir da escalação de saída e dos eventos de
+ * substituição (que guardam idJogadorSai/idJogadorEntra e o minuto).
+ * Devolve { _id: minutosJogados }.
+ */
+function calcularMinutosJogados(partida, ladoDoMeuTime) {
+  const minutoFinal = Math.max(partida.minuto, 90);
+  const entradaPorJogador = {}; // _id -> minuto em que entrou (aberto = ainda em campo)
+  const minutos = {};
+
+  Object.values(partida.escalacaoInicial || {}).forEach(function (idJogador) {
+    entradaPorJogador[idJogador] = 0;
   });
+
+  partida.eventos.forEach(function (evento) {
+    if (evento.tipo !== "substituicao" || evento.lado !== ladoDoMeuTime) return;
+    if (evento.idJogadorSai !== undefined && evento.idJogadorSai !== null &&
+        entradaPorJogador[evento.idJogadorSai] !== undefined) {
+      minutos[evento.idJogadorSai] = (minutos[evento.idJogadorSai] || 0) +
+        (evento.minuto - entradaPorJogador[evento.idJogadorSai]);
+      delete entradaPorJogador[evento.idJogadorSai];
+    }
+    if (evento.idJogadorEntra !== undefined && evento.idJogadorEntra !== null) {
+      entradaPorJogador[evento.idJogadorEntra] = evento.minuto;
+    }
+  });
+
+  // Quem não saiu joga até o apito final.
+  Object.keys(entradaPorJogador).forEach(function (idJogador) {
+    minutos[idJogador] = (minutos[idJogador] || 0) + (minutoFinal - entradaPorJogador[idJogador]);
+  });
+
+  return minutos;
 }
 
 /**
