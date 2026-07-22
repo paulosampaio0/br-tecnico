@@ -785,6 +785,29 @@ body::before {
   color: #7ee0a5;
 }
 
+.info-substituicoes {
+  text-align: center;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--amarelo);
+  background: rgba(255, 210, 63, 0.1);
+  border: 1px solid rgba(255, 210, 63, 0.35);
+  border-radius: 999px;
+  padding: 6px 14px;
+  align-self: center;
+}
+
+.tag-suspenso {
+  display: inline-block;
+  font-size: 10px;
+  font-weight: 800;
+  color: #ff8f8f;
+  background: rgba(255, 143, 143, 0.15);
+  border-radius: 6px;
+  padding: 1px 6px;
+  margin-right: 4px;
+}
+
 /* Seletor de jogador (folha que sobe de baixo) */
 .sobreposicao {
   position: fixed;

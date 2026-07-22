@@ -103,6 +103,8 @@ function novaPartida() {
     ehRodadaOficial: false, // true quando é uma rodada de verdade da temporada (Fase 6), não amistoso
     numeroRodadaOficial: null,
     pendencia: null, // { lado } quando há um pênalti do usuário esperando o cobrador ser escolhido
+    substituicoesFeitas: 0, // máx. 5 por partida, igual à regra oficial
+    jogadoresQueSairam: [], // _ids que já saíram nesta partida — não podem voltar
   };
 }
 
@@ -115,13 +117,23 @@ function jogadorAleatorio(timeSimulado) {
   return lista[Math.floor(Math.random() * lista.length)].jogador;
 }
 
+/** Como jogadorAleatorio, mas nunca sorteia o goleiro — ele não finaliza a gol. */
+function jogadorDeLinhaAleatorio(timeSimulado) {
+  const linha = timeSimulado.titulares.filter(function (i) { return i.vaga.pos !== "GOL"; });
+  const lista = linha.length > 0 ? linha : timeSimulado.titulares;
+  return lista[Math.floor(Math.random() * lista.length)].jogador;
+}
+
 function encontrarGoleiro(timeSimulado) {
   const item = timeSimulado.titulares.find(function (i) { return i.vaga.pos === "GOL"; });
   return item ? item.jogador : null;
 }
 
-function registrarEvento(partida, tipo, lado, texto) {
-  partida.eventos.push({ minuto: partida.minuto, tipo: tipo, lado: lado, texto: texto });
+function registrarEvento(partida, tipo, lado, texto, idJogador) {
+  partida.eventos.push({
+    minuto: partida.minuto, tipo: tipo, lado: lado, texto: texto,
+    idJogador: idJogador !== undefined ? idJogador : null,
+  });
 }
 
 /** Roda os sorteios de UM time atacando no minuto atual (chances, cartões, etc.). */
@@ -138,7 +150,7 @@ function processarLadoPartida(partida, atacante, defensor, ladoAtacante, permiti
     const vantagem = (atacante.ataque - defensor.defesa) / 40;
     const chanceGol = clamp(0.26 + vantagem, 0.06, 0.55);
     const rolagem = Math.random();
-    const jogador = jogadorAleatorio(atacante);
+    const jogador = jogadorDeLinhaAleatorio(atacante); // o goleiro não finaliza a gol
 
     if (rolagem < chanceGol) {
       // Uma pequena fração das chances de gol vira pênalti.
@@ -184,10 +196,10 @@ function processarLadoPartida(partida, atacante, defensor, ladoAtacante, permiti
 
   if (Math.random() < 0.015) {
     const jogador = jogadorAleatorio(atacante);
-    registrarEvento(partida, "cartao-amarelo", ladoAtacante, "🟨 Cartão amarelo para " + jogador.nome + ".");
+    registrarEvento(partida, "cartao-amarelo", ladoAtacante, "🟨 Cartão amarelo para " + jogador.nome + ".", jogador._id);
   } else if (Math.random() < 0.001) {
     const jogador = jogadorAleatorio(atacante);
-    registrarEvento(partida, "cartao-vermelho", ladoAtacante, "🟥 Cartão vermelho para " + jogador.nome + "!");
+    registrarEvento(partida, "cartao-vermelho", ladoAtacante, "🟥 Cartão vermelho para " + jogador.nome + "!", jogador._id);
   }
 }
 

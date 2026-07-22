@@ -34,6 +34,9 @@ const ROTULO_STATUS_PARTIDA = {
 };
 
 const VELOCIDADES_PARTIDA = [1, 2, 3];
+const TAMANHO_BANCO_RELACIONADO = 9; // reservas convocados pra partida (igual às regras oficiais)
+const LIMITE_SUBSTITUICOES = 5; // máx. de substituições por partida
+const LIMITE_AMARELOS_SUSPENSAO = 3; // 3 cartões amarelos = 1 jogo de suspensão
 
 const OPCOES_TATICA = {
   estilo: [
@@ -86,6 +89,8 @@ const estado = {
   temporada: null, // { ano, rodadaAtual, serie_a: {...}, serie_b: {...} }
   energiaPorJogador: {}, // { _id: 0 a 100 } — só do MEU elenco (Fase 7)
   evolucao: {}, // { _id: { forca, idade } } — os ajustes que ficam de temporada em temporada
+  cartoesAmarelos: {}, // { _id: contagem atual, zera ao suspender }
+  suspensoAte: {}, // { _id: número da última rodada em que ainda está suspenso }
 };
 
 /* ---------- Salvamento local ---------- */
@@ -263,6 +268,7 @@ function criarItemJogador(jogador, mostrarEnergia) {
 
   const estrelas = calcularEstrelasPotencial(jogador);
   const prefixoEstrelas = estrelas > 0 ? "<span class=\"estrelas-potencial\" title=\"Potencial de crescimento\">" + "★".repeat(estrelas) + "</span> " : "";
+  const prefixoSuspenso = jogadorEstaSuspenso(jogador._id) ? "<span class=\"tag-suspenso\">🚫 Suspenso</span> " : "";
   const valorMercado = calcularValorMercado(jogador);
 
   let blocoEnergia = "";
@@ -281,7 +287,7 @@ function criarItemJogador(jogador, mostrarEnergia) {
   item.innerHTML =
     "<span class=\"pos\">" + escaparHtml(jogador.pos) + "</span>" +
     "<span class=\"info\">" +
-      "<span class=\"nome\">" + prefixoEstrelas + escaparHtml(jogador.nome) + "</span>" +
+      "<span class=\"nome\">" + prefixoSuspenso + prefixoEstrelas + escaparHtml(jogador.nome) + "</span>" +
       "<span class=\"detalhes\">" +
         jogador.idade + " anos · " + escaparHtml(jogador.nac) + " · " +
         escaparHtml(caracteristicas) + " · €" + valorMercado + "mi</span>" +
@@ -313,6 +319,8 @@ async function escalarEsteTime(time) {
   estado.temporada = null; // time novo começa uma temporada nova
   estado.energiaPorJogador = {}; // todo mundo começa com 100% de energia
   estado.evolucao = {};
+  estado.cartoesAmarelos = {};
+  estado.suspensoAte = {};
 
   await garantirTemporada();
   salvarProgresso();
@@ -326,12 +334,29 @@ function abrirTelaEscalacao() {
   document.getElementById("titulo-escalacao").textContent = estado.timeAtual.nome;
   document.getElementById("btn-voltar-partida").hidden = !(partidaAtual && partidaAtual.status !== "fim");
 
+  if (!partidaAtual) removerSuspensosDaEscalacao();
+  renderizarInfoSubstituicoes();
   montarSelectFormacao();
+  document.getElementById("select-formacao").disabled = estaEmPartidaAtiva();
   renderizarCampo();
   renderizarResumoSetas();
   renderizarTatica();
   renderizarBanco();
   atualizarInfoRodada();
+}
+
+/** Mostra quantas substituições ainda restam, só quando há uma partida em andamento. */
+function renderizarInfoSubstituicoes() {
+  const el = document.getElementById("info-substituicoes");
+  if (!el) return;
+  const emPartidaAtiva = partidaAtual && partidaAtual.escalacaoInicial && partidaAtual.status !== "fim";
+  if (!emPartidaAtiva) {
+    el.hidden = true;
+    return;
+  }
+  const restantes = LIMITE_SUBSTITUICOES - (partidaAtual.substituicoesFeitas || 0);
+  el.hidden = false;
+  el.textContent = "🔄 Substituições: " + restantes + " de " + LIMITE_SUBSTITUICOES + " restantes";
 }
 
 function montarSelectFormacao() {
@@ -351,6 +376,7 @@ function montarSelectFormacao() {
 }
 
 function trocarFormacao(novaFormacaoId) {
+  if (estaEmPartidaAtiva()) return; // não dá pra reescalar o time inteiro com o jogo rolando
   estado.formacaoId = novaFormacaoId;
   estado.titulares = autoEscalarMelhores(estado.timeAtual.jogadores, novaFormacaoId);
   estado.setas = {}; // as vagas mudam de função na nova formação, então as setas recomeçam
@@ -625,19 +651,37 @@ function renderizarResumoSetas() {
   });
 }
 
+/**
+ * Os reservas "relacionados" pra partida — igual à vida real, nem todo o
+ * elenco fica disponível no banco, só um grupo limitado (aqui, até
+ * TAMANHO_BANCO_RELACIONADO, priorizando ter sempre um goleiro reserva).
+ */
+function calcularBancoRelacionado() {
+  const idsTitulares = new Set(Object.values(estado.titulares));
+  const reservas = estado.timeAtual.jogadores.filter(function (j) { return !idsTitulares.has(j._id); });
+
+  const goleiros = reservas.filter(function (j) { return j.pos === "GOL"; })
+    .sort(function (a, b) { return b.forca - a.forca; });
+  const linha = reservas.filter(function (j) { return j.pos !== "GOL"; })
+    .sort(function (a, b) { return b.forca - a.forca; });
+
+  const banco = [];
+  if (goleiros[0]) banco.push(goleiros[0]);
+  linha.forEach(function (j) {
+    if (banco.length < TAMANHO_BANCO_RELACIONADO) banco.push(j);
+  });
+  return ordenarElenco(banco);
+}
+
 function renderizarBanco() {
   const listaEl = document.getElementById("lista-banco");
   const qtdEl = document.getElementById("qtd-banco");
   listaEl.innerHTML = "";
 
-  const idsTitulares = new Set(Object.values(estado.titulares));
-  const reservas = ordenarElenco(
-    estado.timeAtual.jogadores.filter(function (j) { return !idsTitulares.has(j._id); })
-  );
+  const banco = calcularBancoRelacionado();
+  qtdEl.textContent = banco.length;
 
-  qtdEl.textContent = reservas.length;
-
-  if (reservas.length === 0) {
+  if (banco.length === 0) {
     const vazio = document.createElement("li");
     vazio.className = "item-jogador item-vazio";
     vazio.textContent = "Todo o elenco disponível está escalado.";
@@ -645,7 +689,7 @@ function renderizarBanco() {
     return;
   }
 
-  reservas.forEach(function (jogador) {
+  banco.forEach(function (jogador) {
     listaEl.appendChild(criarItemJogador(jogador, true));
   });
 }
@@ -1019,6 +1063,58 @@ function renderizarControlesPartida() {
   }
 }
 
+/* ---------- Cartões e suspensão ---------- */
+
+function jogadorEstaSuspenso(idJogador) {
+  if (!estado.temporada) return false;
+  const ate = estado.suspensoAte[idJogador];
+  return ate !== undefined && ate >= estado.temporada.rodadaAtual;
+}
+
+/**
+ * Depois de uma rodada OFICIAL, contabiliza os cartões do MEU time: 3
+ * amarelos (zera o contador) ou 1 vermelho suspendem o jogador na rodada
+ * seguinte. Amistoso não conta pra suspensão (não é competição oficial).
+ */
+function aplicarCartoesPosPartida() {
+  if (!estado.temporada || !partidaAtual.ehRodadaOficial) return;
+  const numeroRodada = partidaAtual.numeroRodadaOficial;
+
+  partidaAtual.eventos.forEach(function (evento) {
+    if (evento.idJogador === null || evento.idJogador === undefined || evento.lado !== meuLadoNaPartida) return;
+
+    if (evento.tipo === "cartao-amarelo") {
+      const atual = (estado.cartoesAmarelos[evento.idJogador] || 0) + 1;
+      if (atual >= LIMITE_AMARELOS_SUSPENSAO) {
+        estado.cartoesAmarelos[evento.idJogador] = 0;
+        estado.suspensoAte[evento.idJogador] = numeroRodada + 1;
+      } else {
+        estado.cartoesAmarelos[evento.idJogador] = atual;
+      }
+    } else if (evento.tipo === "cartao-vermelho") {
+      estado.suspensoAte[evento.idJogador] = numeroRodada + 1;
+    }
+  });
+}
+
+/** Tira da escalação titular quem estiver suspenso — chamado sempre que a tela de escalação abre. */
+function removerSuspensosDaEscalacao() {
+  if (!estado.timeAtual || !estado.temporada) return;
+  const removidos = [];
+  Object.keys(estado.titulares).forEach(function (idVaga) {
+    const idJogador = estado.titulares[idVaga];
+    if (!jogadorEstaSuspenso(idJogador)) return;
+    const jogador = encontrarJogadorPorId(estado.timeAtual.jogadores, idJogador);
+    delete estado.titulares[idVaga];
+    delete estado.setas[idVaga];
+    if (jogador) removidos.push(jogador.nome);
+  });
+  if (removidos.length > 0) {
+    salvarProgresso();
+    alert("Suspenso(s) por cartão, fora da escalação: " + removidos.join(", ") + ".");
+  }
+}
+
 /* ---------- Evolução, energia e desgaste (Fase 7) ---------- */
 
 /** Aplica por cima do elenco "de fábrica" os ajustes de força/idade acumulados. */
@@ -1187,6 +1283,7 @@ async function iniciarRodadaOficial() {
 /** Chamado ao fim de uma rodada oficial: fecha os resultados na tabela e avança a temporada. */
 async function concluirRodadaOficial() {
   aplicarDesgastePosPartida();
+  aplicarCartoesPosPartida();
   // A escalação titular volta a ser a de saída — trocas feitas "mexendo no
   // time" durante a partida valem só pra essa partida, não pra próxima rodada.
   if (partidaAtual.escalacaoInicial) estado.titulares = partidaAtual.escalacaoInicial;
@@ -1257,6 +1354,10 @@ function processarFimDeTemporada() {
     serie_b: montarDivisaoTemporada(resultado.novaSerieB),
     ultimoRelatorio: { rebaixados: resultado.rebaixados, promovidos: resultado.promovidos, evolucao: evolucaoResumo },
   };
+
+  // Cartões e suspensões são da temporada — zeram na virada do ano.
+  estado.cartoesAmarelos = {};
+  estado.suspensoAte = {};
 
   // Se o MEU time subiu ou desceu, atualiza em que divisão ele está agora.
   if (resultado.rebaixados.indexOf(estado.timeAtual.nome) !== -1) {
@@ -1410,6 +1511,11 @@ function renderizarResultadosRodada() {
 
 /* ---------- Seletor de jogador (folha de baixo) ---------- */
 
+/** true quando há uma partida rolando (pausada/intervalo) e as regras de substituição valem. */
+function estaEmPartidaAtiva() {
+  return !!(partidaAtual && partidaAtual.escalacaoInicial && partidaAtual.status !== "fim");
+}
+
 function abrirSeletorJogador(vaga) {
   vagaEmEdicao = vaga.id;
 
@@ -1418,22 +1524,38 @@ function abrirSeletorJogador(vaga) {
   const listaEl = document.getElementById("lista-seletor");
   listaEl.innerHTML = "";
 
-  // Opção pra esvaziar a vaga.
-  const itemVazio = document.createElement("li");
-  itemVazio.className = "item-jogador selecionavel item-vazio";
-  itemVazio.textContent = "— Deixar vaga vazia —";
-  itemVazio.addEventListener("click", function () {
-    delete estado.titulares[vagaEmEdicao];
-    delete estado.setas[vagaEmEdicao];
-    salvarProgresso();
-    renderizarCampo();
-    renderizarResumoSetas();
-    renderizarBanco();
-    fecharSeletorJogador();
-  });
-  listaEl.appendChild(itemVazio);
+  const emPartidaAtiva = estaEmPartidaAtiva();
 
-  const jogadores = estado.timeAtual.jogadores;
+  // Esvaziar a vaga só faz sentido antes da partida começar (com o jogo
+  // rolando isso deixaria o time com 10 sem motivo — não é permitido).
+  if (!emPartidaAtiva) {
+    const itemVazio = document.createElement("li");
+    itemVazio.className = "item-jogador selecionavel item-vazio";
+    itemVazio.textContent = "— Deixar vaga vazia —";
+    itemVazio.addEventListener("click", function () {
+      delete estado.titulares[vagaEmEdicao];
+      delete estado.setas[vagaEmEdicao];
+      salvarProgresso();
+      renderizarCampo();
+      renderizarResumoSetas();
+      renderizarBanco();
+      fecharSeletorJogador();
+    });
+    listaEl.appendChild(itemVazio);
+  }
+
+  let jogadores = estado.timeAtual.jogadores;
+  if (emPartidaAtiva) {
+    // Com o jogo rolando, só quem já está em campo ou no banco relacionado
+    // pode entrar — igual à vida real, não dá pra chamar qualquer um do elenco.
+    const idsTitularesAtuais = new Set(Object.values(estado.titulares));
+    const idsBanco = new Set(calcularBancoRelacionado().map(function (j) { return j._id; }));
+    const jaSairam = new Set(partidaAtual.jogadoresQueSairam || []);
+    jogadores = jogadores.filter(function (j) {
+      return idsTitularesAtuais.has(j._id) || (idsBanco.has(j._id) && !jaSairam.has(j._id));
+    });
+  }
+
   const combinaveis = jogadores
     .filter(function (j) { return j.pos === vaga.pos; })
     .sort(function (a, b) { return b.forca - a.forca; });
@@ -1481,7 +1603,37 @@ function criarItemSeletor(jogador) {
 }
 
 function escolherJogadorParaVaga(idVaga, idJogador) {
+  if (jogadorEstaSuspenso(idJogador)) {
+    alert("Esse jogador está suspenso por cartão e não pode ser escalado nesta rodada.");
+    return;
+  }
+
   const idAntigoNaVaga = estado.titulares[idVaga];
+  const emPartidaAtiva = estaEmPartidaAtiva();
+  const jaEraTitular = Object.values(estado.titulares).indexOf(idJogador) !== -1;
+
+  if (emPartidaAtiva && !jaEraTitular) {
+    // Um jogador do banco está entrando de verdade — conta como substituição.
+    if ((partidaAtual.jogadoresQueSairam || []).indexOf(idJogador) !== -1) {
+      alert("Esse jogador já saiu da partida e não pode voltar a jogar.");
+      return;
+    }
+    if ((partidaAtual.substituicoesFeitas || 0) >= LIMITE_SUBSTITUICOES) {
+      alert("Você já usou as " + LIMITE_SUBSTITUICOES + " substituições permitidas nesta partida.");
+      return;
+    }
+    const jogadorEntra = encontrarJogadorPorId(estado.timeAtual.jogadores, idJogador);
+    const jogadorSai = idAntigoNaVaga !== undefined
+      ? encontrarJogadorPorId(estado.timeAtual.jogadores, idAntigoNaVaga) : null;
+
+    partidaAtual.substituicoesFeitas = (partidaAtual.substituicoesFeitas || 0) + 1;
+    partidaAtual.jogadoresQueSairam = partidaAtual.jogadoresQueSairam || [];
+    if (idAntigoNaVaga !== undefined) partidaAtual.jogadoresQueSairam.push(idAntigoNaVaga);
+
+    registrarEvento(partidaAtual, "substituicao", meuLadoNaPartida,
+      "🔄 Substituição: " + (jogadorSai ? jogadorSai.nome : "vaga vazia") + " sai, " +
+      (jogadorEntra ? jogadorEntra.nome : "?") + " entra.");
+  }
 
   // Se o jogador já estava em outra vaga, libera a vaga antiga (e as setas dela).
   Object.keys(estado.titulares).forEach(function (id) {
@@ -1501,6 +1653,7 @@ function escolherJogadorParaVaga(idVaga, idJogador) {
   renderizarCampo();
   renderizarResumoSetas();
   renderizarBanco();
+  renderizarInfoSubstituicoes();
   fecharSeletorJogador();
 }
 
