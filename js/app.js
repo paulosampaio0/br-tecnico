@@ -91,7 +91,8 @@ const estado = {
   evolucao: {}, // { _id: { forca, idade } } — os ajustes que ficam de temporada em temporada
   cartoesAmarelos: {}, // { _id: contagem atual, zera ao suspender }
   suspensoAte: {}, // { _id: número da última rodada em que ainda está suspenso }
-  financas: null, // { caixa, caixaInicialClube, historico } — ver js/financas.js (Fase 9)
+  financas: null, // { caixa, caixaInicialClube, historico, ... } — ver js/financas.js (Fase 9-10)
+  precoIngresso: "normal", // "barato" | "normal" | "caro" — decisão do técnico (Fase 10)
 };
 
 /* ---------- Salvamento local ---------- */
@@ -139,6 +140,7 @@ function salvarProgresso() {
     cartoesAmarelos: estado.cartoesAmarelos,
     suspensoAte: estado.suspensoAte,
     financas: estado.financas,
+    precoIngresso: estado.precoIngresso,
     atualizadoEm: new Date().toISOString(),
   };
   try {
@@ -328,6 +330,7 @@ async function escalarEsteTime(time) {
   estado.cartoesAmarelos = {};
   estado.suspensoAte = {};
   estado.financas = criarFinancasIniciais(time.jogadores, divisaoAtual);
+  estado.precoIngresso = "normal";
 
   await garantirTemporada();
   salvarProgresso();
@@ -1345,6 +1348,12 @@ async function garantirTemporada() {
   if (estado.temporada) return;
   const dados = await carregarDados();
   estado.temporada = criarNovaTemporada(dados.divisoes.serie_a.times, dados.divisoes.serie_b.times, 2026);
+
+  // Primeira temporada do clube: fecha o contrato de patrocínio com um desempenho-base (sem histórico ainda).
+  if (estado.financas) {
+    const totalRodadas = estado.temporada[estado.timeAtual.divisaoChave].calendario.length;
+    definirPatrocinioDaTemporada(estado.financas, estado.timeAtual.jogadores, estado.timeAtual.divisaoChave, totalRodadas, 0.5);
+  }
 }
 
 function criarNovaTemporada(timesSerieA, timesSerieB, ano) {
@@ -1456,9 +1465,25 @@ async function concluirRodadaOficial() {
   const temporadaDivisao = estado.temporada[divisaoChave];
   const numeroRodada = partidaAtual.numeroRodadaOficial;
 
-  // Cota de TV entra, folha salarial e custos fixos saem — toda rodada oficial.
+  // Cota de TV, patrocínio e bilheteria (se for em casa) entram; folha e custos fixos saem.
   if (estado.financas) {
-    aplicarFinancasDaRodada(estado.financas, estado.timeAtual.jogadores, divisaoChave, numeroRodada);
+    const meuPlacar = meuLadoNaPartida === "casa" ? partidaAtual.placarCasa : partidaAtual.placarFora;
+    const placarAdversario = meuLadoNaPartida === "casa" ? partidaAtual.placarFora : partidaAtual.placarCasa;
+    const resultadoNumerico = meuPlacar > placarAdversario ? 1 : meuPlacar < placarAdversario ? -1 : 0;
+    // Aproveitamento ANTES deste jogo — é o que atraiu (ou afastou) a torcida hoje.
+    const linhaTabelaAntes = temporadaDivisao.tabela[estado.timeAtual.nome];
+    const aproveitamento = linhaTabelaAntes && linhaTabelaAntes.jogos > 0
+      ? linhaTabelaAntes.pontos / (linhaTabelaAntes.jogos * 3) : 0.5;
+
+    aplicarFinancasDaRodada(estado.financas, {
+      jogadores: estado.timeAtual.jogadores,
+      divisaoChave: divisaoChave,
+      numeroRodada: numeroRodada,
+      souCasa: meuLadoNaPartida === "casa",
+      faixaPrecoIngresso: estado.precoIngresso,
+      aproveitamento: aproveitamento,
+      resultado: resultadoNumerico,
+    });
   }
 
   const resultados = [
@@ -1503,6 +1528,13 @@ async function concluirRodadaOficial() {
 
 /** Fim de temporada: aplica acesso/rebaixamento, evolui o elenco e monta o calendário do ano seguinte. */
 function processarFimDeTemporada() {
+  // Captura o desempenho do MEU time na temporada que está terminando, pra
+  // calibrar o próximo contrato de patrocínio, antes da tabela ser substituída.
+  const divisaoAntiga = estado.timeAtual.divisaoChave;
+  const linhaTabelaAntiga = estado.temporada[divisaoAntiga].tabela[estado.timeAtual.nome];
+  const aproveitamentoAnterior = linhaTabelaAntiga && linhaTabelaAntiga.jogos > 0
+    ? linhaTabelaAntiga.pontos / (linhaTabelaAntiga.jogos * 3) : 0.5;
+
   const resultado = aplicarAcessoRebaixamento(estado.temporada.serie_a.tabela, estado.temporada.serie_b.tabela);
 
   // Evolução do MEU elenco: todo mundo fica 1 ano mais velho, a força sobe ou cai.
@@ -1534,6 +1566,12 @@ function processarFimDeTemporada() {
   } else if (resultado.promovidos.indexOf(estado.timeAtual.nome) !== -1) {
     estado.timeAtual.divisaoChave = "serie_a";
   }
+
+  // Renova o patrocínio pra temporada nova, já considerando a divisão atualizada e o desempenho passado.
+  if (estado.financas) {
+    const totalRodadasNovas = estado.temporada[estado.timeAtual.divisaoChave].calendario.length;
+    definirPatrocinioDaTemporada(estado.financas, estado.timeAtual.jogadores, estado.timeAtual.divisaoChave, totalRodadasNovas, aproveitamentoAnterior);
+  }
 }
 
 /* ---------- Tela: tabela do campeonato (Fase 6) ---------- */
@@ -1545,9 +1583,33 @@ function formatarReais(valor) {
   return "R$ " + arredondado.toLocaleString("pt-BR", { minimumFractionDigits: 1, maximumFractionDigits: 1 }) + "mi";
 }
 
+const ROTULO_FAIXA_INGRESSO = { barato: "Barato", normal: "Normal", caro: "Caro" };
+
 function abrirTelaFinancas() {
   mostrarTela("tela-financas");
   renderizarFinancas();
+}
+
+/** Muda a faixa de preço do ingresso pro próximo jogo em casa. */
+function definirPrecoIngresso(faixa) {
+  estado.precoIngresso = faixa;
+  salvarProgresso();
+  renderizarFinancas();
+}
+
+function renderizarOpcoesPrecoIngresso() {
+  const container = document.getElementById("opcoes-preco-ingresso");
+  if (!container) return;
+  container.innerHTML = "";
+  Object.keys(ROTULO_FAIXA_INGRESSO).forEach(function (faixa) {
+    const botao = document.createElement("button");
+    botao.type = "button";
+    botao.className = "opcao opcao-preco-ingresso" + (estado.precoIngresso === faixa ? " ativa" : "");
+    const preco = CONFIG_FINANCEIRO.precoIngressoPorFaixa[faixa];
+    botao.innerHTML = ROTULO_FAIXA_INGRESSO[faixa] + "<small>R$ " + preco + "</small>";
+    botao.addEventListener("click", function () { definirPrecoIngresso(faixa); });
+    container.appendChild(botao);
+  });
 }
 
 function renderizarFinancas() {
@@ -1570,6 +1632,17 @@ function renderizarFinancas() {
   projecaoEl.classList.toggle("valor-negativo-financas", projecao < 0);
   projecaoEl.classList.toggle("valor-positivo-financas", projecao >= 0);
 
+  renderizarOpcoesPrecoIngresso();
+
+  const moralEl = document.getElementById("financas-moral-torcida");
+  if (moralEl) {
+    moralEl.textContent = financas.moralTorcida + "%";
+    moralEl.className = "valor-moral-torcida " +
+      (financas.moralTorcida >= 60 ? "valor-positivo-financas" : financas.moralTorcida >= 35 ? "" : "valor-negativo-financas");
+  }
+  const capacidadeEl = document.getElementById("financas-capacidade-estadio");
+  if (capacidadeEl) capacidadeEl.textContent = financas.capacidadeEstadio.toLocaleString("pt-BR") + " lugares";
+
   const listaDetalheEl = document.getElementById("lista-detalhe-financas");
   listaDetalheEl.innerHTML = "";
   if (!ultimaRodada) {
@@ -1578,11 +1651,17 @@ function renderizarFinancas() {
     vazio.textContent = "Ainda não teve nenhuma rodada oficial.";
     listaDetalheEl.appendChild(vazio);
   } else {
-    [
-      ["🏆 Cota de TV", ultimaRodada.cotaTv, true],
-      ["👕 Folha salarial", -ultimaRodada.folha, false],
-      ["🏟 Custos fixos", -ultimaRodada.custosFixos, false],
-    ].forEach(function (linha) {
+    const linhas = [
+      ["🏆 Cota de TV", ultimaRodada.cotaTv],
+      ["🤝 Patrocínio", ultimaRodada.patrocinio],
+    ];
+    if (ultimaRodada.souCasa) {
+      linhas.push(["🎟 Bilheteria (" + ultimaRodada.publico.toLocaleString("pt-BR") + " no estádio)", ultimaRodada.bilheteria]);
+    }
+    linhas.push(["👕 Folha salarial", -ultimaRodada.folha]);
+    linhas.push(["🏟 Custos fixos", -ultimaRodada.custosFixos]);
+
+    linhas.forEach(function (linha) {
       const li = document.createElement("li");
       li.className = "item-detalhe-financas";
       const positivo = linha[1] >= 0;
@@ -1944,6 +2023,13 @@ async function continuarJogoSalvo() {
     estado.suspensoAte = registro.suspensoAte || {};
     // Saves antigos (de antes da Fase 9) não têm financas — cria do zero nesse caso.
     estado.financas = registro.financas || criarFinancasIniciais(estado.timeAtual.jogadores, estado.timeAtual.divisaoChave);
+    estado.precoIngresso = registro.precoIngresso || "normal";
+    // Saves de antes da Fase 10 têm financas mas sem os campos novos — completa sem perder o resto.
+    if (estado.financas.capacidadeEstadio === undefined) {
+      estado.financas.capacidadeEstadio = calcularCapacidadeEstadio(estado.timeAtual.jogadores, estado.timeAtual.divisaoChave);
+    }
+    if (estado.financas.moralTorcida === undefined) estado.financas.moralTorcida = CONFIG_FINANCEIRO.moralTorcidaInicial;
+    if (estado.financas.patrocinioPorRodada === undefined) estado.financas.patrocinioPorRodada = 0;
 
     // Reaplica a evolução de força/idade acumulada de temporadas passadas
     // por cima do elenco "de fábrica" que acabou de vir do arquivo de dados.
