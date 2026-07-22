@@ -94,7 +94,13 @@ const estado = {
   financas: null, // { caixa, caixaInicialClube, historico, ... } — ver js/financas.js (Fase 9-10)
   precoIngresso: "normal", // "barato" | "normal" | "caro" — decisão do técnico (Fase 10)
   contratos: {}, // { _id: { anosRestantes, multiplicadorSalario } } — ver js/financas.js (Fase 11)
+  jogadoresComprados: [], // jogadores trazidos do mercado (Fase 12) — não vêm do arquivo de dados
+  proximoIdMercado: 100000, // contador pra dar _id único a quem chega pelo mercado
 };
+
+// Filtros e resultado da busca no Mercado, e proposta em andamento (Fase 12).
+let filtrosMercado = { posicao: "", forcaMinima: "", idadeMaxima: "", precoMaximo: "", busca: "" };
+let propostaMercadoAberta = null; // { jogador, nomeTime, divisaoChave, precoPedido, contraproposta } ou null
 
 /* ---------- Salvamento local ---------- */
 
@@ -146,6 +152,10 @@ function salvarProgresso() {
     // Quem ainda está no elenco (contratos que venceram sem renovação saem — Fase 11).
     // Sem isso, recarregar o jogo traria de volta jogadores que já foram embora.
     elencoIds: estado.timeAtual.jogadores.map(function (j) { return j._id; }),
+    // Jogadores trazidos do mercado (Fase 12) — não existem no arquivo de dados,
+    // então precisam ser salvos por inteiro pra sobreviver a um recarregamento.
+    jogadoresComprados: estado.jogadoresComprados,
+    proximoIdMercado: estado.proximoIdMercado,
     atualizadoEm: new Date().toISOString(),
   };
   try {
@@ -340,6 +350,8 @@ async function escalarEsteTime(time) {
   time.jogadores.forEach(function (jogador) {
     estado.contratos[jogador._id] = criarContratoInicial(jogador);
   });
+  estado.jogadoresComprados = [];
+  estado.proximoIdMercado = 100000;
 
   await garantirTemporada();
   salvarProgresso();
@@ -1778,6 +1790,210 @@ function renderizarContratos() {
   });
 }
 
+/* ---------- Tela: mercado de transferências, comprar (Fase 12) ---------- */
+
+let dadosParaMercado = null; // cache local (o mesmo objeto de carregarDados()), preenchido ao abrir a tela
+
+/** Info da janela atual: se está aberta agora e, se fechada, quando volta a abrir. */
+function obterInfoJanelaMercado() {
+  const temporadaDivisao = estado.temporada[estado.timeAtual.divisaoChave];
+  const totalRodadas = temporadaDivisao.calendario.length;
+  const numeroRodada = estado.temporada.rodadaAtual;
+  const duracao = CONFIG_FINANCEIRO.duracaoJanelaEmRodadas;
+  const meio = Math.floor(totalRodadas / 2);
+
+  const aberta = janelaDeMercadoAberta(numeroRodada, totalRodadas);
+  let textoFechada = "";
+  if (!aberta) {
+    textoFechada = numeroRodada <= meio
+      ? "Fechada — abre de novo na rodada " + (meio + 1) + "."
+      : "Fechada — só abre de novo na próxima temporada.";
+  }
+  return { aberta: aberta, textoFechada: textoFechada };
+}
+
+async function abrirTelaMercado() {
+  mostrarTela("tela-mercado");
+  if (!estado.temporada) return;
+  dadosParaMercado = await carregarDados();
+  popularFiltroPosicaoMercado();
+  renderizarMercado();
+}
+
+function popularFiltroPosicaoMercado() {
+  const selectEl = document.getElementById("select-posicao-mercado");
+  if (!selectEl || selectEl.options.length > 0) return;
+  const opcaoTodas = document.createElement("option");
+  opcaoTodas.value = "";
+  opcaoTodas.textContent = "Todas as posições";
+  selectEl.appendChild(opcaoTodas);
+  ORDEM_POSICOES.forEach(function (pos) {
+    const opcao = document.createElement("option");
+    opcao.value = pos;
+    opcao.textContent = pos;
+    selectEl.appendChild(opcao);
+  });
+}
+
+/** Junta os filtros lidos da tela num objeto simples, guardado em filtrosMercado. */
+function lerFiltrosMercado() {
+  filtrosMercado.posicao = (document.getElementById("select-posicao-mercado") || {}).value || "";
+  filtrosMercado.forcaMinima = (document.getElementById("input-forca-minima-mercado") || {}).value || "";
+  filtrosMercado.idadeMaxima = (document.getElementById("input-idade-maxima-mercado") || {}).value || "";
+  filtrosMercado.precoMaximo = (document.getElementById("input-preco-maximo-mercado") || {}).value || "";
+  filtrosMercado.busca = (document.getElementById("input-busca-mercado") || {}).value || "";
+}
+
+const QTD_MAXIMA_RESULTADOS_MERCADO = 50;
+
+function renderizarMercado() {
+  const avisoEl = document.getElementById("aviso-janela-mercado");
+  const secaoFiltrosEl = document.getElementById("secao-filtros-mercado");
+  const listaEl = document.getElementById("lista-mercado");
+  if (!avisoEl || !listaEl || !estado.temporada) return;
+
+  const infoJanela = obterInfoJanelaMercado();
+  avisoEl.textContent = infoJanela.aberta
+    ? "🟢 Janela de transferências aberta"
+    : "🔒 Janela de transferências " + infoJanela.textoFechada;
+  avisoEl.className = "aviso-janela-mercado" + (infoJanela.aberta ? " janela-aberta" : " janela-fechada");
+
+  if (secaoFiltrosEl) secaoFiltrosEl.hidden = !infoJanela.aberta;
+  listaEl.innerHTML = "";
+  if (!infoJanela.aberta || !dadosParaMercado) return;
+
+  lerFiltrosMercado();
+  const forcaMinima = filtrosMercado.forcaMinima !== "" ? Number(filtrosMercado.forcaMinima) : null;
+  const idadeMaxima = filtrosMercado.idadeMaxima !== "" ? Number(filtrosMercado.idadeMaxima) : null;
+  const precoMaximo = filtrosMercado.precoMaximo !== "" ? Number(filtrosMercado.precoMaximo) : null;
+  const busca = filtrosMercado.busca.trim().toLowerCase();
+
+  let itens = listarJogadoresMercado(dadosParaMercado, estado.timeAtual.nome)
+    .filter(function (item) {
+      const jogador = item.jogador;
+      if (filtrosMercado.posicao && jogador.pos !== filtrosMercado.posicao) return false;
+      if (forcaMinima !== null && jogador.forca < forcaMinima) return false;
+      if (idadeMaxima !== null && jogador.idade > idadeMaxima) return false;
+      if (busca && jogador.nome.toLowerCase().indexOf(busca) === -1) return false;
+      return true;
+    })
+    .map(function (item) {
+      const anosContratoRestante = calcularDuracaoContratoInicial(item.jogador);
+      const preco = calcularPrecoTransferencia(item.jogador, anosContratoRestante, item.divisaoChave);
+      return Object.assign({}, item, { preco: preco });
+    });
+
+  if (precoMaximo !== null) itens = itens.filter(function (item) { return item.preco <= precoMaximo; });
+
+  itens.sort(function (a, b) { return b.jogador.forca - a.jogador.forca; });
+  itens = itens.slice(0, QTD_MAXIMA_RESULTADOS_MERCADO);
+
+  if (itens.length === 0) {
+    listaEl.innerHTML = "<li class=\"mensagem-vazia-mercado\">Nenhum jogador encontrado com esses filtros.</li>";
+    return;
+  }
+
+  itens.forEach(function (item) {
+    const jogador = item.jogador;
+    const estrelas = calcularEstrelasPotencial(jogador);
+    const li = document.createElement("li");
+    li.className = "item-contrato";
+    li.innerHTML =
+      "<span class=\"pos\">" + escaparHtml(jogador.pos) + "</span>" +
+      "<span class=\"info-contrato\">" +
+        "<span class=\"nome-contrato\">" + escaparHtml(jogador.nome) + (estrelas > 0 ? " " + "⭐".repeat(estrelas) : "") + "</span>" +
+        "<span class=\"detalhes-contrato\">" + escaparHtml(item.nomeTime) + " · " + jogador.idade + " anos · força " + jogador.forca +
+          " · " + formatarReais(item.preco) +
+        "</span>" +
+      "</span>" +
+      "<button class=\"btn-renovar-contrato\" type=\"button\">Propor</button>";
+
+    li.querySelector(".btn-renovar-contrato").addEventListener("click", function () {
+      abrirPropostaMercado(item);
+    });
+    listaEl.appendChild(li);
+  });
+}
+
+function abrirPropostaMercado(item) {
+  propostaMercadoAberta = { jogador: item.jogador, nomeTime: item.nomeTime, divisaoChave: item.divisaoChave, precoPedido: item.preco };
+
+  document.getElementById("proposta-titulo").textContent = item.jogador.nome;
+  document.getElementById("proposta-info-jogador").textContent =
+    item.nomeTime + " · " + item.jogador.pos + " · " + item.jogador.idade + " anos · força " + item.jogador.forca;
+  document.getElementById("proposta-preco-pedido").textContent = "Preço pedido: " + formatarReais(item.preco);
+  document.getElementById("input-valor-proposta").value = item.preco;
+  const resultadoEl = document.getElementById("proposta-resultado");
+  resultadoEl.textContent = "";
+  resultadoEl.className = "proposta-resultado";
+  document.getElementById("sobreposicao-proposta").hidden = false;
+}
+
+function fecharPropostaMercado() {
+  document.getElementById("sobreposicao-proposta").hidden = true;
+  propostaMercadoAberta = null;
+}
+
+function enviarPropostaMercado() {
+  if (!propostaMercadoAberta) return;
+  const resultadoEl = document.getElementById("proposta-resultado");
+  const valorProposta = Number(document.getElementById("input-valor-proposta").value);
+
+  if (!(valorProposta > 0)) {
+    resultadoEl.textContent = "Digite um valor de proposta válido.";
+    resultadoEl.className = "proposta-resultado proposta-resultado-negativo";
+    return;
+  }
+  if (valorProposta > estado.financas.caixa) {
+    resultadoEl.textContent = "Você não tem caixa suficiente pra essa proposta.";
+    resultadoEl.className = "proposta-resultado proposta-resultado-negativo";
+    return;
+  }
+
+  const { jogador, nomeTime, divisaoChave, precoPedido } = propostaMercadoAberta;
+  const avaliacao = avaliarPropostaTransferencia(jogador, precoPedido, valorProposta, estado.timeAtual.divisaoChave);
+
+  if (avaliacao.status === "recusada") {
+    resultadoEl.textContent = nomeTime + " recusou: proposta muito abaixo do valor pedido.";
+    resultadoEl.className = "proposta-resultado proposta-resultado-negativo";
+  } else if (avaliacao.status === "contraproposta") {
+    resultadoEl.textContent = "Contraproposta: " + formatarReais(avaliacao.valor) + ". Ajuste o valor e envie de novo pra fechar.";
+    resultadoEl.className = "proposta-resultado proposta-resultado-neutro";
+    document.getElementById("input-valor-proposta").value = avaliacao.valor;
+  } else if (avaliacao.status === "recusada-pelo-jogador") {
+    resultadoEl.textContent = jogador.nome + " recusou: não quer jogar num clube desse tamanho.";
+    resultadoEl.className = "proposta-resultado proposta-resultado-negativo";
+  } else {
+    concluirTransferencia(jogador, nomeTime, divisaoChave, valorProposta);
+    resultadoEl.textContent = "Negócio fechado! " + jogador.nome + " agora joga no seu time.";
+    resultadoEl.className = "proposta-resultado proposta-resultado-positivo";
+    setTimeout(function () {
+      fecharPropostaMercado();
+      renderizarMercado();
+    }, 1300);
+  }
+}
+
+/** Fecha a transferência: tira o dinheiro, remove o jogador do clube vendedor e traz pro seu elenco. */
+function concluirTransferencia(jogadorOriginal, nomeTimeVendedor, divisaoVendedora, valorPago) {
+  estado.financas.caixa = Math.round((estado.financas.caixa - valorPago) * 100) / 100;
+
+  const timeVendedor = buscarTime(dadosParaMercado, divisaoVendedora, nomeTimeVendedor);
+  if (timeVendedor) {
+    timeVendedor.jogadores = timeVendedor.jogadores.filter(function (j) { return j._id !== jogadorOriginal._id; });
+  }
+
+  const novoId = estado.proximoIdMercado++;
+  const jogadorContratado = Object.assign({}, jogadorOriginal, { _id: novoId });
+
+  estado.timeAtual.jogadores.push(jogadorContratado);
+  estado.jogadoresComprados.push(jogadorContratado);
+  estado.contratos[novoId] = criarContratoInicial(jogadorContratado);
+  estado.energiaPorJogador[novoId] = 100;
+
+  salvarProgresso();
+}
+
 function abrirTelaTabela() {
   mostrarTela("tela-tabela");
   divisaoTabelaAtual = estado.timeAtual.divisaoChave;
@@ -2112,9 +2328,20 @@ async function continuarJogoSalvo() {
     // Filtra pra fora quem já saiu do clube (contrato vencido sem renovação, Fase 11) — o
     // arquivo de dados sempre traz o elenco "de fábrica" inteiro, então sem isso jogadores
     // que já foram embora voltariam a aparecer toda vez que o jogo é carregado.
-    const jogadoresDoSave = registro.elencoIds
+    let jogadoresDoSave = registro.elencoIds
       ? time.jogadores.filter(function (j) { return registro.elencoIds.indexOf(j._id) !== -1; })
       : time.jogadores;
+
+    // Jogadores trazidos do mercado (Fase 12): não vêm do arquivo de dados, então
+    // ficam salvos por inteiro — recoloca no elenco quem ainda não saiu depois.
+    estado.jogadoresComprados = registro.jogadoresComprados || [];
+    estado.proximoIdMercado = registro.proximoIdMercado || 100000;
+    if (registro.elencoIds) {
+      const compradosAindaNoElenco = estado.jogadoresComprados.filter(function (j) {
+        return registro.elencoIds.indexOf(j._id) !== -1;
+      });
+      jogadoresDoSave = jogadoresDoSave.concat(compradosAindaNoElenco);
+    }
 
     estado.timeAtual = { divisaoChave: registro.divisao, nome: time.nome, jogadores: jogadoresDoSave };
     estado.formacaoId = registro.formacaoId || "4-4-2";
@@ -2244,6 +2471,31 @@ function ligarBotoes() {
 
   const btnVoltarEscalacaoContratos = document.getElementById("btn-voltar-escalacao-contratos");
   if (btnVoltarEscalacaoContratos) btnVoltarEscalacaoContratos.addEventListener("click", abrirTelaEscalacao);
+
+  const btnVerMercado = document.getElementById("btn-ver-mercado");
+  if (btnVerMercado) btnVerMercado.addEventListener("click", abrirTelaMercado);
+
+  const btnVoltarEscalacaoMercado = document.getElementById("btn-voltar-escalacao-mercado");
+  if (btnVoltarEscalacaoMercado) btnVoltarEscalacaoMercado.addEventListener("click", abrirTelaEscalacao);
+
+  ["select-posicao-mercado", "input-forca-minima-mercado", "input-idade-maxima-mercado", "input-preco-maximo-mercado", "input-busca-mercado"]
+    .forEach(function (id) {
+      const el = document.getElementById(id);
+      if (el) el.addEventListener("input", renderizarMercado);
+    });
+
+  const btnFecharProposta = document.getElementById("btn-fechar-proposta");
+  if (btnFecharProposta) btnFecharProposta.addEventListener("click", fecharPropostaMercado);
+
+  const btnEnviarProposta = document.getElementById("btn-enviar-proposta");
+  if (btnEnviarProposta) btnEnviarProposta.addEventListener("click", enviarPropostaMercado);
+
+  const sobreposicaoProposta = document.getElementById("sobreposicao-proposta");
+  if (sobreposicaoProposta) {
+    sobreposicaoProposta.addEventListener("click", function (evento) {
+      if (evento.target === sobreposicaoProposta) fecharPropostaMercado();
+    });
+  }
 
   const btnRodadaAnterior = document.getElementById("btn-rodada-anterior");
   if (btnRodadaAnterior) {

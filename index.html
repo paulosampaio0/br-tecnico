@@ -135,6 +135,9 @@
       <button class="btn btn-secundario" id="btn-ver-contratos" type="button">
         📋 Contratos
       </button>
+      <button class="btn btn-secundario" id="btn-ver-mercado" type="button">
+        🛒 Mercado
+      </button>
     </section>
 
     <button class="btn btn-secundario btn-jogar-amistoso" id="btn-jogar-amistoso" type="button">
@@ -256,6 +259,48 @@
     <ul class="lista lista-contratos" id="lista-contratos"></ul>
 
   </main>
+
+  <!-- Tela: mercado de transferências (comprar) -->
+  <main class="tela tela-mercado" id="tela-mercado" hidden>
+
+    <header class="cabecalho cabecalho-lista">
+      <button class="btn-voltar" id="btn-voltar-escalacao-mercado" type="button" aria-label="Voltar">←</button>
+      <h2 class="titulo-lista">Mercado</h2>
+    </header>
+
+    <p class="aviso-janela-mercado" id="aviso-janela-mercado"></p>
+
+    <section class="secao-filtros-mercado" id="secao-filtros-mercado">
+      <div class="linha-filtros-mercado">
+        <select id="select-posicao-mercado"></select>
+        <input type="number" id="input-forca-minima-mercado" placeholder="Força mín." min="0" max="48" />
+      </div>
+      <div class="linha-filtros-mercado">
+        <input type="number" id="input-idade-maxima-mercado" placeholder="Idade máx." min="0" max="45" />
+        <input type="number" id="input-preco-maximo-mercado" placeholder="Preço máx. (R$mi)" min="0" step="0.5" />
+      </div>
+      <input type="text" id="input-busca-mercado" class="campo-busca-mercado" placeholder="Buscar por nome…" />
+    </section>
+
+    <ul class="lista lista-contratos" id="lista-mercado"></ul>
+
+  </main>
+
+  <!-- Proposta de compra de um jogador do mercado -->
+  <div class="sobreposicao" id="sobreposicao-proposta" hidden>
+    <div class="folha-seletor">
+      <header class="cabecalho-seletor">
+        <h3 id="proposta-titulo">Propor</h3>
+        <button class="btn-fechar" id="btn-fechar-proposta" type="button" aria-label="Fechar">✕</button>
+      </header>
+      <p class="proposta-info-jogador" id="proposta-info-jogador"></p>
+      <p class="proposta-preco-pedido" id="proposta-preco-pedido"></p>
+      <label class="proposta-label-valor" for="input-valor-proposta">Sua proposta (R$ milhões)</label>
+      <input type="number" id="input-valor-proposta" class="proposta-input-valor" min="0" step="0.1" />
+      <button class="btn btn-primario" id="btn-enviar-proposta" type="button">Enviar proposta</button>
+      <p class="proposta-resultado" id="proposta-resultado"></p>
+    </div>
+  </div>
 
   <!-- Tela: partida ao vivo -->
   <main class="tela tela-partida" id="tela-partida" hidden>

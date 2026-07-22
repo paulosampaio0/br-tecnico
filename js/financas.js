@@ -64,6 +64,28 @@ const CONFIG_FINANCEIRO = {
   // O pedido de aumento na renovação cresce com a força do jogador (30 = pede pouco, 48 = pede muito).
   aumentoRenovacaoMinimo: 0.10,
   aumentoRenovacaoMaximo: 0.45,
+
+  // --- Mercado de transferências (Fase 12) ---
+
+  // Cada janela fica aberta por estas primeiras rodadas: uma no início da
+  // temporada (rodada 1 em diante) e outra bem no meio do campeonato.
+  duracaoJanelaEmRodadas: 3,
+
+  // Preço pedido = valor de mercado (R$) ajustado por potencial, tempo de
+  // contrato restante e situação financeira do clube vendedor.
+  bonusPrecoPorEstrelaPotencial: 0.08,
+  fatorPrecoContratoBase: 0.55, // contrato "zerando" (0 anos restantes): 55% do valor
+  fatorPrecoContratoPorAno: 0.15, // cada ano restante soma isso ao fator (até o teto)
+  fatorPrecoContratoTeto: 1.3,
+  fatorPrecoClubeSerieB: 0.85, // clube da Série B costuma vender mais barato
+
+  // Negociação: abaixo do piso a proposta é recusada na hora; entre o piso e o
+  // teto o clube faz contraproposta pelo preço pedido; acima do teto, aceita.
+  razaoPropostaRecusaDireta: 0.6,
+  razaoPropostaAceitaDireto: 0.92,
+
+  // O jogador (não o clube) pode recusar ir pra um clube pequeno demais pra ele.
+  forcaMinimaJogadorExigente: 42,
 };
 
 function converterEuroParaReal(valorEmMilhoesEuro) {
@@ -255,6 +277,63 @@ function aplicarFinancasDaRodada(financas, contexto) {
   if (financas.historico.length > 20) financas.historico.shift(); // não deixa o histórico crescer sem limite
 
   return resumo;
+}
+
+/* ============================================================
+   Mercado de transferências (Fase 12 — comprar)
+   ============================================================ */
+
+/** A janela abre logo no início da temporada e de novo bem no meio dela. */
+function janelaDeMercadoAberta(numeroRodada, totalRodadas) {
+  const duracao = CONFIG_FINANCEIRO.duracaoJanelaEmRodadas;
+  if (numeroRodada <= duracao) return true;
+  const meio = Math.floor(totalRodadas / 2);
+  return numeroRodada > meio && numeroRodada <= meio + duracao;
+}
+
+/**
+ * Preço pedido (em R$ milhões) por um jogador do elenco de outro clube.
+ * anosContratoRestante: quanto falta no contrato dele (contrato acabando = mais barato).
+ * divisaoVendedora: a divisão do clube dono do jogador agora.
+ */
+function calcularPrecoTransferencia(jogador, anosContratoRestante, divisaoVendedora) {
+  let preco = converterEuroParaReal(calcularValorMercado(jogador));
+
+  const estrelas = calcularEstrelasPotencial(jogador);
+  preco *= 1 + estrelas * CONFIG_FINANCEIRO.bonusPrecoPorEstrelaPotencial;
+
+  const fatorContrato = clampFrac(
+    CONFIG_FINANCEIRO.fatorPrecoContratoBase + anosContratoRestante * CONFIG_FINANCEIRO.fatorPrecoContratoPorAno,
+    CONFIG_FINANCEIRO.fatorPrecoContratoBase, CONFIG_FINANCEIRO.fatorPrecoContratoTeto
+  );
+  preco *= fatorContrato;
+
+  if (divisaoVendedora === "serie_b") preco *= CONFIG_FINANCEIRO.fatorPrecoClubeSerieB;
+
+  return Math.round(preco * 100) / 100;
+}
+
+/**
+ * Avalia uma proposta de compra. Devolve um destes resultados:
+ * { status: "recusada" }               — muito abaixo do preço pedido.
+ * { status: "contraproposta", valor }  — o clube quer o preço pedido cheio.
+ * { status: "recusada-pelo-jogador" }  — o clube toparia, mas o jogador não quer um clube pequeno.
+ * { status: "aceita" }                 — negócio fechado no valor proposto.
+ */
+function avaliarPropostaTransferencia(jogador, precoPedido, valorProposta, divisaoCompradora) {
+  const razao = precoPedido > 0 ? valorProposta / precoPedido : 1;
+
+  if (razao < CONFIG_FINANCEIRO.razaoPropostaRecusaDireta) return { status: "recusada" };
+  if (razao < CONFIG_FINANCEIRO.razaoPropostaAceitaDireto) {
+    return { status: "contraproposta", valor: precoPedido };
+  }
+
+  if (jogador.forca >= CONFIG_FINANCEIRO.forcaMinimaJogadorExigente && divisaoCompradora === "serie_b") {
+    // Determinístico (não aleatório de verdade) pra ser consistente se o jogo recarregar.
+    if (jogador._id % 3 === 0) return { status: "recusada-pelo-jogador" };
+  }
+
+  return { status: "aceita" };
 }
 
 /** Projeção simples do caixa no fim da temporada, extrapolando a média de saldo por rodada. */

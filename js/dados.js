@@ -134,3 +134,21 @@ function calcularSalarioMensal(jogador) {
   const valor = calcularValorMercado(jogador);
   return Math.max(0.003, Math.round(valor * 0.018 * 1000) / 1000);
 }
+
+/**
+ * Todo mundo no mercado (Fase 12): os elencos de todos os times, das duas
+ * divisões, MENOS o time do próprio técnico. Cada item é
+ * { jogador, nomeTime, divisaoChave }.
+ */
+function listarJogadoresMercado(dados, nomeTimeExcluir) {
+  const lista = [];
+  listarDivisoes(dados).forEach(function (divisao) {
+    divisao.times.forEach(function (time) {
+      if (time.nome === nomeTimeExcluir) return;
+      time.jogadores.forEach(function (jogador) {
+        lista.push({ jogador: jogador, nomeTime: time.nome, divisaoChave: divisao.chave });
+      });
+    });
+  });
+  return lista;
+}

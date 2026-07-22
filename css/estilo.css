@@ -2004,3 +2004,104 @@ body::before {
 .btn-renovar-contrato:active {
   transform: scale(0.96);
 }
+
+/* ============================================================
+   Mercado — Fase 12
+   ============================================================ */
+
+.tela-mercado {
+  justify-content: flex-start;
+  align-items: stretch;
+  text-align: left;
+  padding: calc(env(safe-area-inset-top) + 16px) 16px
+           calc(env(safe-area-inset-bottom) + 16px);
+  gap: 12px;
+}
+
+.aviso-janela-mercado {
+  font-size: 13px;
+  font-weight: 700;
+  text-align: center;
+  padding: 8px 10px;
+  border-radius: 10px;
+}
+
+.aviso-janela-mercado.janela-aberta {
+  color: #3ddc7a;
+  background: rgba(61, 220, 122, 0.1);
+}
+
+.aviso-janela-mercado.janela-fechada {
+  color: var(--cinza-texto);
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.secao-filtros-mercado {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.linha-filtros-mercado {
+  display: flex;
+  gap: 8px;
+}
+
+.linha-filtros-mercado select,
+.linha-filtros-mercado input,
+.campo-busca-mercado {
+  flex: 1;
+  min-width: 0;
+  min-height: 40px;
+  padding: 0 10px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--branco);
+  font-size: 13px;
+}
+
+.mensagem-vazia-mercado {
+  text-align: center;
+  color: var(--cinza-texto);
+  font-size: 13px;
+  padding: 16px 0;
+}
+
+.proposta-info-jogador,
+.proposta-preco-pedido {
+  font-size: 13px;
+  color: var(--cinza-texto);
+  margin: 4px 0;
+}
+
+.proposta-label-valor {
+  display: block;
+  font-size: 12px;
+  color: var(--cinza-texto);
+  margin-top: 10px;
+  margin-bottom: 4px;
+}
+
+.proposta-input-valor {
+  width: 100%;
+  min-height: 40px;
+  padding: 0 10px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--branco);
+  font-size: 14px;
+  margin-bottom: 10px;
+}
+
+.proposta-resultado {
+  font-size: 13px;
+  font-weight: 700;
+  min-height: 18px;
+  margin-top: 10px;
+}
+
+.proposta-resultado-positivo { color: #3ddc7a; }
+.proposta-resultado-negativo { color: #ff8f8f; }
+.proposta-resultado-neutro { color: var(--amarelo); }
