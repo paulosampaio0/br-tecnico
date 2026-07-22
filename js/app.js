@@ -99,6 +99,7 @@ const estado = {
   propostasRecebidas: [], // [{ id, idJogador, nomeJogador, nomeTimeComprador, divisaoCompradora, valor }] — Fase 13
   proximoIdProposta: 1,
   diretoria: null, // { meta, orcamentoContratacoes, orcamentoGasto, falhasConsecutivas, contratacoesBloqueadas } — Fase 14
+  investimentoBase: false, // decisão do técnico: investir mensalmente na categoria de base (Fase 15)
 };
 
 // Filtros e resultado da busca no Mercado, e proposta em andamento (Fase 12).
@@ -162,6 +163,7 @@ function salvarProgresso() {
     propostasRecebidas: estado.propostasRecebidas,
     proximoIdProposta: estado.proximoIdProposta,
     diretoria: estado.diretoria,
+    investimentoBase: estado.investimentoBase,
     atualizadoEm: new Date().toISOString(),
   };
   try {
@@ -361,6 +363,7 @@ async function escalarEsteTime(time) {
   estado.propostasRecebidas = [];
   estado.proximoIdProposta = 1;
   estado.diretoria = { meta: null, orcamentoContratacoes: 0, orcamentoGasto: 0, falhasConsecutivas: 0, contratacoesBloqueadas: false };
+  estado.investimentoBase = false;
 
   await garantirTemporada();
   salvarProgresso();
@@ -1532,8 +1535,11 @@ async function concluirRodadaOficial() {
       aproveitamento: aproveitamento,
       resultado: resultadoNumerico,
       contratos: estado.contratos,
+      investimentoBaseAtivo: estado.investimentoBase,
     });
   }
+
+  gerarRevelacaoDaBaseSeAplicavel();
 
   if (verificarSaudeFinanceira()) {
     // Demitido no meio do caminho — a carreira nesse clube acabou aqui, não tem rodada pra fechar.
@@ -1759,6 +1765,7 @@ function renderizarFinancas() {
 
   renderizarOpcoesPrecoIngresso();
   renderizarDiretoria();
+  renderizarBaseFinancas();
 
   const moralEl = document.getElementById("financas-moral-torcida");
   if (moralEl) {
@@ -1786,6 +1793,7 @@ function renderizarFinancas() {
     }
     linhas.push(["👕 Folha salarial", -ultimaRodada.folha]);
     linhas.push(["🏟 Custos fixos", -ultimaRodada.custosFixos]);
+    if (ultimaRodada.custoBase) linhas.push(["🌱 Investimento na base", -ultimaRodada.custoBase]);
 
     linhas.forEach(function (linha) {
       const li = document.createElement("li");
@@ -2302,6 +2310,83 @@ function renderizarDiretoria() {
   }
 }
 
+/* ---------- Categoria de base (Fase 15) ---------- */
+
+const NOMES_JOVEM_BASE = [
+  "Kaique", "Ryan", "Ericlis", "Vitin", "Pedrinho", "Gabriel", "Matheusinho", "Robinho", "Juninho", "Lucas",
+  "Bruno", "Rafinha", "Wendell", "Talles", "Igor", "Yuri", "Caio", "Emerson", "Denner", "Patrick",
+];
+const SOBRENOMES_JOVEM_BASE = [
+  "Silva", "Santos", "Oliveira", "Souza", "Costa", "Pereira", "Ferreira", "Almeida", "Ribeiro", "Carvalho",
+  "Gomes", "Martins", "Rocha", "Araújo", "Nascimento",
+];
+const CARACTERISTICAS_LINHA_JOVEM_BASE = ["Marcação", "Passe", "Cabeceio", "Cruzamento", "Velocidade", "Desarme", "Armação", "Drible", "Finalização", "Resistência"];
+const CARACTERISTICAS_GOL_JOVEM_BASE = ["Reflexo", "Colocação", "Defesa de Pênalti", "Saída do gol"];
+
+function sortearItem(lista) { return lista[Math.floor(Math.random() * lista.length)]; }
+
+function gerarNomeJovemBase() {
+  return sortearItem(NOMES_JOVEM_BASE) + " " + sortearItem(SOBRENOMES_JOVEM_BASE);
+}
+
+/** Duas características distintas, coerentes com a posição (goleiro só pega características de goleiro). */
+function sortearCaracteristicasJovemBase(pos) {
+  const pool = (pos === "GOL" ? CARACTERISTICAS_GOL_JOVEM_BASE : CARACTERISTICAS_LINHA_JOVEM_BASE).slice();
+  const embaralhado = pool.sort(function () { return Math.random() - 0.5; });
+  return [embaralhado[0], embaralhado[1]];
+}
+
+/** Cria e adiciona ao elenco um jovem "de graça" (sem custo de compra, só salário) revelado pela base. */
+function gerarJovemDaBase() {
+  const idade = CONFIG_FINANCEIRO.idadeMinimaRevelacaoBase +
+    Math.floor(Math.random() * (CONFIG_FINANCEIRO.idadeMaximaRevelacaoBase - CONFIG_FINANCEIRO.idadeMinimaRevelacaoBase + 1));
+  const forca = CONFIG_FINANCEIRO.forcaMinimaRevelacaoBase +
+    Math.floor(Math.random() * (CONFIG_FINANCEIRO.forcaMaximaRevelacaoBase - CONFIG_FINANCEIRO.forcaMinimaRevelacaoBase + 1));
+  const pos = sortearItem(ORDEM_POSICOES);
+  const caracteristicas = sortearCaracteristicasJovemBase(pos);
+
+  const novoId = estado.proximoIdMercado++;
+  const jovem = {
+    _id: novoId, nome: gerarNomeJovemBase(), pos: pos, idade: idade, nac: "BRA",
+    pe: Math.random() < 0.75 ? "direito" : (Math.random() < 0.5 ? "esquerdo" : "ambos"),
+    valor_mi: 0, forca: forca, caracteristica_1: caracteristicas[0], caracteristica_2: caracteristicas[1],
+  };
+
+  estado.timeAtual.jogadores.push(jovem);
+  estado.jogadoresComprados.push(jovem); // mesma trilha de persistência dos jogadores que vêm de fora do arquivo de dados
+  estado.contratos[novoId] = criarContratoInicial(jovem);
+  estado.energiaPorJogador[novoId] = 100;
+
+  const estrelas = calcularEstrelasPotencial(jovem);
+  alert("A base revelou um talento! " + jovem.nome + " (" + jovem.pos + ", força " + jovem.forca + ", " + jovem.idade + " anos" +
+    (estrelas > 0 ? ", " + "⭐".repeat(estrelas) : "") + ") chegou de graça ao elenco.");
+}
+
+/** Só com o investimento ativo: sorteia se a base revela um jovem nesta rodada oficial. */
+function gerarRevelacaoDaBaseSeAplicavel() {
+  if (!estado.investimentoBase) return;
+  if (Math.random() < CONFIG_FINANCEIRO.chanceRevelacaoBasePorRodada) gerarJovemDaBase();
+}
+
+function definirInvestimentoBase(ativo) {
+  estado.investimentoBase = ativo;
+  salvarProgresso();
+  renderizarFinancas();
+}
+
+function renderizarBaseFinancas() {
+  const secaoEl = document.getElementById("secao-base-financas");
+  if (!secaoEl || !estado.financas) return;
+
+  const custoPorRodada = calcularCustoBasePorRodada(estado.financas.caixaInicialClube);
+  document.getElementById("base-custo-rodada").textContent = "Custo: " + formatarReais(custoPorRodada) + " por rodada";
+
+  const btnAtivar = document.getElementById("btn-ativar-base");
+  const btnDesativar = document.getElementById("btn-desativar-base");
+  if (btnAtivar) btnAtivar.classList.toggle("ativa", estado.investimentoBase);
+  if (btnDesativar) btnDesativar.classList.toggle("ativa", !estado.investimentoBase);
+}
+
 function abrirTelaTabela() {
   mostrarTela("tela-tabela");
   divisaoTabelaAtual = estado.timeAtual.divisaoChave;
@@ -2692,6 +2777,7 @@ async function continuarJogoSalvo() {
     // Saves de antes da Fase 14 não têm diretoria — cria do zero (a meta é definida em garantirTemporada()).
     estado.diretoria = registro.diretoria ||
       { meta: null, orcamentoContratacoes: 0, orcamentoGasto: 0, falhasConsecutivas: 0, contratacoesBloqueadas: false };
+    estado.investimentoBase = registro.investimentoBase || false;
 
     // Saves de antes da Fase 11 não têm contratos — cria um pra cada jogador que ainda não tiver.
     estado.contratos = registro.contratos || {};
@@ -2801,6 +2887,12 @@ function ligarBotoes() {
 
   const btnVoltarEscalacaoContratos = document.getElementById("btn-voltar-escalacao-contratos");
   if (btnVoltarEscalacaoContratos) btnVoltarEscalacaoContratos.addEventListener("click", abrirTelaEscalacao);
+
+  const btnAtivarBase = document.getElementById("btn-ativar-base");
+  if (btnAtivarBase) btnAtivarBase.addEventListener("click", function () { definirInvestimentoBase(true); });
+
+  const btnDesativarBase = document.getElementById("btn-desativar-base");
+  if (btnDesativarBase) btnDesativarBase.addEventListener("click", function () { definirInvestimentoBase(false); });
 
   const btnVerMercado = document.getElementById("btn-ver-mercado");
   if (btnVerMercado) btnVerMercado.addEventListener("click", abrirTelaMercado);

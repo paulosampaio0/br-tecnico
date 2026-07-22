@@ -110,6 +110,17 @@ const CONFIG_FINANCEIRO = {
   rodadasCaixaNegativoVendaForcada: 6,
   rodadasCaixaNegativoDemissao: 10,
   tamanhoMinimoElencoParaVendaForcada: 14, // abaixo disso a diretoria não força mais vendas (evita esvaziar o time)
+
+  // --- Categoria de base (Fase 15) ---
+
+  // Custo do investimento em base = fatia do "porte" do clube, debitada por rodada só se estiver ativo.
+  fatorCustoBasePorRodada: 0.004,
+  // Chance de revelar um jovem por rodada oficial, só com o investimento ativo.
+  chanceRevelacaoBasePorRodada: 0.035,
+  idadeMinimaRevelacaoBase: 16,
+  idadeMaximaRevelacaoBase: 19,
+  forcaMinimaRevelacaoBase: 29,
+  forcaMaximaRevelacaoBase: 35,
 };
 
 function converterEuroParaReal(valorEmMilhoesEuro) {
@@ -180,6 +191,11 @@ function calcularCustosFixosPorRodada(caixaInicialDoClube) {
 
 function obterCotaTvPorRodada(divisaoChave) {
   return CONFIG_FINANCEIRO.cotaTvPorRodada[divisaoChave] || 0;
+}
+
+/** Custo do investimento em base NUMA rodada — só cobrado se o investimento estiver ativo. */
+function calcularCustoBasePorRodada(caixaInicialDoClube) {
+  return Math.round(caixaInicialDoClube * CONFIG_FINANCEIRO.fatorCustoBasePorRodada * 100) / 100;
 }
 
 function clampFrac(valor, min, max) {
@@ -258,7 +274,8 @@ function criarFinancasIniciais(jogadores, divisaoChave) {
  *
  * contexto = { jogadores, divisaoChave, numeroRodada, souCasa, faixaPrecoIngresso,
  *              aproveitamento (0-1, antes deste jogo), resultado (1 vitória, 0 empate, -1 derrota),
- *              contratos ({ _id: { anosRestantes, multiplicadorSalario } }, pra folha efetiva) }
+ *              contratos ({ _id: { anosRestantes, multiplicadorSalario } }, pra folha efetiva),
+ *              investimentoBaseAtivo (bool, Fase 15) }
  */
 function aplicarFinancasDaRodada(financas, contexto) {
   const jogadores = contexto.jogadores;
@@ -270,6 +287,7 @@ function aplicarFinancasDaRodada(financas, contexto) {
   const patrocinio = financas.patrocinioPorRodada || 0;
   const folha = calcularFolhaSalarialPorRodada(jogadores, contexto.contratos);
   const custosFixos = calcularCustosFixosPorRodada(financas.caixaInicialClube);
+  const custoBase = contexto.investimentoBaseAtivo ? calcularCustoBasePorRodada(financas.caixaInicialClube) : 0;
 
   let publico = 0;
   let bilheteria = 0;
@@ -279,7 +297,7 @@ function aplicarFinancasDaRodada(financas, contexto) {
   }
 
   const receita = Math.round((cotaTv + patrocinio + bilheteria) * 100) / 100;
-  const despesa = Math.round((folha + custosFixos) * 100) / 100;
+  const despesa = Math.round((folha + custosFixos + custoBase) * 100) / 100;
   const saldo = Math.round((receita - despesa) * 100) / 100;
 
   financas.caixa = Math.round((financas.caixa + saldo) * 100) / 100;
@@ -293,7 +311,7 @@ function aplicarFinancasDaRodada(financas, contexto) {
 
   const resumo = {
     rodada: contexto.numeroRodada, cotaTv: cotaTv, patrocinio: patrocinio, bilheteria: bilheteria,
-    publico: publico, souCasa: souCasa, folha: folha, custosFixos: custosFixos,
+    publico: publico, souCasa: souCasa, folha: folha, custosFixos: custosFixos, custoBase: custoBase,
     receita: receita, despesa: despesa, saldo: saldo, caixaDepois: financas.caixa,
     moralTorcida: financas.moralTorcida,
   };

@@ -2170,3 +2170,25 @@ body::before {
   color: var(--cinza-texto);
   margin: -4px 0 0;
 }
+
+/* ============================================================
+   Categoria de base — Fase 15
+   ============================================================ */
+
+.secao-base-financas h3 {
+  font-size: 14px;
+  margin: 0 0 6px;
+}
+
+.dica-base-financas {
+  font-size: 12px;
+  color: var(--cinza-texto);
+  line-height: 1.4;
+  margin: 0 0 8px;
+}
+
+.base-custo-rodada {
+  font-size: 13px;
+  font-weight: 700;
+  margin: 0 0 8px;
+}
