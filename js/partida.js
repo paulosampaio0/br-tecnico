@@ -119,6 +119,7 @@ function novaPartida() {
     pendencia: null, // { lado } quando há um pênalti do usuário esperando o cobrador ser escolhido
     substituicoesFeitas: 0, // máx. 5 por partida, igual à regra oficial
     jogadoresQueSairam: [], // _ids que já saíram nesta partida — não podem voltar
+    jogadoresQueJogaram: [], // _ids de quem entrou em campo (titular de saída + quem entrou depois) — pro pós-jogo
   };
 }
 
@@ -197,24 +198,24 @@ function processarLadoPartida(partida, atacante, defensor, ladoAtacante, permiti
         const converteu = Math.random() < 0.76;
         if (converteu) {
           if (ladoAtacante === "casa") partida.placarCasa++; else partida.placarFora++;
-          registrarEvento(partida, "gol", ladoAtacante, "⚽ Pênalti convertido por " + jogador.nome + "!");
+          registrarEvento(partida, "gol", ladoAtacante, "⚽ Pênalti convertido por " + jogador.nome + "!", jogador._id);
         } else {
-          registrarEvento(partida, "chance", ladoAtacante, jogador.nome + " bate o pênalti… e perde!");
+          registrarEvento(partida, "chance", ladoAtacante, jogador.nome + " bate o pênalti… e perde!", jogador._id);
         }
         return;
       }
 
       estatAtacante.noGol++;
       if (ladoAtacante === "casa") partida.placarCasa++; else partida.placarFora++;
-      registrarEvento(partida, "gol", ladoAtacante, "⚽ Gol de " + jogador.nome + "!");
+      registrarEvento(partida, "gol", ladoAtacante, "⚽ Gol de " + jogador.nome + "!", jogador._id);
     } else if (rolagem < chanceGol + 0.35) {
       estatAtacante.noGol++;
       const goleiro = encontrarGoleiro(defensor);
       registrarEvento(partida, "chance", ladoAtacante,
-        "Chute de " + jogador.nome + (goleiro ? ", mas " + goleiro.nome + " defende!" : ", mas o goleiro defende!"));
+        "Chute de " + jogador.nome + (goleiro ? ", mas " + goleiro.nome + " defende!" : ", mas o goleiro defende!"), jogador._id);
     } else {
       estatAtacante.chutesFora++;
-      registrarEvento(partida, "chance", ladoAtacante, "Chute de " + jogador.nome + " para fora.");
+      registrarEvento(partida, "chance", ladoAtacante, "Chute de " + jogador.nome + " para fora.", jogador._id);
     }
   }
 

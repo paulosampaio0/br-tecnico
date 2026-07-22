@@ -850,6 +850,7 @@ function iniciarSimulacao() {
     // Guarda a escalação de saída: trocas feitas durante a partida ("mexer no
     // time") não devem valer permanentemente pra próxima rodada.
     partidaAtual.escalacaoInicial = Object.assign({}, estado.titulares);
+    partidaAtual.jogadoresQueJogaram = Object.values(estado.titulares).slice();
   }
   partidaAtual.status = "jogando";
   pararIntervaloPartida();
@@ -937,10 +938,10 @@ function resolverPenaltiUsuario(jogadorCobrador) {
 
   if (converteu) {
     if (lado === "casa") partidaAtual.placarCasa++; else partidaAtual.placarFora++;
-    registrarEvento(partidaAtual, "gol", lado, "⚽ Pênalti convertido por " + jogadorCobrador.nome + "!");
+    registrarEvento(partidaAtual, "gol", lado, "⚽ Pênalti convertido por " + jogadorCobrador.nome + "!", jogadorCobrador._id);
     tocarSom("gol");
   } else {
-    registrarEvento(partidaAtual, "chance", lado, jogadorCobrador.nome + " bate o pênalti… e perde!");
+    registrarEvento(partidaAtual, "chance", lado, jogadorCobrador.nome + " bate o pênalti… e perde!", jogadorCobrador._id);
     tocarSom("cartao-amarelo");
   }
 
@@ -1047,7 +1048,7 @@ function renderizarControlesPartida() {
     btnMexer.hidden = true;
     if (btnVelocidade) btnVelocidade.hidden = true;
     btnVoltarFim.hidden = false;
-    btnVoltarFim.textContent = partidaAtual.ehRodadaOficial ? "Ver tabela ▶" : "Voltar à escalação";
+    btnVoltarFim.textContent = "Ver resumo da partida ▶";
     return;
   }
 
@@ -1073,6 +1074,114 @@ function renderizarControlesPartida() {
     btnPausar.textContent = "⏸ Pausar";
     btnMexer.hidden = true;
   }
+}
+
+/* ---------- Pós-jogo ---------- */
+
+const ROTULO_ESTILO_TATICA = { equilibrado: "Equilibrado", ofensivo: "Ofensivo", "contra-ataque": "Contra-ataque", retranca: "Retranca" };
+const ROTULO_MARCACAO_TATICA = { leve: "Leve", normal: "Normal", pesada: "Pesada" };
+const ROTULO_CONCENTRAR_TATICA = { equilibrado: "Equilibrado", meio: "Pelo meio", lados: "Pelos lados" };
+
+/** Nota (0 a 10) de cada jogador do MEU time que entrou em campo nesta partida. */
+function calcularNotasPosJogo() {
+  const meuPlacar = meuLadoNaPartida === "casa" ? partidaAtual.placarCasa : partidaAtual.placarFora;
+  const placarAdversario = meuLadoNaPartida === "casa" ? partidaAtual.placarFora : partidaAtual.placarCasa;
+  const resultado = meuPlacar > placarAdversario ? 1 : meuPlacar < placarAdversario ? -1 : 0;
+
+  const ids = partidaAtual.jogadoresQueJogaram || [];
+  const notas = ids.map(function (idJogador) {
+    const jogador = encontrarJogadorPorId(estado.timeAtual.jogadores, idJogador);
+    if (!jogador) return null;
+
+    let nota = 6.2 + resultado * 0.3;
+    partidaAtual.eventos.forEach(function (evento) {
+      if (evento.idJogador !== idJogador || evento.lado !== meuLadoNaPartida) return;
+      if (evento.tipo === "gol") nota += 1.4;
+      else if (evento.tipo === "cartao-amarelo") nota -= 0.5;
+      else if (evento.tipo === "cartao-vermelho") nota -= 2.2;
+    });
+    nota += (Math.random() - 0.5) * 0.6; // variação natural entre jogadores parecidos
+    nota = clamp(nota, 3, 10);
+
+    return { idJogador: idJogador, nome: jogador.nome, pos: jogador.pos, nota: Math.round(nota * 10) / 10 };
+  }).filter(Boolean);
+
+  notas.sort(function (a, b) { return b.nota - a.nota; });
+  return notas;
+}
+
+function criarItemNotaPosJogo(entrada) {
+  const li = document.createElement("li");
+  li.className = "item-nota-posjogo";
+  const corNota = entrada.nota >= 7 ? "nota-boa" : entrada.nota <= 5 ? "nota-ruim" : "nota-media";
+  li.innerHTML =
+    "<span class=\"pos\">" + escaparHtml(entrada.pos) + "</span>" +
+    "<span class=\"nome-nota-posjogo\">" + escaparHtml(entrada.nome) + "</span>" +
+    "<span class=\"valor-nota-posjogo " + corNota + "\">" + entrada.nota.toFixed(1) + "</span>";
+  return li;
+}
+
+function abrirTelaPosJogo() {
+  mostrarTela("tela-pos-jogo");
+
+  const meuNome = estado.timeAtual.nome;
+  const nomeCasa = timeCasaSimulado.nome, nomeFora = timeForaSimulado.nome;
+  document.getElementById("placar-resumo-posjogo").textContent =
+    nomeCasa + " " + partidaAtual.placarCasa + " x " + partidaAtual.placarFora + " " + nomeFora +
+    (partidaAtual.ehRodadaOficial ? " · Rodada oficial" : " · Amistoso");
+
+  const notas = calcularNotasPosJogo();
+
+  const listaMelhores = document.getElementById("lista-melhores-posjogo");
+  const listaPiores = document.getElementById("lista-piores-posjogo");
+  listaMelhores.innerHTML = "";
+  listaPiores.innerHTML = "";
+  notas.slice(0, 3).forEach(function (e) { listaMelhores.appendChild(criarItemNotaPosJogo(e)); });
+  notas.slice(-3).reverse().forEach(function (e) { listaPiores.appendChild(criarItemNotaPosJogo(e)); });
+
+  const listaTodas = document.getElementById("lista-todas-notas-posjogo");
+  listaTodas.innerHTML = "";
+  notas.forEach(function (e) { listaTodas.appendChild(criarItemNotaPosJogo(e)); });
+
+  const qtdSetasAtivas = Object.values(estado.setas || {}).reduce(function (soma, chaves) { return soma + (chaves ? chaves.length : 0); }, 0);
+  const posse = calcularPosse(partidaAtual);
+  const minhaPosse = meuLadoNaPartida === "casa" ? posse.casa : posse.fora;
+  const minhasEstatisticas = partidaAtual.estatisticas[meuLadoNaPartida];
+
+  const resumo = [
+    ["Formação", estado.formacaoId],
+    ["Estilo de jogo", ROTULO_ESTILO_TATICA[estado.tatica.estilo] || estado.tatica.estilo],
+    ["Marcação", ROTULO_MARCACAO_TATICA[estado.tatica.marcacao] || estado.tatica.marcacao],
+    ["Concentrar ataques", ROTULO_CONCENTRAR_TATICA[estado.tatica.concentrar] || estado.tatica.concentrar],
+    ["Setas ativas", qtdSetasAtivas + " no time titular de saída"],
+    ["Posse de bola", minhaPosse + "%"],
+    ["Finalizações", minhasEstatisticas.finalizacoes + " (" + minhasEstatisticas.noGol + " no gol)"],
+    ["Substituições feitas", (partidaAtual.substituicoesFeitas || 0) + " de " + LIMITE_SUBSTITUICOES],
+  ];
+
+  const listaResumo = document.getElementById("lista-resumo-tatico-posjogo");
+  listaResumo.innerHTML = "";
+  resumo.forEach(function (par) {
+    const li = document.createElement("li");
+    li.className = "item-resumo-tatico-posjogo";
+    li.innerHTML = "<span class=\"rotulo-resumo-tatico\">" + escaparHtml(par[0]) + "</span>" +
+      "<span class=\"valor-resumo-tatico\">" + escaparHtml(String(par[1])) + "</span>";
+    listaResumo.appendChild(li);
+  });
+}
+
+/** Chamado pelo botão "Continuar" do pós-jogo — só aí de fato fecha a partida. */
+function continuarAposPosJogo() {
+  if (partidaAtual.ehRodadaOficial) {
+    concluirRodadaOficial();
+    return;
+  }
+  aplicarDesgastePosPartida();
+  if (partidaAtual.escalacaoInicial) estado.titulares = partidaAtual.escalacaoInicial;
+  partidaAtual = null;
+  partidasRodada = [];
+  salvarProgresso();
+  abrirTelaEscalacao();
 }
 
 /* ---------- Cartões e suspensão ---------- */
@@ -1650,6 +1759,8 @@ function escolherJogadorParaVaga(idVaga, idJogador) {
     partidaAtual.substituicoesFeitas = (partidaAtual.substituicoesFeitas || 0) + 1;
     partidaAtual.jogadoresQueSairam = partidaAtual.jogadoresQueSairam || [];
     if (idAntigoNaVaga !== undefined) partidaAtual.jogadoresQueSairam.push(idAntigoNaVaga);
+    partidaAtual.jogadoresQueJogaram = partidaAtual.jogadoresQueJogaram || [];
+    partidaAtual.jogadoresQueJogaram.push(idJogador);
 
     registrarEvento(partidaAtual, "substituicao", meuLadoNaPartida,
       "🔄 Substituição: " + (jogadorSai ? jogadorSai.nome : "vaga vazia") + " sai, " +
@@ -1828,19 +1939,11 @@ function ligarBotoes() {
 
   const btnVoltarEscalacaoFim = document.getElementById("btn-voltar-escalacao-fim");
   if (btnVoltarEscalacaoFim) {
-    btnVoltarEscalacaoFim.addEventListener("click", function () {
-      if (partidaAtual && partidaAtual.ehRodadaOficial) {
-        concluirRodadaOficial();
-        return;
-      }
-      aplicarDesgastePosPartida();
-      if (partidaAtual.escalacaoInicial) estado.titulares = partidaAtual.escalacaoInicial;
-      partidaAtual = null;
-      partidasRodada = [];
-      salvarProgresso();
-      abrirTelaEscalacao();
-    });
+    btnVoltarEscalacaoFim.addEventListener("click", abrirTelaPosJogo);
   }
+
+  const btnContinuarPosJogo = document.getElementById("btn-continuar-posjogo");
+  if (btnContinuarPosJogo) btnContinuarPosJogo.addEventListener("click", continuarAposPosJogo);
 
   const btnFecharSeletor = document.getElementById("btn-fechar-seletor");
   if (btnFecharSeletor) btnFecharSeletor.addEventListener("click", fecharSeletorJogador);
