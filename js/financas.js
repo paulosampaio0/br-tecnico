@@ -54,6 +54,16 @@ const CONFIG_FINANCEIRO = {
   bonusPatrocinioSerieA: 1.6,
   patrocinioPisoDesempenho: 0.7, // com aproveitamento 0%, ainda paga 70% do valor-base
   patrocinioTetoDesempenho: 1.3, // com aproveitamento 100%, paga 130% do valor-base
+
+  // --- Contratos (Fase 11) ---
+
+  duracaoContratoMinimaInicial: 1, // anos
+  duracaoContratoMaximaInicial: 4, // anos
+  duracaoRenovacaoPadrao: 3, // anos que um contrato renovado passa a durar
+  anosParaAlertaVencimento: 1, // com isso (ou menos) restando, mostra alerta e permite renovar
+  // O pedido de aumento na renovação cresce com a força do jogador (30 = pede pouco, 48 = pede muito).
+  aumentoRenovacaoMinimo: 0.10,
+  aumentoRenovacaoMaximo: 0.45,
 };
 
 function converterEuroParaReal(valorEmMilhoesEuro) {
@@ -74,10 +84,45 @@ function calcularCaixaInicial(jogadores, divisaoChave) {
   return Math.round(caixa * 100) / 100;
 }
 
-/** Folha salarial paga NUMA rodada (o salário mensal de cada jogador, rateado pelo mês). */
-function calcularFolhaSalarialPorRodada(jogadores) {
+/** Duração inicial de contrato (1 a 4 anos), determinística a partir do próprio jogador. */
+function calcularDuracaoContratoInicial(jogador) {
+  const variacao = (jogador._id * 7 + jogador.idade * 3) % 4; // 0 a 3
+  return CONFIG_FINANCEIRO.duracaoContratoMinimaInicial + variacao;
+}
+
+function criarContratoInicial(jogador) {
+  return { anosRestantes: calcularDuracaoContratoInicial(jogador), multiplicadorSalario: 1 };
+}
+
+/** Quanto (fração — 0.25 = +25%) o jogador pede de aumento pra renovar, conforme a força atual. */
+function calcularAumentoRenovacao(jogador) {
+  const fracaoForca = Math.max(0, Math.min(1, (jogador.forca - 30) / 18));
+  return CONFIG_FINANCEIRO.aumentoRenovacaoMinimo +
+    fracaoForca * (CONFIG_FINANCEIRO.aumentoRenovacaoMaximo - CONFIG_FINANCEIRO.aumentoRenovacaoMinimo);
+}
+
+/** Renova o contrato de um jogador: reseta a duração e aplica o aumento salarial pedido. */
+function renovarContratoJogador(contratoInfo, jogador) {
+  const aumento = calcularAumentoRenovacao(jogador);
+  const multiplicadorAnterior = (contratoInfo && contratoInfo.multiplicadorSalario) || 1;
+  return {
+    anosRestantes: CONFIG_FINANCEIRO.duracaoRenovacaoPadrao,
+    multiplicadorSalario: Math.round(multiplicadorAnterior * (1 + aumento) * 1000) / 1000,
+  };
+}
+
+/** Salário mensal de verdade do jogador, já considerando o multiplicador ganho em renovações. */
+function calcularSalarioEfetivoMensal(jogador, contratoInfo) {
+  const base = calcularSalarioMensal(jogador);
+  const multiplicador = (contratoInfo && contratoInfo.multiplicadorSalario) || 1;
+  return base * multiplicador;
+}
+
+/** Folha salarial paga NUMA rodada (o salário efetivo de cada jogador, rateado pelo mês). */
+function calcularFolhaSalarialPorRodada(jogadores, contratos) {
   const totalMensal = jogadores.reduce(function (soma, jogador) {
-    return soma + converterEuroParaReal(calcularSalarioMensal(jogador));
+    const contratoInfo = contratos ? contratos[jogador._id] : null;
+    return soma + converterEuroParaReal(calcularSalarioEfetivoMensal(jogador, contratoInfo));
   }, 0);
   return Math.round((totalMensal / CONFIG_FINANCEIRO.rodadasPorMes) * 100) / 100;
 }
@@ -166,7 +211,8 @@ function criarFinancasIniciais(jogadores, divisaoChave) {
  * gravado no histórico).
  *
  * contexto = { jogadores, divisaoChave, numeroRodada, souCasa, faixaPrecoIngresso,
- *              aproveitamento (0-1, antes deste jogo), resultado (1 vitória, 0 empate, -1 derrota) }
+ *              aproveitamento (0-1, antes deste jogo), resultado (1 vitória, 0 empate, -1 derrota),
+ *              contratos ({ _id: { anosRestantes, multiplicadorSalario } }, pra folha efetiva) }
  */
 function aplicarFinancasDaRodada(financas, contexto) {
   const jogadores = contexto.jogadores;
@@ -176,7 +222,7 @@ function aplicarFinancasDaRodada(financas, contexto) {
 
   const cotaTv = obterCotaTvPorRodada(divisaoChave);
   const patrocinio = financas.patrocinioPorRodada || 0;
-  const folha = calcularFolhaSalarialPorRodada(jogadores);
+  const folha = calcularFolhaSalarialPorRodada(jogadores, contexto.contratos);
   const custosFixos = calcularCustosFixosPorRodada(financas.caixaInicialClube);
 
   let publico = 0;

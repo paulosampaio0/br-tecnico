@@ -132,6 +132,9 @@
       <button class="btn btn-secundario" id="btn-ver-financas" type="button">
         💰 Finanças
       </button>
+      <button class="btn btn-secundario" id="btn-ver-contratos" type="button">
+        📋 Contratos
+      </button>
     </section>
 
     <button class="btn btn-secundario btn-jogar-amistoso" id="btn-jogar-amistoso" type="button">
@@ -152,6 +155,10 @@
       <h3 id="titulo-relatorio-temporada">Fim de temporada</h3>
       <p class="linha-relatorio" id="texto-relatorio-acesso"></p>
       <ul class="lista lista-evolucao" id="lista-relatorio-evolucao"></ul>
+      <section class="secao-relatorio-saidas-graca" id="secao-relatorio-saidas-graca" hidden>
+        <h4>Saíram de graça (contrato venceu)</h4>
+        <ul class="lista lista-evolucao" id="lista-relatorio-saidas-graca"></ul>
+      </section>
     </section>
 
     <div class="abas" id="abas-tabela-divisao" role="tablist"></div>
@@ -233,6 +240,20 @@
       <h3>Histórico de rodadas</h3>
       <ul class="lista lista-historico-financas" id="lista-historico-financas"></ul>
     </section>
+
+  </main>
+
+  <!-- Tela: contratos do elenco -->
+  <main class="tela tela-contratos" id="tela-contratos" hidden>
+
+    <header class="cabecalho cabecalho-lista">
+      <button class="btn-voltar" id="btn-voltar-escalacao-contratos" type="button" aria-label="Voltar">←</button>
+      <h2 class="titulo-lista">Contratos</h2>
+    </header>
+
+    <p class="dica-contratos">Contratos no último ano pedem renovação — ou o jogador sai de graça no fim da temporada.</p>
+
+    <ul class="lista lista-contratos" id="lista-contratos"></ul>
 
   </main>
 

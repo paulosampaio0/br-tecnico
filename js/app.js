@@ -93,6 +93,7 @@ const estado = {
   suspensoAte: {}, // { _id: número da última rodada em que ainda está suspenso }
   financas: null, // { caixa, caixaInicialClube, historico, ... } — ver js/financas.js (Fase 9-10)
   precoIngresso: "normal", // "barato" | "normal" | "caro" — decisão do técnico (Fase 10)
+  contratos: {}, // { _id: { anosRestantes, multiplicadorSalario } } — ver js/financas.js (Fase 11)
 };
 
 /* ---------- Salvamento local ---------- */
@@ -141,6 +142,10 @@ function salvarProgresso() {
     suspensoAte: estado.suspensoAte,
     financas: estado.financas,
     precoIngresso: estado.precoIngresso,
+    contratos: estado.contratos,
+    // Quem ainda está no elenco (contratos que venceram sem renovação saem — Fase 11).
+    // Sem isso, recarregar o jogo traria de volta jogadores que já foram embora.
+    elencoIds: estado.timeAtual.jogadores.map(function (j) { return j._id; }),
     atualizadoEm: new Date().toISOString(),
   };
   try {
@@ -331,6 +336,10 @@ async function escalarEsteTime(time) {
   estado.suspensoAte = {};
   estado.financas = criarFinancasIniciais(time.jogadores, divisaoAtual);
   estado.precoIngresso = "normal";
+  estado.contratos = {};
+  time.jogadores.forEach(function (jogador) {
+    estado.contratos[jogador._id] = criarContratoInicial(jogador);
+  });
 
   await garantirTemporada();
   salvarProgresso();
@@ -1483,6 +1492,7 @@ async function concluirRodadaOficial() {
       faixaPrecoIngresso: estado.precoIngresso,
       aproveitamento: aproveitamento,
       resultado: resultadoNumerico,
+      contratos: estado.contratos,
     });
   }
 
@@ -1548,12 +1558,42 @@ function processarFimDeTemporada() {
     return Object.assign({}, jogador, ajuste);
   });
 
+  // Contratos: passa mais um ano. Quem não foi renovado e zerou o tempo sai de graça.
+  const saidasDeGraca = [];
+  const idsQueSaem = new Set();
+  estado.timeAtual.jogadores.forEach(function (jogador) {
+    const contrato = estado.contratos[jogador._id] || criarContratoInicial(jogador);
+    contrato.anosRestantes -= 1;
+    if (contrato.anosRestantes <= 0) {
+      idsQueSaem.add(jogador._id);
+      saidasDeGraca.push({ nome: jogador.nome, pos: jogador.pos, forca: jogador.forca });
+    } else {
+      estado.contratos[jogador._id] = contrato;
+    }
+  });
+  if (idsQueSaem.size > 0) {
+    estado.timeAtual.jogadores = estado.timeAtual.jogadores.filter(function (j) { return !idsQueSaem.has(j._id); });
+    idsQueSaem.forEach(function (id) {
+      delete estado.contratos[id];
+      delete estado.energiaPorJogador[id];
+    });
+    Object.keys(estado.titulares).forEach(function (vagaId) {
+      if (idsQueSaem.has(estado.titulares[vagaId])) {
+        delete estado.titulares[vagaId];
+        delete estado.setas[vagaId];
+      }
+    });
+  }
+
   estado.temporada = {
     ano: estado.temporada.ano + 1,
     rodadaAtual: 1,
     serie_a: montarDivisaoTemporada(resultado.novaSerieA),
     serie_b: montarDivisaoTemporada(resultado.novaSerieB),
-    ultimoRelatorio: { rebaixados: resultado.rebaixados, promovidos: resultado.promovidos, evolucao: evolucaoResumo },
+    ultimoRelatorio: {
+      rebaixados: resultado.rebaixados, promovidos: resultado.promovidos,
+      evolucao: evolucaoResumo, saidasDeGraca: saidasDeGraca,
+    },
   };
 
   // Cartões e suspensões são da temporada — zeram na virada do ano.
@@ -1694,6 +1734,50 @@ function renderizarFinancas() {
   }
 }
 
+/* ---------- Tela: contratos do elenco (Fase 11) ---------- */
+
+function abrirTelaContratos() {
+  mostrarTela("tela-contratos");
+  renderizarContratos();
+}
+
+function renovarContrato(idJogador) {
+  const jogador = encontrarJogadorPorId(estado.timeAtual.jogadores, idJogador);
+  if (!jogador) return;
+  estado.contratos[idJogador] = renovarContratoJogador(estado.contratos[idJogador], jogador);
+  salvarProgresso();
+  renderizarContratos();
+}
+
+function renderizarContratos() {
+  const listaEl = document.getElementById("lista-contratos");
+  if (!listaEl || !estado.timeAtual) return;
+  listaEl.innerHTML = "";
+
+  ordenarElenco(estado.timeAtual.jogadores).forEach(function (jogador) {
+    const contrato = estado.contratos[jogador._id] || criarContratoInicial(jogador);
+    const salarioMensalReais = converterEuroParaReal(calcularSalarioEfetivoMensal(jogador, contrato));
+    const vencendo = contrato.anosRestantes <= CONFIG_FINANCEIRO.anosParaAlertaVencimento;
+
+    const li = document.createElement("li");
+    li.className = "item-contrato" + (vencendo ? " item-contrato-vencendo" : "");
+    li.innerHTML =
+      "<span class=\"pos\">" + escaparHtml(jogador.pos) + "</span>" +
+      "<span class=\"info-contrato\">" +
+        "<span class=\"nome-contrato\">" + escaparHtml(jogador.nome) + "</span>" +
+        "<span class=\"detalhes-contrato\">" + formatarReais(salarioMensalReais) + "/mês · " +
+          (vencendo ? "⚠ " : "") + contrato.anosRestantes + (contrato.anosRestantes === 1 ? " ano restante" : " anos restantes") +
+        "</span>" +
+      "</span>" +
+      "<button class=\"btn-renovar-contrato\" type=\"button\">Renovar</button>";
+
+    li.querySelector(".btn-renovar-contrato").addEventListener("click", function () {
+      renovarContrato(jogador._id);
+    });
+    listaEl.appendChild(li);
+  });
+}
+
 function abrirTelaTabela() {
   mostrarTela("tela-tabela");
   divisaoTabelaAtual = estado.timeAtual.divisaoChave;
@@ -1750,6 +1834,20 @@ function renderizarRelatorioTemporada() {
         "<span class=\"" + (subiu ? "sobe" : "desce") + "\">" + item.para + "</span>";
       listaEl.appendChild(li);
     });
+
+  const listaSaidasEl = document.getElementById("lista-relatorio-saidas-graca");
+  const secaoSaidas = document.getElementById("secao-relatorio-saidas-graca");
+  const saidasDeGraca = relatorio.saidasDeGraca || [];
+  if (listaSaidasEl && secaoSaidas) {
+    secaoSaidas.hidden = saidasDeGraca.length === 0;
+    listaSaidasEl.innerHTML = "";
+    saidasDeGraca.forEach(function (item) {
+      const li = document.createElement("li");
+      li.className = "item-evolucao";
+      li.textContent = item.nome + " (" + item.pos + ", força " + item.forca + ") saiu de graça — contrato venceu sem renovação.";
+      listaSaidasEl.appendChild(li);
+    });
+  }
 }
 
 function montarAbasTabela() {
@@ -2011,7 +2109,14 @@ async function continuarJogoSalvo() {
       return;
     }
 
-    estado.timeAtual = { divisaoChave: registro.divisao, nome: time.nome, jogadores: time.jogadores };
+    // Filtra pra fora quem já saiu do clube (contrato vencido sem renovação, Fase 11) — o
+    // arquivo de dados sempre traz o elenco "de fábrica" inteiro, então sem isso jogadores
+    // que já foram embora voltariam a aparecer toda vez que o jogo é carregado.
+    const jogadoresDoSave = registro.elencoIds
+      ? time.jogadores.filter(function (j) { return registro.elencoIds.indexOf(j._id) !== -1; })
+      : time.jogadores;
+
+    estado.timeAtual = { divisaoChave: registro.divisao, nome: time.nome, jogadores: jogadoresDoSave };
     estado.formacaoId = registro.formacaoId || "4-4-2";
     estado.titulares = registro.titulares || {};
     estado.tatica = registro.tatica || taticaPadrao();
@@ -2030,6 +2135,12 @@ async function continuarJogoSalvo() {
     }
     if (estado.financas.moralTorcida === undefined) estado.financas.moralTorcida = CONFIG_FINANCEIRO.moralTorcidaInicial;
     if (estado.financas.patrocinioPorRodada === undefined) estado.financas.patrocinioPorRodada = 0;
+
+    // Saves de antes da Fase 11 não têm contratos — cria um pra cada jogador que ainda não tiver.
+    estado.contratos = registro.contratos || {};
+    estado.timeAtual.jogadores.forEach(function (jogador) {
+      if (!estado.contratos[jogador._id]) estado.contratos[jogador._id] = criarContratoInicial(jogador);
+    });
 
     // Reaplica a evolução de força/idade acumulada de temporadas passadas
     // por cima do elenco "de fábrica" que acabou de vir do arquivo de dados.
@@ -2127,6 +2238,12 @@ function ligarBotoes() {
 
   const btnVoltarEscalacaoFinancas = document.getElementById("btn-voltar-escalacao-financas");
   if (btnVoltarEscalacaoFinancas) btnVoltarEscalacaoFinancas.addEventListener("click", abrirTelaEscalacao);
+
+  const btnVerContratos = document.getElementById("btn-ver-contratos");
+  if (btnVerContratos) btnVerContratos.addEventListener("click", abrirTelaContratos);
+
+  const btnVoltarEscalacaoContratos = document.getElementById("btn-voltar-escalacao-contratos");
+  if (btnVoltarEscalacaoContratos) btnVoltarEscalacaoContratos.addEventListener("click", abrirTelaEscalacao);
 
   const btnRodadaAnterior = document.getElementById("btn-rodada-anterior");
   if (btnRodadaAnterior) {
