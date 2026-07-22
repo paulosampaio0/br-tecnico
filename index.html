@@ -157,6 +157,7 @@
     <section class="secao-relatorio-temporada" id="secao-relatorio-temporada" hidden>
       <h3 id="titulo-relatorio-temporada">Fim de temporada</h3>
       <p class="linha-relatorio" id="texto-relatorio-acesso"></p>
+      <p class="linha-relatorio" id="texto-relatorio-meta" hidden></p>
       <ul class="lista lista-evolucao" id="lista-relatorio-evolucao"></ul>
       <section class="secao-relatorio-saidas-graca" id="secao-relatorio-saidas-graca" hidden>
         <h4>Saíram de graça (contrato venceu)</h4>
@@ -202,6 +203,14 @@
       <span class="rotulo-caixa-financas">Caixa atual</span>
       <span class="valor-caixa-financas" id="financas-caixa-atual">R$ 0mi</span>
     </div>
+
+    <section class="secao-diretoria-financas" id="secao-diretoria-financas" hidden>
+      <h3>🏛 Diretoria</h3>
+      <p class="diretoria-meta-descricao" id="diretoria-meta-descricao"></p>
+      <p class="rotulo-resumo-financas">Orçamento de contratações</p>
+      <p class="valor-resumo-financas" id="diretoria-orcamento">R$ 0mi usados de R$ 0mi</p>
+      <p class="diretoria-aviso-caixa" id="diretoria-aviso-caixa" hidden></p>
+    </section>
 
     <div class="grade-resumo-financas">
       <div class="campo-resumo-financas">
@@ -269,6 +278,7 @@
     </header>
 
     <p class="aviso-janela-mercado" id="aviso-janela-mercado"></p>
+    <p class="aviso-orcamento-mercado" id="aviso-orcamento-mercado" hidden></p>
 
     <section class="secao-propostas-recebidas" id="secao-propostas-recebidas" hidden>
       <h3>Propostas recebidas pelo seu elenco</h3>

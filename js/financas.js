@@ -95,6 +95,21 @@ const CONFIG_FINANCEIRO = {
   // A oferta da IA varia em torno do preço "de mercado" do próprio jogador (mesma fórmula da Fase 12).
   fatorOfertaEspontaneaMinimo: 0.85,
   fatorOfertaEspontaneaMaximo: 1.15,
+
+  // --- Diretoria: metas, orçamento e consequências de caixa negativo (Fase 14) ---
+
+  // Orçamento de contratações = fatia do "porte" do clube (o mesmo caixaInicialClube usado nos custos fixos).
+  fatorOrcamentoContratacoesSobreCaixaInicial: 0.5,
+  fatorAumentoOrcamentoSucesso: 1.25, // meta cumprida: mais orçamento na temporada seguinte
+  fatorCorteOrcamentoFalha: 0.6, // meta falhada: corte de verba
+  limiteFalhasConsecutivasDemissao: 2, // falhar a meta 2 temporadas seguidas = demissão
+
+  // Escala de consequências de caixa negativo (rodadas OFICIAIS seguidas no vermelho).
+  rodadasCaixaNegativoAviso: 1,
+  rodadasCaixaNegativoBloqueio: 3,
+  rodadasCaixaNegativoVendaForcada: 6,
+  rodadasCaixaNegativoDemissao: 10,
+  tamanhoMinimoElencoParaVendaForcada: 14, // abaixo disso a diretoria não força mais vendas (evita esvaziar o time)
 };
 
 function converterEuroParaReal(valorEmMilhoesEuro) {
@@ -343,6 +358,74 @@ function avaliarPropostaTransferencia(jogador, precoPedido, valorProposta, divis
   }
 
   return { status: "aceita" };
+}
+
+/* ============================================================
+   Diretoria: metas, orçamento e caixa negativo (Fase 14)
+   ============================================================ */
+
+/**
+ * Em que fatia do elenco da divisão o clube está (0 = o mais fraco, 1 = o mais
+ * forte), pelo valor total do elenco. Usada pra escolher uma meta que faça
+ * sentido pro tamanho do clube.
+ */
+function calcularPercentilElenco(jogadores, divisaoChave, dados) {
+  const divisao = dados.divisoes[divisaoChave];
+  if (!divisao || divisao.times.length === 0) return 0.5;
+
+  const meuValor = calcularValorElencoEmReais(jogadores);
+  const valores = divisao.times.map(function (t) { return calcularValorElencoEmReais(t.jogadores); });
+  const naoMaiores = valores.filter(function (v) { return v <= meuValor; }).length;
+  return naoMaiores / valores.length;
+}
+
+/** Meta da diretoria pra temporada, conforme o porte do elenco dentro da divisão atual. */
+function definirMetaTemporada(fracaoRankElenco, divisaoChave) {
+  if (divisaoChave === "serie_a") {
+    if (fracaoRankElenco >= 0.8) return { tipo: "g4", descricao: "Buscar uma vaga entre os 4 primeiros (classificação continental)." };
+    if (fracaoRankElenco <= 0.25) return { tipo: "fuga-rebaixamento", descricao: "Escapar do rebaixamento." };
+    return { tipo: "meio-tabela", descricao: "Terminar a temporada entre os 10 primeiros." };
+  }
+  if (fracaoRankElenco >= 0.7) return { tipo: "acesso", descricao: "Conquistar o acesso à Série A." };
+  return { tipo: "consolidar", descricao: "Terminar a temporada na primeira metade da tabela." };
+}
+
+/** Se a meta foi cumprida, a partir do resultado real da temporada que terminou. */
+function avaliarMeta(meta, contexto) {
+  switch (meta.tipo) {
+    case "g4": return contexto.posicaoFinal <= 4;
+    case "fuga-rebaixamento": return !contexto.foiRebaixado;
+    case "meio-tabela": return contexto.posicaoFinal <= 10;
+    case "acesso": return contexto.foiPromovido;
+    case "consolidar": return contexto.posicaoFinal <= Math.ceil(contexto.totalTimes / 2);
+    default: return true;
+  }
+}
+
+function calcularOrcamentoContratacoes(caixaInicialClube) {
+  return Math.round(caixaInicialClube * CONFIG_FINANCEIRO.fatorOrcamentoContratacoesSobreCaixaInicial * 100) / 100;
+}
+
+/** Orçamento de contratações da PRÓXIMA temporada — cresce se a meta anterior foi cumprida, encolhe se não. */
+function calcularOrcamentoProximaTemporada(caixaInicialClube, metaFoiCumprida) {
+  const base = calcularOrcamentoContratacoes(caixaInicialClube);
+  const fator = metaFoiCumprida ? CONFIG_FINANCEIRO.fatorAumentoOrcamentoSucesso : CONFIG_FINANCEIRO.fatorCorteOrcamentoFalha;
+  return Math.round(base * fator * 100) / 100;
+}
+
+/**
+ * Qual a próxima consequência de ficar com o caixa negativo, dado há quantas
+ * rodadas OFICIAIS seguidas isso já vem acontecendo. "ok" = caixa não está
+ * negativo. Cada consequência mais grave dispara só UMA vez (quando o
+ * contador bate exatamente o limiar), não toda rodada depois disso.
+ */
+function avaliarConsequenciaCaixaNegativo(caixaAtual, rodadasConsecutivas) {
+  if (caixaAtual >= 0) return "ok";
+  if (rodadasConsecutivas === CONFIG_FINANCEIRO.rodadasCaixaNegativoDemissao) return "demissao";
+  if (rodadasConsecutivas === CONFIG_FINANCEIRO.rodadasCaixaNegativoVendaForcada) return "venda-forcada";
+  if (rodadasConsecutivas === CONFIG_FINANCEIRO.rodadasCaixaNegativoBloqueio) return "bloqueio";
+  if (rodadasConsecutivas === CONFIG_FINANCEIRO.rodadasCaixaNegativoAviso) return "aviso";
+  return "nenhuma";
 }
 
 /** Projeção simples do caixa no fim da temporada, extrapolando a média de saldo por rodada. */

@@ -98,6 +98,7 @@ const estado = {
   proximoIdMercado: 100000, // contador pra dar _id único a quem chega pelo mercado
   propostasRecebidas: [], // [{ id, idJogador, nomeJogador, nomeTimeComprador, divisaoCompradora, valor }] — Fase 13
   proximoIdProposta: 1,
+  diretoria: null, // { meta, orcamentoContratacoes, orcamentoGasto, falhasConsecutivas, contratacoesBloqueadas } — Fase 14
 };
 
 // Filtros e resultado da busca no Mercado, e proposta em andamento (Fase 12).
@@ -160,6 +161,7 @@ function salvarProgresso() {
     proximoIdMercado: estado.proximoIdMercado,
     propostasRecebidas: estado.propostasRecebidas,
     proximoIdProposta: estado.proximoIdProposta,
+    diretoria: estado.diretoria,
     atualizadoEm: new Date().toISOString(),
   };
   try {
@@ -358,6 +360,7 @@ async function escalarEsteTime(time) {
   estado.proximoIdMercado = 100000;
   estado.propostasRecebidas = [];
   estado.proximoIdProposta = 1;
+  estado.diretoria = { meta: null, orcamentoContratacoes: 0, orcamentoGasto: 0, falhasConsecutivas: 0, contratacoesBloqueadas: false };
 
   await garantirTemporada();
   salvarProgresso();
@@ -1372,7 +1375,10 @@ function evoluirJogador(jogador) {
 
 /** Se ainda não existe uma temporada em andamento, cria a primeira. */
 async function garantirTemporada() {
-  if (estado.temporada) return;
+  if (estado.temporada) {
+    await garantirMetaDaDiretoria();
+    return;
+  }
   const dados = await carregarDados();
   estado.temporada = criarNovaTemporada(dados.divisoes.serie_a.times, dados.divisoes.serie_b.times, 2026);
 
@@ -1381,6 +1387,21 @@ async function garantirTemporada() {
     const totalRodadas = estado.temporada[estado.timeAtual.divisaoChave].calendario.length;
     definirPatrocinioDaTemporada(estado.financas, estado.timeAtual.jogadores, estado.timeAtual.divisaoChave, totalRodadas, 0.5);
   }
+
+  await garantirMetaDaDiretoria(dados);
+}
+
+/**
+ * Garante que existe uma meta da diretoria pra temporada atual (Fase 14) — cobre
+ * tanto uma carreira nova quanto um save de antes da Fase 14 que ainda não tem meta.
+ */
+async function garantirMetaDaDiretoria(dadosJaCarregados) {
+  if (!estado.diretoria || estado.diretoria.meta) return;
+  const dados = dadosJaCarregados || await carregarDados();
+  const fracaoRank = calcularPercentilElenco(estado.timeAtual.jogadores, estado.timeAtual.divisaoChave, dados);
+  estado.diretoria.meta = definirMetaTemporada(fracaoRank, estado.timeAtual.divisaoChave);
+  estado.diretoria.orcamentoContratacoes = calcularOrcamentoContratacoes(estado.financas.caixaInicialClube);
+  estado.diretoria.orcamentoGasto = 0;
 }
 
 function criarNovaTemporada(timesSerieA, timesSerieB, ano) {
@@ -1514,6 +1535,13 @@ async function concluirRodadaOficial() {
     });
   }
 
+  if (verificarSaudeFinanceira()) {
+    // Demitido no meio do caminho — a carreira nesse clube acabou aqui, não tem rodada pra fechar.
+    partidaAtual = null;
+    partidasRodada = [];
+    return;
+  }
+
   await gerarPropostasEspontaneas(divisaoChave, numeroRodada, temporadaDivisao.calendario.length);
 
   const resultados = [
@@ -1547,7 +1575,13 @@ async function concluirRodadaOficial() {
 
   estado.temporada.rodadaAtual++;
   if (estado.temporada.rodadaAtual > temporadaDivisao.calendario.length) {
-    processarFimDeTemporada();
+    await processarFimDeTemporada();
+    if (!estado.timeAtual) {
+      // Demitido por não cumprir a meta — a carreira nesse clube acabou na virada da temporada.
+      partidaAtual = null;
+      partidasRodada = [];
+      return;
+    }
   }
 
   partidaAtual = null;
@@ -1557,7 +1591,7 @@ async function concluirRodadaOficial() {
 }
 
 /** Fim de temporada: aplica acesso/rebaixamento, evolui o elenco e monta o calendário do ano seguinte. */
-function processarFimDeTemporada() {
+async function processarFimDeTemporada() {
   // Captura o desempenho do MEU time na temporada que está terminando, pra
   // calibrar o próximo contrato de patrocínio, antes da tabela ser substituída.
   const divisaoAntiga = estado.timeAtual.divisaoChave;
@@ -1566,6 +1600,27 @@ function processarFimDeTemporada() {
     ? linhaTabelaAntiga.pontos / (linhaTabelaAntiga.jogos * 3) : 0.5;
 
   const resultado = aplicarAcessoRebaixamento(estado.temporada.serie_a.tabela, estado.temporada.serie_b.tabela);
+
+  // Avalia a meta da diretoria da temporada que está terminando (Fase 14), ANTES da
+  // tabela ser substituída pela nova — senão a posição final se perde.
+  let relatorioMeta = null;
+  if (estado.diretoria && estado.diretoria.meta) {
+    const tabelaOrdenada = ordenarTabela(estado.temporada[divisaoAntiga].tabela);
+    const posicaoFinal = tabelaOrdenada.findIndex(function (t) { return t.nome === estado.timeAtual.nome; }) + 1;
+    const contexto = {
+      posicaoFinal: posicaoFinal, totalTimes: tabelaOrdenada.length,
+      foiRebaixado: resultado.rebaixados.indexOf(estado.timeAtual.nome) !== -1,
+      foiPromovido: resultado.promovidos.indexOf(estado.timeAtual.nome) !== -1,
+    };
+    const metaCumprida = avaliarMeta(estado.diretoria.meta, contexto);
+    relatorioMeta = { descricao: estado.diretoria.meta.descricao, cumprida: metaCumprida, posicaoFinal: posicaoFinal };
+    estado.diretoria.falhasConsecutivas = metaCumprida ? 0 : (estado.diretoria.falhasConsecutivas || 0) + 1;
+
+    if (estado.diretoria.falhasConsecutivas >= CONFIG_FINANCEIRO.limiteFalhasConsecutivasDemissao) {
+      aplicarDemissao("a diretoria perdeu a paciência — meta não cumprida " + estado.diretoria.falhasConsecutivas + " temporadas seguidas.");
+      return;
+    }
+  }
 
   // Evolução do MEU elenco: todo mundo fica 1 ano mais velho, a força sobe ou cai.
   const evolucaoResumo = [];
@@ -1612,7 +1667,7 @@ function processarFimDeTemporada() {
     serie_b: montarDivisaoTemporada(resultado.novaSerieB),
     ultimoRelatorio: {
       rebaixados: resultado.rebaixados, promovidos: resultado.promovidos,
-      evolucao: evolucaoResumo, saidasDeGraca: saidasDeGraca,
+      evolucao: evolucaoResumo, saidasDeGraca: saidasDeGraca, meta: relatorioMeta,
     },
   };
 
@@ -1631,6 +1686,16 @@ function processarFimDeTemporada() {
   if (estado.financas) {
     const totalRodadasNovas = estado.temporada[estado.timeAtual.divisaoChave].calendario.length;
     definirPatrocinioDaTemporada(estado.financas, estado.timeAtual.jogadores, estado.timeAtual.divisaoChave, totalRodadasNovas, aproveitamentoAnterior);
+  }
+
+  // Nova meta e novo orçamento de contratações pra temporada que está começando (Fase 14).
+  if (estado.diretoria) {
+    const dados = await carregarDados();
+    const fracaoRank = calcularPercentilElenco(estado.timeAtual.jogadores, estado.timeAtual.divisaoChave, dados);
+    estado.diretoria.meta = definirMetaTemporada(fracaoRank, estado.timeAtual.divisaoChave);
+    estado.diretoria.orcamentoContratacoes =
+      calcularOrcamentoProximaTemporada(estado.financas.caixaInicialClube, relatorioMeta ? relatorioMeta.cumprida : true);
+    estado.diretoria.orcamentoGasto = 0;
   }
 }
 
@@ -1693,6 +1758,7 @@ function renderizarFinancas() {
   projecaoEl.classList.toggle("valor-positivo-financas", projecao >= 0);
 
   renderizarOpcoesPrecoIngresso();
+  renderizarDiretoria();
 
   const moralEl = document.getElementById("financas-moral-torcida");
   if (moralEl) {
@@ -1871,6 +1937,19 @@ function renderizarMercado() {
     : "🔒 Janela de transferências " + infoJanela.textoFechada;
   avisoEl.className = "aviso-janela-mercado" + (infoJanela.aberta ? " janela-aberta" : " janela-fechada");
 
+  const avisoOrcamentoEl = document.getElementById("aviso-orcamento-mercado");
+  if (avisoOrcamentoEl && estado.diretoria) {
+    if (estado.diretoria.contratacoesBloqueadas) {
+      avisoOrcamentoEl.hidden = false;
+      avisoOrcamentoEl.textContent = "🔒 Contratações bloqueadas pela diretoria (caixa negativo).";
+    } else {
+      const gasto = estado.diretoria.orcamentoGasto || 0;
+      const total = estado.diretoria.orcamentoContratacoes || 0;
+      avisoOrcamentoEl.hidden = false;
+      avisoOrcamentoEl.textContent = "💼 Orçamento de contratações: " + formatarReais(gasto) + " usados de " + formatarReais(total);
+    }
+  }
+
   if (secaoFiltrosEl) secaoFiltrosEl.hidden = !infoJanela.aberta;
   listaEl.innerHTML = "";
   if (!infoJanela.aberta || !dadosParaMercado) return;
@@ -1962,6 +2041,17 @@ function enviarPropostaMercado() {
     resultadoEl.className = "proposta-resultado proposta-resultado-negativo";
     return;
   }
+  if (estado.diretoria && estado.diretoria.contratacoesBloqueadas) {
+    resultadoEl.textContent = "A diretoria bloqueou novas contratações — o caixa está negativo há tempo demais.";
+    resultadoEl.className = "proposta-resultado proposta-resultado-negativo";
+    return;
+  }
+  if (estado.diretoria && (estado.diretoria.orcamentoGasto + valorProposta) > estado.diretoria.orcamentoContratacoes) {
+    resultadoEl.textContent = "Isso estoura o orçamento de contratações da diretoria pra esta temporada (" +
+      formatarReais(estado.diretoria.orcamentoContratacoes - estado.diretoria.orcamentoGasto) + " restantes).";
+    resultadoEl.className = "proposta-resultado proposta-resultado-negativo";
+    return;
+  }
 
   const { jogador, nomeTime, divisaoChave, precoPedido } = propostaMercadoAberta;
   const avaliacao = avaliarPropostaTransferencia(jogador, precoPedido, valorProposta, estado.timeAtual.divisaoChave);
@@ -1990,6 +2080,9 @@ function enviarPropostaMercado() {
 /** Fecha a transferência: tira o dinheiro, remove o jogador do clube vendedor e traz pro seu elenco. */
 function concluirTransferencia(jogadorOriginal, nomeTimeVendedor, divisaoVendedora, valorPago) {
   estado.financas.caixa = Math.round((estado.financas.caixa - valorPago) * 100) / 100;
+  if (estado.diretoria) {
+    estado.diretoria.orcamentoGasto = Math.round(((estado.diretoria.orcamentoGasto || 0) + valorPago) * 100) / 100;
+  }
 
   const timeVendedor = buscarTime(dadosParaMercado, divisaoVendedora, nomeTimeVendedor);
   if (timeVendedor) {
@@ -2113,6 +2206,102 @@ function dispensarJogador(idJogador) {
   renderizarContratos();
 }
 
+/* ---------- Diretoria: metas, orçamento e caixa negativo (Fase 14) ---------- */
+
+/**
+ * Checa a saúde do caixa após uma rodada oficial e aplica a consequência
+ * certa (aviso/bloqueio/venda forçada/demissão). Devolve `true` se o técnico
+ * acabou de ser demitido (o resto de `concluirRodadaOficial` deve parar).
+ */
+function verificarSaudeFinanceira() {
+  const financas = estado.financas;
+  if (!financas || !estado.diretoria) return false;
+
+  if (financas.caixa >= 0) {
+    financas.rodadasCaixaNegativoConsecutivas = 0;
+    estado.diretoria.contratacoesBloqueadas = false;
+    return false;
+  }
+
+  financas.rodadasCaixaNegativoConsecutivas = (financas.rodadasCaixaNegativoConsecutivas || 0) + 1;
+  const consequencia = avaliarConsequenciaCaixaNegativo(financas.caixa, financas.rodadasCaixaNegativoConsecutivas);
+
+  if (consequencia === "aviso") {
+    alert("Aviso da diretoria: o caixa está negativo. Equilibre as contas antes que a situação piore.");
+  } else if (consequencia === "bloqueio") {
+    estado.diretoria.contratacoesBloqueadas = true;
+    alert("A diretoria bloqueou novas contratações: o caixa está negativo há tempo demais.");
+  } else if (consequencia === "venda-forcada") {
+    executarVendaForcadaPelaDiretoria();
+  } else if (consequencia === "demissao") {
+    aplicarDemissao("caixa negativo por tempo demais, sem solução à vista.");
+    return true;
+  }
+  return false;
+}
+
+/** A diretoria vende o jogador mais valioso do elenco, sem consultar o técnico, pra tentar equilibrar o caixa. */
+function executarVendaForcadaPelaDiretoria() {
+  if (estado.timeAtual.jogadores.length <= CONFIG_FINANCEIRO.tamanhoMinimoElencoParaVendaForcada) {
+    alert("A diretoria queria vender um jogador pra aliviar o caixa, mas o elenco já está no limite mínimo.");
+    return;
+  }
+
+  const maisValioso = estado.timeAtual.jogadores.slice()
+    .sort(function (a, b) { return calcularValorMercado(b) - calcularValorMercado(a); })[0];
+  const contrato = estado.contratos[maisValioso._id] || criarContratoInicial(maisValioso);
+  const preco = calcularPrecoTransferencia(maisValioso, contrato.anosRestantes, estado.timeAtual.divisaoChave);
+
+  estado.financas.caixa = Math.round((estado.financas.caixa + preco) * 100) / 100;
+  removerJogadorDoElenco(maisValioso._id);
+  alert("A diretoria vendeu " + maisValioso.nome + " por " + formatarReais(preco) + " sem te consultar, pra equilibrar o caixa.");
+}
+
+/** Fim de carreira neste clube: apaga o save e volta pra tela inicial, de onde dá pra começar em outro time. */
+function aplicarDemissao(motivo) {
+  alert("Você foi demitido do " + estado.timeAtual.nome + ". Motivo: " + motivo);
+  localStorage.removeItem(CHAVE_SAVE);
+
+  estado.timeAtual = null;
+  estado.temporada = null;
+  estado.financas = null;
+  estado.contratos = {};
+  estado.jogadoresComprados = [];
+  estado.propostasRecebidas = [];
+  estado.diretoria = null;
+  estado.energiaPorJogador = {};
+  estado.evolucao = {};
+  estado.titulares = {};
+  estado.setas = {};
+  estado.cartoesAmarelos = {};
+  estado.suspensoAte = {};
+
+  mostrarTela("tela-inicio");
+  atualizarBotaoContinuar();
+}
+
+function renderizarDiretoria() {
+  const secaoEl = document.getElementById("secao-diretoria-financas");
+  if (!secaoEl || !estado.diretoria || !estado.diretoria.meta) { if (secaoEl) secaoEl.hidden = true; return; }
+  secaoEl.hidden = false;
+
+  document.getElementById("diretoria-meta-descricao").textContent = estado.diretoria.meta.descricao;
+
+  const orcamentoEl = document.getElementById("diretoria-orcamento");
+  const gasto = estado.diretoria.orcamentoGasto || 0;
+  const total = estado.diretoria.orcamentoContratacoes || 0;
+  orcamentoEl.textContent = formatarReais(gasto) + " usados de " + formatarReais(total);
+  orcamentoEl.classList.toggle("valor-negativo-financas", gasto > total);
+
+  const avisoEl = document.getElementById("diretoria-aviso-caixa");
+  if (estado.diretoria.contratacoesBloqueadas) {
+    avisoEl.hidden = false;
+    avisoEl.textContent = "🔒 Contratações bloqueadas pela diretoria — o caixa está negativo há tempo demais.";
+  } else {
+    avisoEl.hidden = true;
+  }
+}
+
 function abrirTelaTabela() {
   mostrarTela("tela-tabela");
   divisaoTabelaAtual = estado.timeAtual.divisaoChave;
@@ -2154,6 +2343,17 @@ function renderizarRelatorioTemporada() {
     textoAcesso = "Subiram: " + relatorio.promovidos.join(", ") + ". Caíram: " + relatorio.rebaixados.join(", ") + ".";
   }
   document.getElementById("texto-relatorio-acesso").textContent = textoAcesso;
+
+  const textoMetaEl = document.getElementById("texto-relatorio-meta");
+  if (textoMetaEl) {
+    if (relatorio.meta) {
+      textoMetaEl.hidden = false;
+      textoMetaEl.textContent = (relatorio.meta.cumprida ? "✅ Meta cumprida: " : "❌ Meta não cumprida: ") + relatorio.meta.descricao;
+      textoMetaEl.className = "linha-relatorio " + (relatorio.meta.cumprida ? "valor-positivo-financas" : "valor-negativo-financas");
+    } else {
+      textoMetaEl.hidden = true;
+    }
+  }
 
   const listaEl = document.getElementById("lista-relatorio-evolucao");
   listaEl.innerHTML = "";
@@ -2487,6 +2687,11 @@ async function continuarJogoSalvo() {
     }
     if (estado.financas.moralTorcida === undefined) estado.financas.moralTorcida = CONFIG_FINANCEIRO.moralTorcidaInicial;
     if (estado.financas.patrocinioPorRodada === undefined) estado.financas.patrocinioPorRodada = 0;
+    if (estado.financas.rodadasCaixaNegativoConsecutivas === undefined) estado.financas.rodadasCaixaNegativoConsecutivas = 0;
+
+    // Saves de antes da Fase 14 não têm diretoria — cria do zero (a meta é definida em garantirTemporada()).
+    estado.diretoria = registro.diretoria ||
+      { meta: null, orcamentoContratacoes: 0, orcamentoGasto: 0, falhasConsecutivas: 0, contratacoesBloqueadas: false };
 
     // Saves de antes da Fase 11 não têm contratos — cria um pra cada jogador que ainda não tiver.
     estado.contratos = registro.contratos || {};

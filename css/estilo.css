@@ -2134,3 +2134,39 @@ body::before {
   background: rgba(255, 143, 143, 0.1);
   color: #ff8f8f;
 }
+
+/* ============================================================
+   Diretoria — Fase 14
+   ============================================================ */
+
+.secao-diretoria-financas {
+  padding: 12px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.secao-diretoria-financas h3 {
+  font-size: 14px;
+  margin: 0 0 6px;
+}
+
+.diretoria-meta-descricao {
+  font-size: 13px;
+  font-weight: 700;
+  margin: 0 0 8px;
+}
+
+.diretoria-aviso-caixa {
+  font-size: 12px;
+  font-weight: 700;
+  color: #ff8f8f;
+  margin: 8px 0 0;
+}
+
+.aviso-orcamento-mercado {
+  font-size: 12px;
+  text-align: center;
+  color: var(--cinza-texto);
+  margin: -4px 0 0;
+}
