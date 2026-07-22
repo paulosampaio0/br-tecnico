@@ -85,3 +85,52 @@ function buscarTimePorNome(dados, nomeTime) {
 function encontrarJogadorPorId(jogadores, id) {
   return jogadores.find(function (j) { return j._id === id; }) || null;
 }
+
+/* ============================================================
+   Evolução: valor de mercado, salário e estrelas de potencial
+   (Fase 7). São cálculos "puros" — só olham força e idade.
+   ============================================================ */
+
+/**
+ * Quantas estrelinhas (0 a 5) de potencial mostrar. Só pra jovens (23 anos
+ * ou menos): estima até onde a força pode chegar, dado o tempo que ainda
+ * tem pra crescer. É o que dá o "vício" de garimpar joia barata.
+ */
+function calcularEstrelasPotencial(jogador) {
+  if (jogador.idade > 23) return 0;
+
+  const anosDeMargem = Math.max(0, 23 - jogador.idade) + 3;
+  const tetoEstimado = jogador.forca + anosDeMargem * 0.6;
+
+  if (tetoEstimado >= 46) return 5;
+  if (tetoEstimado >= 43) return 4;
+  if (tetoEstimado >= 40) return 3;
+  if (tetoEstimado >= 37) return 2;
+  if (jogador.forca >= 33) return 1;
+  return 0;
+}
+
+/**
+ * Valor de mercado (em milhões de €), calculado a partir de força e idade.
+ * O valor_mi que veio nos dados originais foi só o ponto de partida pra
+ * calibrar a escala — o valor de verdade no jogo é sempre recalculado.
+ */
+function calcularValorMercado(jogador) {
+  const baseForca = Math.pow(Math.max(0, jogador.forca - 28), 2.1) * 0.045;
+
+  let fatorIdade;
+  if (jogador.idade <= 20) fatorIdade = 0.85;
+  else if (jogador.idade <= 23) fatorIdade = 1.0;
+  else if (jogador.idade <= 29) fatorIdade = 1.15;
+  else if (jogador.idade <= 32) fatorIdade = 0.85;
+  else if (jogador.idade <= 35) fatorIdade = 0.55;
+  else fatorIdade = 0.3;
+
+  return Math.max(0.05, Math.round(baseForca * fatorIdade * 100) / 100);
+}
+
+/** Salário mensal estimado (em milhões de €), a partir do valor de mercado. */
+function calcularSalarioMensal(jogador) {
+  const valor = calcularValorMercado(jogador);
+  return Math.max(0.003, Math.round(valor * 0.018 * 1000) / 1000);
+}

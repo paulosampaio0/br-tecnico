@@ -378,6 +378,40 @@ body::before {
 }
 
 /* ============================================================
+   Evolução — estrelas de potencial e energia (Fase 7)
+   ============================================================ */
+
+.estrelas-potencial {
+  color: var(--amarelo);
+  font-size: 10px;
+  letter-spacing: -1px;
+}
+
+.item-jogador .energia {
+  flex-shrink: 0;
+  text-align: center;
+  min-width: 40px;
+}
+
+.item-jogador .energia .valor {
+  font-size: 14px;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.item-jogador .energia .rotulo {
+  display: block;
+  font-size: 8px;
+  color: var(--cinza-texto);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.item-jogador .energia-alta .valor { color: #7ee0a5; }
+.item-jogador .energia-media .valor { color: #ffb85c; }
+.item-jogador .energia-baixa .valor { color: #ff8f8f; }
+
+/* ============================================================
    Tela de Escalação e Tática — Fase 2
    ============================================================ */
 
@@ -1130,3 +1164,42 @@ body::before {
   flex-direction: column;
   gap: 6px;
 }
+
+/* Relatório de fim de temporada (acesso/rebaixamento + evolução) — Fase 7 */
+.secao-relatorio-temporada {
+  padding: 12px;
+  border-radius: 12px;
+  background: rgba(255, 210, 63, 0.1);
+  border: 1px solid rgba(255, 210, 63, 0.35);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.secao-relatorio-temporada h3 {
+  font-size: 14px;
+  font-weight: 800;
+  color: var(--amarelo);
+}
+
+.linha-relatorio {
+  font-size: 12px;
+  color: var(--branco);
+  line-height: 1.4;
+}
+
+.lista-evolucao {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 140px;
+  overflow-y: auto;
+}
+
+.item-evolucao {
+  font-size: 12px;
+  padding: 4px 0;
+}
+
+.item-evolucao .sobe { color: #7ee0a5; font-weight: 700; }
+.item-evolucao .desce { color: #ff8f8f; font-weight: 700; }

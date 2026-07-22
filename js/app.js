@@ -1,10 +1,11 @@
 /* ============================================================
-   BR Técnico — app.js (Fase 6)
-   Objetivo desta fase: escalar, tática, setas, simular partidas
-   (amistoso ou rodada oficial) com rodada paralela, e a temporada
-   completa — calendário de 38 rodadas (ida e volta), tabela de
-   classificação e acesso/rebaixamento entre Série A e B. Tudo
-   salvo no celular.
+   BR Técnico — app.js (Fase 7)
+   Escalação, tática, setas, partidas (amistoso/rodada oficial),
+   rodada paralela e temporada completa (calendário, tabela,
+   acesso/rebaixamento). Fase 7 acrescenta evolução: energia que
+   cai jogando e recupera no banco, força que sobe ou cai com a
+   idade a cada temporada, valor/salário calculados e estrelas de
+   potencial pros jovens promissores. Tudo salvo no celular.
    ============================================================ */
 
 "use strict";
@@ -79,6 +80,8 @@ const estado = {
   tatica: taticaPadrao(),
   setas: {}, // { idDaVaga: ["frente", "meio", ...] } — no máximo 2 chaves por vaga
   temporada: null, // { ano, rodadaAtual, serie_a: {...}, serie_b: {...} }
+  energiaPorJogador: {}, // { _id: 0 a 100 } — só do MEU elenco (Fase 7)
+  evolucao: {}, // { _id: { forca, idade } } — os ajustes que ficam de temporada em temporada
 };
 
 /* ---------- Salvamento local ---------- */
@@ -121,6 +124,8 @@ function salvarProgresso() {
     tatica: estado.tatica,
     setas: estado.setas,
     temporada: estado.temporada,
+    energiaPorJogador: estado.energiaPorJogador,
+    evolucao: estado.evolucao,
     atualizadoEm: new Date().toISOString(),
   };
   try {
@@ -239,27 +244,47 @@ function abrirTelaElenco(time) {
   const listaEl = document.getElementById("lista-jogadores");
   listaEl.innerHTML = "";
 
+  // Só mostra energia quando esse elenco é o time que eu de fato treino.
+  const souGerente = !!(estado.timeAtual && estado.timeAtual.nome === time.nome);
+
   ordenarElenco(time.jogadores).forEach(function (jogador) {
-    listaEl.appendChild(criarItemJogador(jogador));
+    listaEl.appendChild(criarItemJogador(jogador, souGerente));
   });
 }
 
 /** Cria o <li> de exibição de um jogador (reaproveitado na lista e no banco). */
-function criarItemJogador(jogador) {
+function criarItemJogador(jogador, mostrarEnergia) {
   const item = document.createElement("li");
   item.className = "item-jogador";
+
+  const estrelas = calcularEstrelasPotencial(jogador);
+  const prefixoEstrelas = estrelas > 0 ? "<span class=\"estrelas-potencial\" title=\"Potencial de crescimento\">" + "★".repeat(estrelas) + "</span> " : "";
+  const valorMercado = calcularValorMercado(jogador);
+
+  let blocoEnergia = "";
+  if (mostrarEnergia) {
+    const energia = obterEnergiaJogador(jogador._id);
+    const nivelEnergia = energia >= 70 ? "alta" : energia >= 40 ? "media" : "baixa";
+    blocoEnergia =
+      "<span class=\"energia energia-" + nivelEnergia + "\">" +
+        "<span class=\"valor\">" + energia + "%</span>" +
+        "<span class=\"rotulo\">energia</span>" +
+      "</span>";
+  }
+
   item.innerHTML =
     "<span class=\"pos\">" + escaparHtml(jogador.pos) + "</span>" +
     "<span class=\"info\">" +
-      "<span class=\"nome\">" + escaparHtml(jogador.nome) + "</span>" +
+      "<span class=\"nome\">" + prefixoEstrelas + escaparHtml(jogador.nome) + "</span>" +
       "<span class=\"detalhes\">" +
         jogador.idade + " anos · " + escaparHtml(jogador.nac) + " · " +
-        escaparHtml(jogador.caracteristica_1) + "</span>" +
+        escaparHtml(jogador.caracteristica_1) + " · €" + valorMercado + "mi</span>" +
     "</span>" +
     "<span class=\"forca\">" +
       "<span class=\"valor\">" + jogador.forca + "</span>" +
       "<span class=\"rotulo\">força</span>" +
-    "</span>";
+    "</span>" +
+    blocoEnergia;
   return item;
 }
 
@@ -280,6 +305,8 @@ async function escalarEsteTime(time) {
   estado.tatica = taticaPadrao();
   estado.setas = {};
   estado.temporada = null; // time novo começa uma temporada nova
+  estado.energiaPorJogador = {}; // todo mundo começa com 100% de energia
+  estado.evolucao = {};
 
   await garantirTemporada();
   salvarProgresso();
@@ -603,7 +630,7 @@ function renderizarBanco() {
   }
 
   reservas.forEach(function (jogador) {
-    listaEl.appendChild(criarItemJogador(jogador));
+    listaEl.appendChild(criarItemJogador(jogador, true));
   });
 }
 
@@ -689,7 +716,21 @@ function montarRodadaParalela(divisao, nomeMeuTime, nomeOponente) {
 /** Calcula a força do MEU time a partir do estado atual (formação, escalação, tática, setas). */
 function calcularTimeSimuladoUsuario() {
   const titulares = resolverTitulares(estado.timeAtual.jogadores, estado.formacaoId, estado.titulares);
-  return criarTimeSimulado(estado.timeAtual.nome, titulares, estado.tatica, estado.setas);
+
+  // A energia baixa (cansaço) reduz um pouco a força efetiva em campo.
+  const titularesComFadiga = titulares.map(function (item) {
+    const energia = obterEnergiaJogador(item.jogador._id);
+    const fatorFadiga = 0.85 + 0.15 * (energia / 100);
+    const jogadorAjustado = Object.assign({}, item.jogador, { forca: item.jogador.forca * fatorFadiga });
+    return { vaga: item.vaga, jogador: jogadorAjustado };
+  });
+
+  return criarTimeSimulado(estado.timeAtual.nome, titularesComFadiga, estado.tatica, estado.setas);
+}
+
+/** Energia atual de um jogador do MEU elenco (100 se ainda não foi registrada). */
+function obterEnergiaJogador(idJogador) {
+  return estado.energiaPorJogador[idJogador] !== undefined ? estado.energiaPorJogador[idJogador] : 100;
 }
 
 /**
@@ -865,6 +906,65 @@ function renderizarControlesPartida() {
   }
 }
 
+/* ---------- Evolução, energia e desgaste (Fase 7) ---------- */
+
+/** Aplica por cima do elenco "de fábrica" os ajustes de força/idade acumulados. */
+function aplicarEvolucaoNoElenco(jogadoresBase, overrides) {
+  if (!overrides || Object.keys(overrides).length === 0) return jogadoresBase;
+  return jogadoresBase.map(function (jogador) {
+    const ajuste = overrides[jogador._id];
+    return ajuste ? Object.assign({}, jogador, ajuste) : jogador;
+  });
+}
+
+/**
+ * Depois de uma partida (amistoso ou rodada oficial), quem jogou perde
+ * energia — mais se for veterano ou tiver setas ativas, menos se tiver a
+ * característica Resistência. Quem ficou no banco recupera energia.
+ */
+function aplicarDesgastePosPartida() {
+  if (!estado.timeAtual) return;
+
+  const vagaPorJogador = {};
+  Object.keys(estado.titulares).forEach(function (vagaId) {
+    vagaPorJogador[estado.titulares[vagaId]] = vagaId;
+  });
+  const idsTitulares = new Set(Object.values(estado.titulares));
+
+  estado.timeAtual.jogadores.forEach(function (jogador) {
+    const atual = obterEnergiaJogador(jogador._id);
+
+    if (idsTitulares.has(jogador._id)) {
+      let perda = 12;
+      if (jogador.idade >= 30) perda += 4;
+      const temResistencia = jogador.caracteristica_1 === "Resistência" || jogador.caracteristica_2 === "Resistência";
+      if (temResistencia) perda -= 5;
+      const qtdSetas = (estado.setas[vagaPorJogador[jogador._id]] || []).length;
+      perda += qtdSetas * 3;
+      estado.energiaPorJogador[jogador._id] = Math.max(10, Math.round(atual - perda));
+    } else {
+      estado.energiaPorJogador[jogador._id] = Math.min(100, Math.round(atual + 18));
+    }
+  });
+}
+
+/**
+ * Evolução de fim de temporada: jovens tendem a crescer, veteranos a cair.
+ * Devolve { forca, idade } — o novo estado do jogador pro ano seguinte.
+ */
+function evoluirJogador(jogador) {
+  const idade = jogador.idade;
+  let delta;
+  if (idade <= 20) delta = 1 + Math.random() * 1.5;
+  else if (idade <= 23) delta = 0.5 + Math.random() * 1.2;
+  else if (idade <= 29) delta = (Math.random() - 0.3) * 1;
+  else if (idade <= 32) delta = -(0.5 + Math.random() * 1);
+  else delta = -(1.5 + Math.random() * 2);
+
+  const novaForca = Math.max(28, Math.min(48, Math.round(jogador.forca + delta)));
+  return { forca: novaForca, idade: idade + 1 };
+}
+
 /* ---------- Temporada (Fase 6) ---------- */
 
 /** Se ainda não existe uma temporada em andamento, cria a primeira. */
@@ -973,6 +1073,8 @@ async function iniciarRodadaOficial() {
 
 /** Chamado ao fim de uma rodada oficial: fecha os resultados na tabela e avança a temporada. */
 async function concluirRodadaOficial() {
+  aplicarDesgastePosPartida();
+
   const divisaoChave = estado.timeAtual.divisaoChave;
   const temporadaDivisao = estado.temporada[divisaoChave];
   const numeroRodada = partidaAtual.numeroRodadaOficial;
@@ -1017,16 +1119,27 @@ async function concluirRodadaOficial() {
   abrirTelaTabela();
 }
 
-/** Fim de temporada: aplica acesso/rebaixamento e monta o calendário do ano seguinte. */
+/** Fim de temporada: aplica acesso/rebaixamento, evolui o elenco e monta o calendário do ano seguinte. */
 function processarFimDeTemporada() {
   const resultado = aplicarAcessoRebaixamento(estado.temporada.serie_a.tabela, estado.temporada.serie_b.tabela);
+
+  // Evolução do MEU elenco: todo mundo fica 1 ano mais velho, a força sobe ou cai.
+  const evolucaoResumo = [];
+  estado.timeAtual.jogadores = estado.timeAtual.jogadores.map(function (jogador) {
+    const ajuste = evoluirJogador(jogador);
+    estado.evolucao[jogador._id] = ajuste;
+    if (ajuste.forca !== jogador.forca) {
+      evolucaoResumo.push({ nome: jogador.nome, de: jogador.forca, para: ajuste.forca });
+    }
+    return Object.assign({}, jogador, ajuste);
+  });
 
   estado.temporada = {
     ano: estado.temporada.ano + 1,
     rodadaAtual: 1,
     serie_a: montarDivisaoTemporada(resultado.novaSerieA),
     serie_b: montarDivisaoTemporada(resultado.novaSerieB),
-    ultimoRelatorio: { rebaixados: resultado.rebaixados, promovidos: resultado.promovidos },
+    ultimoRelatorio: { rebaixados: resultado.rebaixados, promovidos: resultado.promovidos, evolucao: evolucaoResumo },
   };
 
   // Se o MEU time subiu ou desceu, atualiza em que divisão ele está agora.
@@ -1044,9 +1157,57 @@ function abrirTelaTabela() {
   divisaoTabelaAtual = estado.timeAtual.divisaoChave;
   rodadaResultadosExibida = Math.max(1, estado.temporada.rodadaAtual - 1);
 
+  renderizarRelatorioTemporada();
   montarAbasTabela();
   renderizarTabelaClassificacao();
   renderizarResultadosRodada();
+}
+
+/**
+ * Logo no início de uma temporada nova (rodada 1), mostra um resumo do
+ * que aconteceu no fim da anterior: quem subiu/desceu e como o MEU
+ * elenco evoluiu (força subindo ou caindo com a idade).
+ */
+function renderizarRelatorioTemporada() {
+  const secao = document.getElementById("secao-relatorio-temporada");
+  const relatorio = estado.temporada.ultimoRelatorio;
+
+  if (estado.temporada.rodadaAtual !== 1 || !relatorio) {
+    secao.hidden = true;
+    return;
+  }
+  secao.hidden = false;
+
+  document.getElementById("titulo-relatorio-temporada").textContent =
+    "Fim da temporada " + (estado.temporada.ano - 1);
+
+  const meuNome = estado.timeAtual.nome;
+  let textoAcesso;
+  if (relatorio.promovidos.indexOf(meuNome) !== -1) {
+    textoAcesso = "🎉 Você subiu de divisão! " + relatorio.rebaixados.join(", ") + " caíram; " +
+      relatorio.promovidos.filter(function (n) { return n !== meuNome; }).join(", ") + " também subiram com você.";
+  } else if (relatorio.rebaixados.indexOf(meuNome) !== -1) {
+    textoAcesso = "😔 Você caiu de divisão. " + relatorio.promovidos.join(", ") + " subiram; " +
+      relatorio.rebaixados.filter(function (n) { return n !== meuNome; }).join(", ") + " também caíram junto.";
+  } else {
+    textoAcesso = "Subiram: " + relatorio.promovidos.join(", ") + ". Caíram: " + relatorio.rebaixados.join(", ") + ".";
+  }
+  document.getElementById("texto-relatorio-acesso").textContent = textoAcesso;
+
+  const listaEl = document.getElementById("lista-relatorio-evolucao");
+  listaEl.innerHTML = "";
+  relatorio.evolucao
+    .slice()
+    .sort(function (a, b) { return (b.para - b.de) - (a.para - a.de); })
+    .forEach(function (item) {
+      const subiu = item.para > item.de;
+      const li = document.createElement("li");
+      li.className = "item-evolucao";
+      li.innerHTML =
+        escaparHtml(item.nome) + ": " + item.de + " → " +
+        "<span class=\"" + (subiu ? "sobe" : "desce") + "\">" + item.para + "</span>";
+      listaEl.appendChild(li);
+    });
 }
 
 function montarAbasTabela() {
@@ -1182,7 +1343,7 @@ function criarSeparador(texto) {
 }
 
 function criarItemSeletor(jogador) {
-  const item = criarItemJogador(jogador);
+  const item = criarItemJogador(jogador, true);
   item.classList.add("selecionavel");
 
   // Mostra em que vaga esse jogador já está escalado, se for o caso.
@@ -1254,6 +1415,12 @@ async function continuarJogoSalvo() {
     estado.tatica = registro.tatica || taticaPadrao();
     estado.setas = registro.setas || {};
     estado.temporada = registro.temporada || null;
+    estado.energiaPorJogador = registro.energiaPorJogador || {};
+    estado.evolucao = registro.evolucao || {};
+
+    // Reaplica a evolução de força/idade acumulada de temporadas passadas
+    // por cima do elenco "de fábrica" que acabou de vir do arquivo de dados.
+    estado.timeAtual.jogadores = aplicarEvolucaoNoElenco(estado.timeAtual.jogadores, estado.evolucao);
 
     if (estado.temporada) {
       // A divisão de verdade é a da temporada carregada, não o valor solto salvo antes.
@@ -1361,8 +1528,10 @@ function ligarBotoes() {
         concluirRodadaOficial();
         return;
       }
+      aplicarDesgastePosPartida();
       partidaAtual = null;
       partidasRodada = [];
+      salvarProgresso();
       abrirTelaEscalacao();
     });
   }
@@ -1379,7 +1548,7 @@ function ligarBotoes() {
 }
 
 document.addEventListener("DOMContentLoaded", function () {
-  console.log("BR Técnico — Fase 6 carregada.");
+  console.log("BR Técnico — Fase 7 carregada.");
   mostrarStatusSalvamento();
   atualizarBotaoContinuar();
   ligarBotoes();
