@@ -96,6 +96,8 @@ const estado = {
   contratos: {}, // { _id: { anosRestantes, multiplicadorSalario } } — ver js/financas.js (Fase 11)
   jogadoresComprados: [], // jogadores trazidos do mercado (Fase 12) — não vêm do arquivo de dados
   proximoIdMercado: 100000, // contador pra dar _id único a quem chega pelo mercado
+  propostasRecebidas: [], // [{ id, idJogador, nomeJogador, nomeTimeComprador, divisaoCompradora, valor }] — Fase 13
+  proximoIdProposta: 1,
 };
 
 // Filtros e resultado da busca no Mercado, e proposta em andamento (Fase 12).
@@ -156,6 +158,8 @@ function salvarProgresso() {
     // então precisam ser salvos por inteiro pra sobreviver a um recarregamento.
     jogadoresComprados: estado.jogadoresComprados,
     proximoIdMercado: estado.proximoIdMercado,
+    propostasRecebidas: estado.propostasRecebidas,
+    proximoIdProposta: estado.proximoIdProposta,
     atualizadoEm: new Date().toISOString(),
   };
   try {
@@ -352,6 +356,8 @@ async function escalarEsteTime(time) {
   });
   estado.jogadoresComprados = [];
   estado.proximoIdMercado = 100000;
+  estado.propostasRecebidas = [];
+  estado.proximoIdProposta = 1;
 
   await garantirTemporada();
   salvarProgresso();
@@ -1508,6 +1514,8 @@ async function concluirRodadaOficial() {
     });
   }
 
+  await gerarPropostasEspontaneas(divisaoChave, numeroRodada, temporadaDivisao.calendario.length);
+
   const resultados = [
     { casa: timeCasaSimulado.nome, fora: timeForaSimulado.nome, golsCasa: partidaAtual.placarCasa, golsFora: partidaAtual.placarFora },
   ];
@@ -1781,10 +1789,14 @@ function renderizarContratos() {
           (vencendo ? "⚠ " : "") + contrato.anosRestantes + (contrato.anosRestantes === 1 ? " ano restante" : " anos restantes") +
         "</span>" +
       "</span>" +
-      "<button class=\"btn-renovar-contrato\" type=\"button\">Renovar</button>";
+      "<button class=\"btn-renovar-contrato\" type=\"button\">Renovar</button>" +
+      "<button class=\"btn-renovar-contrato btn-dispensar-contrato\" type=\"button\">Dispensar</button>";
 
-    li.querySelector(".btn-renovar-contrato").addEventListener("click", function () {
+    li.querySelector(".btn-renovar-contrato:not(.btn-dispensar-contrato)").addEventListener("click", function () {
       renovarContrato(jogador._id);
+    });
+    li.querySelector(".btn-dispensar-contrato").addEventListener("click", function () {
+      dispensarJogador(jogador._id);
     });
     listaEl.appendChild(li);
   });
@@ -1818,6 +1830,7 @@ async function abrirTelaMercado() {
   dadosParaMercado = await carregarDados();
   popularFiltroPosicaoMercado();
   renderizarMercado();
+  renderizarPropostasRecebidas();
 }
 
 function popularFiltroPosicaoMercado() {
@@ -1992,6 +2005,112 @@ function concluirTransferencia(jogadorOriginal, nomeTimeVendedor, divisaoVendedo
   estado.energiaPorJogador[novoId] = 100;
 
   salvarProgresso();
+}
+
+/* ---------- Tela: mercado, vender — propostas espontâneas e dispensa (Fase 13) ---------- */
+
+/** Tira um jogador do elenco de vez (dispensa, venda aceita) — limpa titular/setas/energia/contrato junto. */
+function removerJogadorDoElenco(idJogador) {
+  estado.timeAtual.jogadores = estado.timeAtual.jogadores.filter(function (j) { return j._id !== idJogador; });
+  delete estado.contratos[idJogador];
+  delete estado.energiaPorJogador[idJogador];
+  Object.keys(estado.titulares).forEach(function (vagaId) {
+    if (estado.titulares[vagaId] === idJogador) {
+      delete estado.titulares[vagaId];
+      delete estado.setas[vagaId];
+    }
+  });
+}
+
+/** Só na janela aberta: sorteia se ALGUM jogador do elenco recebe uma proposta espontânea da IA. */
+async function gerarPropostasEspontaneas(divisaoChave, numeroRodada, totalRodadas) {
+  if (!estado.timeAtual || !janelaDeMercadoAberta(numeroRodada, totalRodadas)) return;
+  if (estado.propostasRecebidas.length >= CONFIG_FINANCEIRO.qtdMaximaPropostasPendentes) return;
+
+  const idsComPropostaPendente = new Set(estado.propostasRecebidas.map(function (p) { return p.idJogador; }));
+  const candidatos = estado.timeAtual.jogadores.filter(function (j) { return !idsComPropostaPendente.has(j._id); });
+  if (candidatos.length === 0) return;
+
+  // Só UM jogador por rodada, sorteado entre os elegíveis, pra não virar spam de propostas.
+  const embaralhados = candidatos.slice().sort(function () { return Math.random() - 0.5; });
+  const alvo = embaralhados.find(function () { return Math.random() < CONFIG_FINANCEIRO.chanceOfertaEspontaneaPorJogador; });
+  if (!alvo) return;
+
+  const dados = await carregarDados();
+  const possiveisCompradores = listarDivisoes(dados).reduce(function (nomes, divisao) {
+    divisao.times.forEach(function (t) { if (t.nome !== estado.timeAtual.nome) nomes.push(t.nome); });
+    return nomes;
+  }, []);
+  const nomeComprador = possiveisCompradores[Math.floor(Math.random() * possiveisCompradores.length)];
+
+  const contrato = estado.contratos[alvo._id] || criarContratoInicial(alvo);
+  const precoBase = calcularPrecoTransferencia(alvo, contrato.anosRestantes, divisaoChave);
+  const fator = CONFIG_FINANCEIRO.fatorOfertaEspontaneaMinimo +
+    Math.random() * (CONFIG_FINANCEIRO.fatorOfertaEspontaneaMaximo - CONFIG_FINANCEIRO.fatorOfertaEspontaneaMinimo);
+  const valor = Math.round(precoBase * fator * 100) / 100;
+
+  estado.propostasRecebidas.push({
+    id: estado.proximoIdProposta++, idJogador: alvo._id, nomeJogador: alvo.nome,
+    nomeTimeComprador: nomeComprador, divisaoCompradora: divisaoChave, valor: valor,
+  });
+}
+
+function renderizarPropostasRecebidas() {
+  const listaEl = document.getElementById("lista-propostas-recebidas");
+  const secaoEl = document.getElementById("secao-propostas-recebidas");
+  if (!listaEl || !secaoEl || !estado.timeAtual) return;
+
+  secaoEl.hidden = estado.propostasRecebidas.length === 0;
+  listaEl.innerHTML = "";
+
+  estado.propostasRecebidas.forEach(function (proposta) {
+    const li = document.createElement("li");
+    li.className = "item-contrato";
+    li.innerHTML =
+      "<span class=\"info-contrato\">" +
+        "<span class=\"nome-contrato\">" + escaparHtml(proposta.nomeJogador) + "</span>" +
+        "<span class=\"detalhes-contrato\">" + escaparHtml(proposta.nomeTimeComprador) + " oferece " + formatarReais(proposta.valor) + "</span>" +
+      "</span>" +
+      "<button class=\"btn-renovar-contrato btn-aceitar-proposta\" type=\"button\">Aceitar</button>" +
+      "<button class=\"btn-renovar-contrato btn-recusar-proposta\" type=\"button\">Recusar</button>";
+
+    li.querySelector(".btn-aceitar-proposta").addEventListener("click", function () { aceitarPropostaEspontanea(proposta.id); });
+    li.querySelector(".btn-recusar-proposta").addEventListener("click", function () { recusarPropostaEspontanea(proposta.id); });
+    listaEl.appendChild(li);
+  });
+}
+
+function aceitarPropostaEspontanea(idProposta) {
+  const proposta = estado.propostasRecebidas.find(function (p) { return p.id === idProposta; });
+  if (!proposta) return;
+  if (!window.confirm("Vender " + proposta.nomeJogador + " para " + proposta.nomeTimeComprador + " por " + formatarReais(proposta.valor) + "?")) return;
+
+  estado.financas.caixa = Math.round((estado.financas.caixa + proposta.valor) * 100) / 100;
+  removerJogadorDoElenco(proposta.idJogador);
+  estado.propostasRecebidas = estado.propostasRecebidas.filter(function (p) { return p.id !== idProposta; });
+
+  salvarProgresso();
+  renderizarPropostasRecebidas();
+  renderizarContratos();
+}
+
+function recusarPropostaEspontanea(idProposta) {
+  estado.propostasRecebidas = estado.propostasRecebidas.filter(function (p) { return p.id !== idProposta; });
+  salvarProgresso();
+  renderizarPropostasRecebidas();
+}
+
+/** Lista de dispensa: manda o jogador embora na hora, sem indenização, aliviando a folha salarial. */
+function dispensarJogador(idJogador) {
+  const jogador = encontrarJogadorPorId(estado.timeAtual.jogadores, idJogador);
+  if (!jogador) return;
+  if (!window.confirm(
+    "Dispensar " + jogador.nome + "? Ele sai sem indenização — mas a folha salarial fica mais leve a partir da próxima rodada."
+  )) return;
+
+  removerJogadorDoElenco(idJogador);
+  salvarProgresso();
+  renderizarContratos();
 }
 
 function abrirTelaTabela() {
@@ -2342,6 +2461,12 @@ async function continuarJogoSalvo() {
       });
       jogadoresDoSave = jogadoresDoSave.concat(compradosAindaNoElenco);
     }
+
+    // Propostas espontâneas de compra dos seus jogadores (Fase 13), ainda pendentes de resposta.
+    estado.propostasRecebidas = (registro.propostasRecebidas || []).filter(function (proposta) {
+      return jogadoresDoSave.some(function (j) { return j._id === proposta.idJogador; });
+    });
+    estado.proximoIdProposta = registro.proximoIdProposta || 1;
 
     estado.timeAtual = { divisaoChave: registro.divisao, nome: time.nome, jogadores: jogadoresDoSave };
     estado.formacaoId = registro.formacaoId || "4-4-2";

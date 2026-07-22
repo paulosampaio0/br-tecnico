@@ -2105,3 +2105,32 @@ body::before {
 .proposta-resultado-positivo { color: #3ddc7a; }
 .proposta-resultado-negativo { color: #ff8f8f; }
 .proposta-resultado-neutro { color: var(--amarelo); }
+
+/* Fase 13 — propostas espontâneas e dispensa */
+
+.item-contrato {
+  flex-wrap: wrap;
+}
+
+.secao-propostas-recebidas h3 {
+  font-size: 14px;
+  margin: 0 0 8px;
+}
+
+.btn-dispensar-contrato {
+  border-color: #ff8f8f;
+  background: rgba(255, 143, 143, 0.1);
+  color: #ff8f8f;
+}
+
+.btn-aceitar-proposta {
+  border-color: #3ddc7a;
+  background: rgba(61, 220, 122, 0.1);
+  color: #3ddc7a;
+}
+
+.btn-recusar-proposta {
+  border-color: #ff8f8f;
+  background: rgba(255, 143, 143, 0.1);
+  color: #ff8f8f;
+}

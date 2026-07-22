@@ -86,6 +86,15 @@ const CONFIG_FINANCEIRO = {
 
   // O jogador (não o clube) pode recusar ir pra um clube pequeno demais pra ele.
   forcaMinimaJogadorExigente: 42,
+
+  // --- Mercado de transferências (Fase 13 — vender) ---
+
+  // Chance de UM jogador do elenco receber uma proposta espontânea da IA, por rodada oficial.
+  chanceOfertaEspontaneaPorJogador: 0.05,
+  qtdMaximaPropostasPendentes: 3,
+  // A oferta da IA varia em torno do preço "de mercado" do próprio jogador (mesma fórmula da Fase 12).
+  fatorOfertaEspontaneaMinimo: 0.85,
+  fatorOfertaEspontaneaMaximo: 1.15,
 };
 
 function converterEuroParaReal(valorEmMilhoesEuro) {
