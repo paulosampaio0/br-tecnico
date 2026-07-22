@@ -175,6 +175,8 @@ function mostrarTela(idTela) {
   document.querySelectorAll(".tela").forEach(function (tela) {
     tela.hidden = tela.id !== idTela;
   });
+  // O Radar Tático é uma folha fixa por cima de tudo — some ao trocar de tela.
+  if (idTela !== "tela-escalacao" && typeof fecharRadarTatico === "function") fecharRadarTatico();
 }
 
 /* ---------- Tela: escolher time ---------- */
@@ -384,6 +386,7 @@ function trocarFormacao(novaFormacaoId) {
   renderizarCampo();
   renderizarResumoSetas();
   renderizarBanco();
+  if (typeof atualizarRadarTaticoSeAberto === "function") atualizarRadarTaticoSeAberto();
 }
 
 function renderizarCampo() {
@@ -424,8 +427,18 @@ function renderizarCampo() {
       anexarArrastoSeta(botao, vaga, jogador);
     }
 
+    // Radar Tático: toque longo (500ms) em qualquer jogador preenchido, inclusive o goleiro.
+    if (jogador && typeof anexarLongPressRadar === "function") {
+      anexarLongPressRadar(botao, vaga, jogador);
+    }
+
     campoEl.appendChild(botao);
   });
+
+  // O campo foi redesenhado do zero — reaplica o destaque do Radar Tático, se algum jogador estiver selecionado.
+  if (typeof radarAberto !== "undefined" && radarAberto && typeof destacarVagaRadar === "function") {
+    destacarVagaRadar(radarAberto.vagaId);
+  }
 }
 
 /** Barrinha de energia embaixo da bolinha, pra ver o cansaço direto no campo (ex.: ao "mexer no time"). */
@@ -593,6 +606,7 @@ function alternarSeta(vagaId, chave) {
   salvarProgresso();
   renderizarCampo();
   renderizarResumoSetas();
+  if (typeof atualizarRadarTaticoSeAberto === "function") atualizarRadarTaticoSeAberto();
 }
 
 /** Lista, em texto simples, o efeito de cada seta ativa — os bônus e as contrapartidas. */
@@ -717,6 +731,7 @@ function definirTatica(campo, valor) {
   estado.tatica[campo] = valor;
   salvarProgresso();
   renderizarTatica();
+  if (typeof atualizarRadarTaticoSeAberto === "function") atualizarRadarTaticoSeAberto();
 }
 
 /* ---------- Partida ao vivo (Fase 4) ---------- */
@@ -1786,6 +1801,7 @@ function escolherJogadorParaVaga(idVaga, idJogador) {
   renderizarResumoSetas();
   renderizarBanco();
   renderizarInfoSubstituicoes();
+  if (typeof atualizarRadarTaticoSeAberto === "function") atualizarRadarTaticoSeAberto();
   fecharSeletorJogador();
 }
 

@@ -1416,3 +1416,283 @@ body::before {
 
 .item-evolucao .sobe { color: #7ee0a5; font-weight: 700; }
 .item-evolucao .desce { color: #ff8f8f; font-weight: 700; }
+
+/* ============================================================
+   Radar Tático — toque longo num jogador do campo
+   ============================================================ */
+
+/* Destaque do jogador selecionado no campo, atrás do painel */
+.vaga.vaga-radar-selecionada .bolinha {
+  border-color: var(--amarelo);
+  box-shadow: 0 0 0 4px rgba(255, 210, 63, 0.35), 0 3px 10px rgba(0, 0, 0, 0.5);
+  animation: pulso-selecao-radar 1.1s ease-in-out infinite;
+}
+
+@keyframes pulso-selecao-radar {
+  0%, 100% { box-shadow: 0 0 0 4px rgba(255, 210, 63, 0.35), 0 3px 10px rgba(0, 0, 0, 0.5); }
+  50% { box-shadow: 0 0 0 8px rgba(255, 210, 63, 0.12), 0 3px 10px rgba(0, 0, 0, 0.5); }
+}
+
+.sobreposicao-radar {
+  background: rgba(0, 0, 0, 0.4); /* leve escurecimento — o campo continua visível atrás */
+  align-items: flex-end;
+  z-index: 60;
+}
+
+.folha-radar {
+  width: 100%;
+  height: 72vh;
+  max-height: 72vh;
+  background: var(--verde-escuro);
+  border-radius: 20px 20px 0 0;
+  box-shadow: 0 -10px 30px rgba(0, 0, 0, 0.55);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  animation: subir-folha-radar 0.28s cubic-bezier(0.2, 0.8, 0.3, 1);
+  touch-action: none;
+}
+
+@keyframes subir-folha-radar {
+  from { transform: translateY(100%); }
+  to { transform: translateY(0); }
+}
+
+.alca-folha-radar {
+  width: 40px;
+  height: 4px;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.25);
+  margin: 10px auto 0;
+  flex-shrink: 0;
+}
+
+.cabecalho-radar {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 18px 12px;
+  flex-shrink: 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.info-basica-radar h3 {
+  font-size: 18px;
+  font-weight: 800;
+}
+
+.info-basica-radar p {
+  font-size: 12px;
+  color: var(--cinza-texto);
+  margin-top: 2px;
+}
+
+.conteudo-radar {
+  flex: 1;
+  overflow-y: auto;
+  padding: 14px 18px calc(env(safe-area-inset-bottom) + 24px);
+  -webkit-overflow-scrolling: touch;
+  transition: opacity 0.12s ease;
+}
+
+.conteudo-radar-saindo {
+  opacity: 0;
+}
+
+/* ---- Cartão de informações do jogador ---- */
+
+.grade-info-radar {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.campo-info-radar {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.rotulo-info-radar {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  color: var(--cinza-texto);
+}
+
+.valor-info-radar {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--branco);
+}
+
+.campo-energia-radar .valor-info-radar.energia-alta { color: #7ee0a5; }
+.campo-energia-radar .valor-info-radar.energia-media { color: #ffb85c; }
+.campo-energia-radar .valor-info-radar.energia-baixa { color: #ff8f8f; }
+
+.estrelas-radar {
+  text-align: center;
+  color: var(--amarelo);
+  font-size: 13px;
+  font-weight: 700;
+  margin-bottom: 8px;
+}
+
+/* ---- Seções e legenda ---- */
+
+.titulo-secao-radar {
+  font-size: 15px;
+  font-weight: 800;
+  margin: 18px 0 4px;
+  text-align: center;
+}
+
+.legenda-radar {
+  font-size: 11px;
+  color: var(--cinza-texto);
+  text-align: center;
+  margin-bottom: 8px;
+  line-height: 1.4;
+}
+
+/* ---- Gráfico radar (octógono em SVG) ---- */
+
+.radar-svg {
+  width: 100%;
+  max-width: 280px;
+  display: block;
+  margin: 0 auto;
+}
+
+.radar-malha {
+  fill: none;
+  stroke: rgba(255, 255, 255, 0.12);
+  stroke-width: 1;
+}
+
+.radar-eixo {
+  stroke: rgba(255, 255, 255, 0.1);
+  stroke-width: 1;
+}
+
+.radar-rotulo {
+  fill: var(--cinza-texto);
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.radar-area {
+  stroke-width: 2;
+  transition: points 0.25s ease;
+}
+
+.radar-area-jogador {
+  fill: rgba(255, 210, 63, 0.28);
+  stroke: var(--amarelo);
+}
+
+.radar-area-equipe {
+  fill: rgba(61, 220, 122, 0.22);
+  stroke: #3ddc7a;
+}
+
+/* ---- Barras de indicadores + comparação antes/depois ---- */
+
+.lista-indicadores-radar {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.linha-indicador-radar {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.cabecalho-linha-indicador {
+  display: flex;
+  justify-content: space-between;
+  font-size: 12px;
+}
+
+.rotulo-indicador-radar {
+  color: var(--cinza-texto);
+  font-weight: 600;
+}
+
+.valor-indicador-radar {
+  font-weight: 800;
+  color: var(--branco);
+}
+
+.trilho-barra-radar {
+  height: 7px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.08);
+  overflow: hidden;
+}
+
+.barra-radar {
+  height: 100%;
+  border-radius: 4px;
+  transition: width 0.35s ease;
+}
+
+.barra-radar-boa { background: #3ddc7a; }
+.barra-radar-media { background: var(--amarelo); }
+.barra-radar-fraca { background: #ff8f8f; }
+
+.delta-indicador {
+  font-size: 11px;
+  font-weight: 700;
+  align-self: flex-end;
+}
+
+.delta-positivo { color: #3ddc7a; }
+.delta-negativo { color: #ff8f8f; }
+
+.indicador-atualizado .valor-indicador-radar,
+.indicador-atualizado .delta-indicador {
+  animation: pulso-valor-radar 0.6s ease;
+}
+
+@keyframes pulso-valor-radar {
+  0% { transform: scale(1.25); }
+  100% { transform: scale(1); }
+}
+
+/* ---- Observações automáticas ---- */
+
+.lista-observacoes-radar {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 12px;
+}
+
+.item-observacao-radar {
+  font-size: 12px;
+  padding: 8px 12px;
+  border-radius: 10px;
+  line-height: 1.4;
+}
+
+.item-observacao-boa {
+  background: rgba(61, 220, 122, 0.12);
+  border: 1px solid rgba(61, 220, 122, 0.3);
+  color: #b6f2cd;
+}
+
+.item-observacao-alerta {
+  background: rgba(255, 143, 143, 0.12);
+  border: 1px solid rgba(255, 143, 143, 0.3);
+  color: #ffcaca;
+}

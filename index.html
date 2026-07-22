@@ -259,12 +259,29 @@
     </div>
   </div>
 
+  <!-- Radar Tático: toque longo num jogador do campo abre este painel -->
+  <div class="sobreposicao sobreposicao-radar" id="sobreposicao-radar" hidden>
+    <div class="folha-radar" id="folha-radar">
+      <div class="alca-folha-radar"></div>
+      <header class="cabecalho-radar">
+        <div class="info-basica-radar">
+          <h3 id="radar-nome-jogador">Jogador</h3>
+          <p id="radar-clube-posicao">Clube · Posição</p>
+        </div>
+        <button class="btn-fechar" id="btn-fechar-radar" type="button" aria-label="Fechar">✕</button>
+      </header>
+      <div class="conteudo-radar" id="conteudo-radar"></div>
+    </div>
+  </div>
+
   <script src="js/sons.js"></script>
   <script src="js/dados.js"></script>
   <script src="js/formacoes.js"></script>
   <script src="js/setas.js"></script>
+  <script src="js/radar-engine.js"></script>
   <script src="js/partida.js"></script>
   <script src="js/temporada.js"></script>
   <script src="js/app.js"></script>
+  <script src="js/radar-ui.js"></script>
 </body>
 </html>
