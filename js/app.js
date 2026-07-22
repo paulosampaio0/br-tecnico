@@ -272,13 +272,15 @@ function criarItemJogador(jogador, mostrarEnergia) {
       "</span>";
   }
 
+  const caracteristicas = [jogador.caracteristica_1, jogador.caracteristica_2].filter(Boolean).join("/");
+
   item.innerHTML =
     "<span class=\"pos\">" + escaparHtml(jogador.pos) + "</span>" +
     "<span class=\"info\">" +
       "<span class=\"nome\">" + prefixoEstrelas + escaparHtml(jogador.nome) + "</span>" +
       "<span class=\"detalhes\">" +
         jogador.idade + " anos · " + escaparHtml(jogador.nac) + " · " +
-        escaparHtml(jogador.caracteristica_1) + " · €" + valorMercado + "mi</span>" +
+        escaparHtml(caracteristicas) + " · €" + valorMercado + "mi</span>" +
     "</span>" +
     "<span class=\"forca\">" +
       "<span class=\"valor\">" + jogador.forca + "</span>" +
