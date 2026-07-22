@@ -7,9 +7,14 @@
 
 "use strict";
 
-// Quanto cada posição pesa no ataque e na defesa do time (0 a ~1.6).
-const PESO_ATAQUE_POS = { GOL: 0.1, ZAG: 0.4, "LAT.D": 0.7, "LAT.E": 0.7, VOL: 0.8, MEI: 1.1, PD: 1.3, PE: 1.3, ATA: 1.5 };
-const PESO_DEFESA_POS = { GOL: 1.6, ZAG: 1.5, "LAT.D": 1.1, "LAT.E": 1.1, VOL: 1.1, MEI: 0.8, PD: 0.5, PE: 0.5, ATA: 0.3 };
+// O campo é dividido em 3 setores de embate — cada posição pertence a um
+// deles (o goleiro fica de fora do embate por setor; ele só entra na hora
+// da defesa de chute/pênalti).
+const SETOR_POR_POSICAO = {
+  ZAG: "defesa", "LAT.D": "defesa", "LAT.E": "defesa",
+  VOL: "meio", MEI: "meio",
+  PD: "ataque", PE: "ataque", ATA: "ataque",
+};
 
 const AJUSTE_ESTILO_TATICA = {
   equilibrado: { ataque: 0, defesa: 0 },
@@ -32,52 +37,61 @@ function resolverTitulares(jogadores, formacaoId, titularesMap) {
   return lista;
 }
 
-/** Calcula a força de ataque e defesa do time, a partir da escalação, tática e setas. */
+/**
+ * Fórmula do combate por setor: o campo tem 3 setores (defesa, meio,
+ * ataque). A força de cada setor é a MÉDIA da força dos jogadores daquele
+ * setor (já ajustada por setas/energia antes de chegar aqui), mais os
+ * ajustes de tática e das próprias setas. É essa força por setor que
+ * decide, minuto a minuto, quem cria mais chances de gol (ver
+ * `processarLadoPartida`: ataque de um time contra defesa do outro, com o
+ * meio-campo pesando como vantagem geral pros dois lados do embate).
+ */
 function calcularForcaTime(titularesResolvidos, tatica, setasPorVaga) {
-  let somaAtaque = 0, pesoAtaqueTotal = 0, somaDefesa = 0, pesoDefesaTotal = 0;
+  const soma = { defesa: 0, meio: 0, ataque: 0 };
+  const contagem = { defesa: 0, meio: 0, ataque: 0 };
 
   titularesResolvidos.forEach(function (item) {
-    const pesoAtq = PESO_ATAQUE_POS[item.vaga.pos] || 1;
-    const pesoDef = PESO_DEFESA_POS[item.vaga.pos] || 1;
-    somaAtaque += item.jogador.forca * pesoAtq;
-    pesoAtaqueTotal += pesoAtq;
-    somaDefesa += item.jogador.forca * pesoDef;
-    pesoDefesaTotal += pesoDef;
+    const setor = SETOR_POR_POSICAO[item.vaga.pos];
+    if (!setor) return; // goleiro não entra no embate por setor
+    soma[setor] += item.jogador.forca;
+    contagem[setor] += 1;
   });
 
-  let ataque = pesoAtaqueTotal > 0 ? somaAtaque / pesoAtaqueTotal : 35;
-  let defesa = pesoDefesaTotal > 0 ? somaDefesa / pesoDefesaTotal : 35;
+  const setores = {
+    defesa: contagem.defesa > 0 ? soma.defesa / contagem.defesa : 35,
+    meio: contagem.meio > 0 ? soma.meio / contagem.meio : 35,
+    ataque: contagem.ataque > 0 ? soma.ataque / contagem.ataque : 35,
+  };
 
   const ajusteEstilo = AJUSTE_ESTILO_TATICA[tatica.estilo] || AJUSTE_ESTILO_TATICA.equilibrado;
-  ataque += ajusteEstilo.ataque;
-  defesa += ajusteEstilo.defesa;
-  defesa += AJUSTE_MARCACAO_TATICA[tatica.marcacao] || 0;
+  setores.ataque += ajusteEstilo.ataque;
+  setores.defesa += ajusteEstilo.defesa;
+  setores.defesa += AJUSTE_MARCACAO_TATICA[tatica.marcacao] || 0;
 
-  // Setas ofensivas dão um empurrão no ataque, mas abrem espaço atrás.
-  // Recuar reforça a defesa.
+  // Setas ofensivas reforçam o setor de ataque, mas abrem espaço atrás
+  // (tiram um pouco do setor de defesa). Recuar reforça a defesa.
   Object.values(setasPorVaga || {}).forEach(function (chaves) {
     (chaves || []).forEach(function (chave) {
       const def = DEFINICAO_SETAS[chave];
       if (!def) return;
       if (def.ofensiva) {
-        ataque += 0.6;
-        defesa -= 0.4;
+        setores.ataque += 0.6;
+        setores.defesa -= 0.4;
       } else {
-        defesa += 0.6;
+        setores.defesa += 0.6;
       }
     });
   });
 
-  return { ataque: ataque, defesa: defesa };
+  return setores;
 }
 
 function criarTimeSimulado(nome, titularesResolvidos, tatica, setasPorVaga) {
-  const forca = calcularForcaTime(titularesResolvidos, tatica, setasPorVaga);
+  const setores = calcularForcaTime(titularesResolvidos, tatica, setasPorVaga);
   return {
     nome: nome,
     titulares: titularesResolvidos, // guardado pra sortear nomes de jogadores nos eventos
-    ataque: forca.ataque,
-    defesa: forca.defesa,
+    setores: setores, // { defesa, meio, ataque } — a força de cada setor do campo
   };
 }
 
@@ -136,18 +150,31 @@ function registrarEvento(partida, tipo, lado, texto, idJogador) {
   });
 }
 
+/**
+ * Vantagem do embate no meio-campo: quem tem o meio mais forte cria mais
+ * chances (nos dois sentidos do jogo), como um multiplicador geral.
+ */
+function calcularVantagemMeio(setoresAtacante, setoresDefensor) {
+  const diferencaMeio = setoresAtacante.meio - setoresDefensor.meio;
+  return clamp(1 + diferencaMeio * 0.015, 0.8, 1.25);
+}
+
 /** Roda os sorteios de UM time atacando no minuto atual (chances, cartões, etc.). */
 function processarLadoPartida(partida, atacante, defensor, ladoAtacante, permitirPausaPenalti) {
   const ladoDefensor = ladoAtacante === "casa" ? "fora" : "casa";
   const estatAtacante = partida.estatisticas[ladoAtacante];
   const estatDefensor = partida.estatisticas[ladoDefensor];
 
-  const diferenca = atacante.ataque - defensor.defesa;
-  const probChance = clamp(0.05 + diferenca * 0.006, 0.01, 0.18);
+  // Setor de ataque do time atacante vs setor de defesa do adversário —
+  // é esse embate que decide quem cria mais chances de gol por minuto. O
+  // meio-campo entra como uma vantagem geral (quem domina o meio cria mais).
+  const diferenca = atacante.setores.ataque - defensor.setores.defesa;
+  const vantagemMeio = calcularVantagemMeio(atacante.setores, defensor.setores);
+  const probChance = clamp((0.05 + diferenca * 0.006) * vantagemMeio, 0.01, 0.2);
 
   if (Math.random() < probChance) {
     estatAtacante.finalizacoes++;
-    const vantagem = (atacante.ataque - defensor.defesa) / 40;
+    const vantagem = (atacante.setores.ataque - defensor.setores.defesa) / 40;
     const chanceGol = clamp(0.26 + vantagem, 0.06, 0.55);
     const rolagem = Math.random();
     const jogador = jogadorDeLinhaAleatorio(atacante); // o goleiro não finaliza a gol
@@ -219,8 +246,9 @@ function simularMinuto(partida, timeCasa, timeFora, ladoComEscolhaCobranca) {
   processarLadoPartida(partida, timeFora, timeCasa, "fora", ladoComEscolhaCobranca === "fora");
   if (partida.pendencia) return partida;
 
-  const pesoCasa = timeCasa.ataque + timeCasa.defesa * 0.5 + Math.random() * 3;
-  const pesoFora = timeFora.ataque + timeFora.defesa * 0.5 + Math.random() * 3;
+  // Posse de bola é puxada principalmente por quem domina o meio-campo.
+  const pesoCasa = timeCasa.setores.meio + timeCasa.setores.ataque * 0.3 + Math.random() * 3;
+  const pesoFora = timeFora.setores.meio + timeFora.setores.ataque * 0.3 + Math.random() * 3;
   partida.posseTicksCasa += pesoCasa;
   partida.posseTicksFora += pesoFora;
 

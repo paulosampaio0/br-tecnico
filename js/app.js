@@ -1148,8 +1148,17 @@ function aplicarDesgastePosPartida() {
       if (jogador.idade >= 30) perda += 4;
       const temResistencia = jogador.caracteristica_1 === "Resistência" || jogador.caracteristica_2 === "Resistência";
       if (temResistencia) perda -= 5;
-      const qtdSetas = (estado.setas[vagaPorJogador[jogador._id]] || []).length;
-      perda += qtdSetas * 3;
+
+      const setasJogador = estado.setas[vagaPorJogador[jogador._id]] || [];
+      perda += setasJogador.length * 3;
+
+      // 2 setas ofensivas no mesmo jogador: ele corre muito mais, gasta 1.5x mais energia.
+      const duasOfensivas = setasJogador.length === 2 && setasJogador.every(function (chave) {
+        const def = DEFINICAO_SETAS[chave];
+        return def && def.ofensiva;
+      });
+      if (duasOfensivas) perda *= 1.5;
+
       estado.energiaPorJogador[jogador._id] = Math.max(10, Math.round(atual - perda));
     } else {
       estado.energiaPorJogador[jogador._id] = Math.min(100, Math.round(atual + 18));
