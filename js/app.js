@@ -1526,15 +1526,13 @@ function aplicarDesgastePosPartida() {
     const temResistencia = jogador.caracteristica_1 === "Resistência" || jogador.caracteristica_2 === "Resistência";
     if (temResistencia) perda -= 5;
 
+    // Rebalanceamento de setas (2026-07-23) — risco vs. recompensa: jogar com seta ativa
+    // consome 30% a mais de energia (1 seta) até 50% a mais (2 setas), substituindo o antigo
+    // "+3 fixo por seta" por um multiplicador proporcional ao desgaste base do jogador.
     const setasJogador = estado.setas[vagaPorJogador[jogador._id]] || [];
-    perda += setasJogador.length * 3;
+    if (setasJogador.length === 1) perda *= 1.3;
+    else if (setasJogador.length >= 2) perda *= 1.5;
 
-    // 2 setas ofensivas no mesmo jogador: ele corre muito mais, gasta 1.5x mais energia.
-    const duasOfensivas = setasJogador.length === 2 && setasJogador.every(function (chave) {
-      const def = DEFINICAO_SETAS[chave];
-      return def && def.ofensiva;
-    });
-    if (duasOfensivas) perda *= 1.5;
     perda *= fatorDesgasteDM;
 
     estado.energiaPorJogador[jogador._id] = Math.max(10, Math.round(atual - perda));

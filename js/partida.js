@@ -27,8 +27,120 @@ const AJUSTE_MARCACAO_TATICA = { leve: -1, normal: 0, pesada: 1.5 };
 // Teto pro bônus/prejuízo TOTAL vindo das setas (Fase 3), pra não empilhar sem limite —
 // só o time do usuário usa setas de verdade, então sem teto o time dele destoava demais da IA.
 const LIMITE_SETAS_ATAQUE = 3;
-const LIMITE_SETAS_DEFESA_OFENSIVA = -2; // o quanto o ataque via setas pode "furar" a própria defesa
 const LIMITE_SETAS_DEFESA_RECUO = 3;
+
+/* ============================================================
+   Rebalanceamento de setas — risco vs. recompensa (2026-07-23)
+   A escala de Overall do projeto é 30-45 (não 0-99): <30 fraco,
+   30-44 mediano, 45+ craque. As faixas de taxa de sucesso abaixo
+   usam essa escala reduzida de propósito.
+   ============================================================ */
+
+// Bônus/penalidade por seta bem-sucedida no minuto — EQUIVALENTES (o ataque que a seta
+// ofensiva ganha é exatamente o que a defesa daquele setor perde, sem vantagem de graça).
+const BONUS_SETA_OFENSIVA_ATAQUE = 0.5;
+const PENALIDADE_SETA_OFENSIVA_DEFESA = 0.5;
+const BONUS_SETA_RECUO_DEFESA = 0.5;
+
+// Setores que, ao ganharem uma seta OFENSIVA bem-sucedida, abrem espaço nas costas
+// pro contra-ataque adversário — só faz sentido pra quem defende (zagueiro/lateral/volante).
+const SETORES_EXPOSTOS_CONTRA_ATAQUE = { ZAG: true, "LAT.D": true, "LAT.E": true, VOL: true };
+const BONUS_CONTRA_ATAQUE_POR_SETA_OFENSIVA = 0.2; // +20% por setor exposto, pedido explícito
+const LIMITE_FATOR_CONTRA_ATAQUE_CONCEDIDO = 1.6; // teto: no máximo +60% (evita 4+ setas somando sem controle)
+
+// Mais de 2 setas ativas ao mesmo tempo desposiciona o time — entrosamento cai (representado
+// no setor de meio-campo, onde se constrói a jogada, em vez de inventar um stat de passe novo).
+const LIMITE_SETAS_SEM_DEBUFF_COESAO = 2;
+const FATOR_DEBUFF_COESAO_TATICA = 0.92; // -8%
+
+// Chance, POR MINUTO e por seta que falhou, de virar 1 erro de passe extra — baixa de propósito,
+// porque a seta fica ativa a partida inteira (90 minutos), não é um evento único.
+const CHANCE_ERRO_PASSE_POR_FALHA_SETA = 0.06;
+
+/** Taxa de sucesso da "instrução" da seta, na escala de Overall 30-45 do projeto (pedido explícito). */
+function calcularTaxaSucessoSeta(forca) {
+  if (forca >= 45) return 0.80;
+  if (forca >= 35) return 0.65;
+  return 0.45;
+}
+
+/**
+ * Monta a lista de setas ativas de um time (jogador + vaga + se é ofensiva +
+ * taxa de sucesso já calculada a partir do Overall dele) — sorteada minuto a
+ * minuto em `aplicarEfeitoSetasDoMinuto` pra decidir se a instrução "cola"
+ * ou vira perda de posse perigosa.
+ */
+function montarSetasAtivas(titularesResolvidos, setasPorVaga) {
+  const lista = [];
+  titularesResolvidos.forEach(function (item) {
+    const chaves = (setasPorVaga || {})[item.vaga.id] || [];
+    chaves.forEach(function (chave) {
+      const def = DEFINICAO_SETAS[chave];
+      if (!def) return;
+      lista.push({
+        vaga: item.vaga,
+        jogador: item.jogador,
+        ofensiva: def.ofensiva,
+        taxaSucesso: calcularTaxaSucessoSeta(item.jogador.forca),
+      });
+    });
+  });
+  return lista;
+}
+
+/**
+ * Aplica o efeito das setas ativas de um time NUM MINUTO específico — sorteia,
+ * seta por seta, se a instrução funciona (Overall do jogador) e só soma o
+ * bônus/penalidade das que tiveram sucesso; falhas não dão bônus e podem virar
+ * um erro de passe extra (perda de posse perigosa). Muda `setores` (recebido
+ * por referência) e devolve o fator de exposição a contra-ataque do time.
+ */
+function aplicarEfeitoSetasDoMinuto(time, setores, estatisticas) {
+  if (!time.setasAtivas || time.setasAtivas.length === 0) {
+    time.fatorContraAtaqueConcedido = 1;
+    return;
+  }
+
+  let ataqueDasSetas = 0;
+  let defesaPenalidadeSetas = 0;
+  let defesaBonusRecuo = 0;
+  let fatorContraAtaque = 1;
+  let falhas = 0;
+
+  time.setasAtivas.forEach(function (seta) {
+    const sucesso = Math.random() < seta.taxaSucesso;
+    if (!sucesso) { falhas++; return; }
+
+    if (seta.ofensiva) {
+      ataqueDasSetas += BONUS_SETA_OFENSIVA_ATAQUE;
+      defesaPenalidadeSetas += PENALIDADE_SETA_OFENSIVA_DEFESA;
+      if (SETORES_EXPOSTOS_CONTRA_ATAQUE[seta.vaga.pos]) {
+        fatorContraAtaque += BONUS_CONTRA_ATAQUE_POR_SETA_OFENSIVA;
+      }
+    } else {
+      defesaBonusRecuo += BONUS_SETA_RECUO_DEFESA;
+    }
+  });
+
+  setores.ataque += clamp(ataqueDasSetas, 0, LIMITE_SETAS_ATAQUE);
+  setores.defesa -= clamp(defesaPenalidadeSetas, 0, LIMITE_SETAS_ATAQUE);
+  setores.defesa += clamp(defesaBonusRecuo, 0, LIMITE_SETAS_DEFESA_RECUO);
+
+  // Coesão tática: mais de 2 setas ativas ao mesmo tempo derruba a precisão de passe do time.
+  if (time.setasAtivas.length > LIMITE_SETAS_SEM_DEBUFF_COESAO) {
+    setores.meio *= FATOR_DEBUFF_COESAO_TATICA;
+  }
+
+  time.fatorContraAtaqueConcedido = clamp(fatorContraAtaque, 1, LIMITE_FATOR_CONTRA_ATAQUE_CONCEDIDO);
+
+  // Seta que falhou = perda de posse perigosa: some no mesmo stat que já existia (errosPasse),
+  // sem precisar inventar um tipo de evento novo. Setas ficam ativas o jogo inteiro, então essa
+  // chance precisa ser baixa por minuto (senão vira um erro de passe quase todo minuto) — calibrada
+  // pra virar, em média, só mais alguns erros de passe a mais na partida toda, não uma enxurrada.
+  if (falhas > 0 && estatisticas && Math.random() < clamp(CHANCE_ERRO_PASSE_POR_FALHA_SETA * falhas, 0, 0.3)) {
+    estatisticas.errosPasse++;
+  }
+}
 
 // Bônus/penalidade de mando de campo (Rebalanceamento 2026-07-23): antes não existia
 // NENHUM efeito de jogar em casa/fora — a mesma força valia em qualquer estádio.
@@ -56,13 +168,15 @@ function resolverTitulares(jogadores, formacaoId, titularesMap) {
 /**
  * Fórmula do combate por setor: o campo tem 3 setores (defesa, meio,
  * ataque). A força de cada setor é a MÉDIA da força dos jogadores daquele
- * setor (já ajustada por setas/energia antes de chegar aqui), mais os
- * ajustes de tática e das próprias setas. É essa força por setor que
- * decide, minuto a minuto, quem cria mais chances de gol (ver
- * `processarLadoPartida`: ataque de um time contra defesa do outro, com o
- * meio-campo pesando como vantagem geral pros dois lados do embate).
+ * setor, mais os ajustes de tática. É essa força por setor que decide,
+ * minuto a minuto, quem cria mais chances de gol (ver `processarLadoPartida`:
+ * ataque de um time contra defesa do outro, com o meio-campo pesando como
+ * vantagem geral pros dois lados do embate). NÃO inclui setas — desde o
+ * Rebalanceamento 2026-07-23 as setas são risco vs. recompensa, sorteadas
+ * minuto a minuto em `aplicarEfeitoSetasDoMinuto` (podem falhar), então não
+ * dá mais pra somar de graça na força "de base" do time.
  */
-function calcularForcaTime(titularesResolvidos, tatica, setasPorVaga) {
+function calcularForcaTime(titularesResolvidos, tatica) {
   const soma = { defesa: 0, meio: 0, ataque: 0 };
   const contagem = { defesa: 0, meio: 0, ataque: 0 };
 
@@ -84,31 +198,6 @@ function calcularForcaTime(titularesResolvidos, tatica, setasPorVaga) {
   setores.defesa += ajusteEstilo.defesa;
   setores.defesa += AJUSTE_MARCACAO_TATICA[tatica.marcacao] || 0;
 
-  // Setas ofensivas reforçam o setor de ataque, mas abrem espaço atrás
-  // (tiram um pouco do setor de defesa). Recuar reforça a defesa.
-  // Rebalanceamento: o total vindo de setas é somado à parte e CLAMPADO —
-  // antes empilhava sem limite, e só o time do usuário usa setas de verdade
-  // (a IA sempre entra com setasPorVaga vazio), então virava um buff sem teto
-  // que a IA nunca tinha como igualar.
-  let ataqueDasSetas = 0;
-  let defesaDasSetasOfensivas = 0;
-  let defesaDasSetasRecuo = 0;
-  Object.values(setasPorVaga || {}).forEach(function (chaves) {
-    (chaves || []).forEach(function (chave) {
-      const def = DEFINICAO_SETAS[chave];
-      if (!def) return;
-      if (def.ofensiva) {
-        ataqueDasSetas += 0.5;
-        defesaDasSetasOfensivas -= 0.35;
-      } else {
-        defesaDasSetasRecuo += 0.5;
-      }
-    });
-  });
-  setores.ataque += clamp(ataqueDasSetas, 0, LIMITE_SETAS_ATAQUE);
-  setores.defesa += clamp(defesaDasSetasOfensivas, LIMITE_SETAS_DEFESA_OFENSIVA, 0);
-  setores.defesa += clamp(defesaDasSetasRecuo, 0, LIMITE_SETAS_DEFESA_RECUO);
-
   return setores;
 }
 
@@ -119,7 +208,7 @@ function calcularForcaTime(titularesResolvidos, tatica, setasPorVaga) {
  * jogar fora mais difícil de verdade).
  */
 function criarTimeSimulado(nome, titularesResolvidos, tatica, setasPorVaga, opcoesMando) {
-  const setores = calcularForcaTime(titularesResolvidos, tatica, setasPorVaga);
+  const setores = calcularForcaTime(titularesResolvidos, tatica);
 
   if (opcoesMando && opcoesMando.mando === "casa") {
     setores.ataque += MANDO_BONUS_CASA.ataque;
@@ -136,8 +225,10 @@ function criarTimeSimulado(nome, titularesResolvidos, tatica, setasPorVaga, opco
   return {
     nome: nome,
     titulares: titularesResolvidos, // guardado pra sortear nomes de jogadores nos eventos
-    setores: setores, // { defesa, meio, ataque } — força EFETIVA do setor, pode variar minuto a minuto (reatividade da IA)
-    setoresBase: Object.assign({}, setores), // referência fixa (mando+tática+setas já aplicados), sem a reatividade de placar
+    setores: setores, // { defesa, meio, ataque } — força EFETIVA do setor, recalculada minuto a minuto (setas + reatividade da IA)
+    setoresBase: Object.assign({}, setores), // referência fixa (mando+tática já aplicados), sem setas nem reatividade de placar
+    setasAtivas: montarSetasAtivas(titularesResolvidos, setasPorVaga), // Rebalanceamento: cada seta com sua taxa de sucesso (Overall)
+    fatorContraAtaqueConcedido: 1, // recalculado minuto a minuto quando alguém do setor defensivo tem seta ofensiva bem-sucedida
   };
 }
 
@@ -269,7 +360,10 @@ function processarLadoPartida(partida, atacante, defensor, ladoAtacante, permiti
   // meio-campo entra como uma vantagem geral (quem domina o meio cria mais).
   const diferenca = atacante.setores.ataque - defensor.setores.defesa;
   const vantagemMeio = calcularVantagemMeio(atacante.setores, defensor.setores);
-  const probChance = clamp((0.05 + diferenca * 0.006) * vantagemMeio, 0.01, 0.2);
+  // Exposição a contra-ataque (Rebalanceamento de setas 2026-07-23): se o time que defende
+  // tem zagueiro/lateral/volante com seta ofensiva bem-sucedida nesse minuto, fica mais fácil
+  // pro adversário criar chance — o teto de chance por minuto sobe um pouco pra esse efeito valer.
+  const probChance = clamp((0.05 + diferenca * 0.006) * vantagemMeio * defensor.fatorContraAtaqueConcedido, 0.01, 0.24);
 
   if (Math.random() < probChance) {
     estatAtacante.finalizacoes++;
@@ -350,24 +444,29 @@ function calcularAjustePosturaIA(diferencaPlacar, minuto) {
 }
 
 /**
- * Recalcula `time.setores` = `time.setoresBase` + reatividade de placar, só para
- * lados controlados pela IA. `ladoComEscolhaCobranca` undefined (jogos só de CPU)
- * conta os DOIS lados como IA; quando definido ("casa"/"fora"), só o lado oposto
- * ao usuário reage — o time do usuário é ajustado pelo próprio jogador (tática/setas/"mexer no time").
+ * Recalcula `time.setores` do zero a partir de `time.setoresBase`, minuto a
+ * minuto: reatividade de placar (só nos lados controlados pela IA — undefined
+ * conta os DOIS lados como IA, jogos só de CPU; "casa"/"fora" definido só o
+ * lado oposto ao usuário reage) + efeito das setas ativas (só quem tem
+ * setas — normalmente só o time do usuário, já que a IA sempre entra com
+ * `setasPorVaga` vazio). Setas e reatividade da IA nunca coexistem no mesmo
+ * time na prática, mas a função soma os dois de qualquer jeito, sem conflito.
  */
-function aplicarPosturaReativaIA(time, lado, partida, ladoComEscolhaCobranca) {
+function calcularSetoresEfetivosDoMinuto(time, lado, partida, ladoComEscolhaCobranca) {
+  const setores = Object.assign({}, time.setoresBase);
+
   const ehIA = ladoComEscolhaCobranca === undefined || ladoComEscolhaCobranca !== lado;
-  if (!ehIA) return;
+  if (ehIA) {
+    const meusGols = lado === "casa" ? partida.placarCasa : partida.placarFora;
+    const golsSofridos = lado === "casa" ? partida.placarFora : partida.placarCasa;
+    const ajuste = calcularAjustePosturaIA(meusGols - golsSofridos, partida.minuto);
+    setores.ataque += ajuste.ataque;
+    setores.defesa += ajuste.defesa;
+  }
 
-  const meusGols = lado === "casa" ? partida.placarCasa : partida.placarFora;
-  const golsSofridos = lado === "casa" ? partida.placarFora : partida.placarCasa;
-  const ajuste = calcularAjustePosturaIA(meusGols - golsSofridos, partida.minuto);
+  aplicarEfeitoSetasDoMinuto(time, setores, partida.estatisticas[lado]);
 
-  time.setores = {
-    meio: time.setoresBase.meio,
-    ataque: time.setoresBase.ataque + ajuste.ataque,
-    defesa: time.setoresBase.defesa + ajuste.defesa,
-  };
+  time.setores = setores;
 }
 
 /**
@@ -380,8 +479,8 @@ function aplicarPosturaReativaIA(time, lado, partida, ladoComEscolhaCobranca) {
 function simularMinuto(partida, timeCasa, timeFora, ladoComEscolhaCobranca) {
   partida.minuto += 1;
 
-  aplicarPosturaReativaIA(timeCasa, "casa", partida, ladoComEscolhaCobranca);
-  aplicarPosturaReativaIA(timeFora, "fora", partida, ladoComEscolhaCobranca);
+  calcularSetoresEfetivosDoMinuto(timeCasa, "casa", partida, ladoComEscolhaCobranca);
+  calcularSetoresEfetivosDoMinuto(timeFora, "fora", partida, ladoComEscolhaCobranca);
 
   processarLadoPartida(partida, timeCasa, timeFora, "casa", ladoComEscolhaCobranca === "casa");
   if (partida.pendencia) return partida; // pênalti pausou a simulação — não processa o outro lado neste minuto
