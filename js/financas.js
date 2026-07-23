@@ -203,6 +203,15 @@ const CONFIG_FINANCEIRO = {
   // Limiares dos eventos dinâmicos (torcida muito feliz / muito irritada).
   torcidaLimiarMuitoFeliz: 85,
   torcidaLimiarMuitoIrritada: 20,
+
+  // --- Marketing & venda de camisas (Fase 21) ---
+
+  camisaForcaMinimaCraque: 44, // contratação com força a partir daqui vira "craque" pro marketing
+  camisaFatorVendaCraque: 0.035, // % do valor da transferência que vira venda de camisas na hora
+  camisaEstrelasMinimasRevelacaoBoom: 4, // jovem da base com pelo menos essa qtd de estrelas gera boom de vendas
+  camisaFatorVendaRevelacaoBasePorEstrela: 1.2, // R$ milhões por estrela de potencial, na revelação
+  camisaValorBonusTitulo: 25, // R$ milhões — bônus de vendas ao ser campeão da divisão
+  camisaValorBonusAcesso: 12, // R$ milhões — bônus de vendas ao conquistar o acesso
 };
 
 function converterEuroParaReal(valorEmMilhoesEuro) {
@@ -515,6 +524,22 @@ function calcularLuvasPedidas(valorTransferencia) {
 /** Cláusula de rescisão mínima aceitável — sempre acima do que o clube acabou de pagar, senão o jogador sairia barato demais depois. */
 function calcularClausulaMinima(valorTransferencia) {
   return Math.round(valorTransferencia * CONFIG_FINANCEIRO.empresarioFatorClausulaMinimaSobrePreco * 100) / 100;
+}
+
+/* ============================================================
+   Marketing & venda de camisas (Fase 21)
+   ============================================================ */
+
+/** Boom de vendas de camisas ao anunciar a contratação de um craque (força alta). */
+function calcularVendaCamisasContratacao(valorTransferencia, forcaJogador) {
+  if (forcaJogador < CONFIG_FINANCEIRO.camisaForcaMinimaCraque) return 0;
+  return Math.round(valorTransferencia * CONFIG_FINANCEIRO.camisaFatorVendaCraque * 100) / 100;
+}
+
+/** Boom de vendas ao revelar um jovem promissor na base (estrelas de potencial altas). */
+function calcularVendaCamisasRevelacaoBase(estrelasPotencial) {
+  if (estrelasPotencial < CONFIG_FINANCEIRO.camisaEstrelasMinimasRevelacaoBoom) return 0;
+  return Math.round(estrelasPotencial * CONFIG_FINANCEIRO.camisaFatorVendaRevelacaoBasePorEstrela * 100) / 100;
 }
 
 /* ============================================================

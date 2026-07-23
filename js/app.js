@@ -105,6 +105,7 @@ const estado = {
   olheirosContratados: [], // [{ id, tipo, posicaoEspecialidade }] — Fase 19
   proximoIdOlheiro: 1,
   torcida: null, // { confianca: 0-100 } — os outros 4 indicadores são derivados, não guardados (Fase 20)
+  vendasCamisasPorJogador: {}, // { _id: total em R$mi vendido } — só de quem está no elenco atual (Fase 21)
 };
 
 // Filtros e resultado da busca no Mercado, e proposta em andamento (Fase 12).
@@ -175,6 +176,7 @@ function salvarProgresso() {
     olheirosContratados: estado.olheirosContratados,
     proximoIdOlheiro: estado.proximoIdOlheiro,
     torcida: estado.torcida,
+    vendasCamisasPorJogador: estado.vendasCamisasPorJogador,
     atualizadoEm: new Date().toISOString(),
   };
   try {
@@ -380,6 +382,7 @@ async function escalarEsteTime(time) {
   estado.olheirosContratados = [];
   estado.proximoIdOlheiro = 1;
   estado.torcida = { confianca: CONFIG_FINANCEIRO.torcidaConfiancaInicial };
+  estado.vendasCamisasPorJogador = {};
 
   await garantirTemporada();
   salvarProgresso();
@@ -1692,6 +1695,17 @@ async function processarFimDeTemporada() {
     estado.reputacao.pontos = ajustarReputacao(estado.reputacao.pontos, deltaReputacao);
   }
 
+  // Bônus de vendas de camisas por título/acesso (Fase 21) — é do clube todo, não vai pro ranking de um jogador só.
+  if (estado.financas) {
+    if (contextoTemporada.posicaoFinal === 1) {
+      estado.financas.caixa = Math.round((estado.financas.caixa + CONFIG_FINANCEIRO.camisaValorBonusTitulo) * 100) / 100;
+      alert("🏆🎽 Campeão! A torcida lotou as lojas do clube: +" + formatarReais(CONFIG_FINANCEIRO.camisaValorBonusTitulo) + " em vendas de camisas.");
+    } else if (contextoTemporada.foiPromovido) {
+      estado.financas.caixa = Math.round((estado.financas.caixa + CONFIG_FINANCEIRO.camisaValorBonusAcesso) * 100) / 100;
+      alert("🎉🎽 Acesso conquistado! Vendas de camisas em alta: +" + formatarReais(CONFIG_FINANCEIRO.camisaValorBonusAcesso) + ".");
+    }
+  }
+
   // Confiança da torcida (Fase 20) também reage ao veredito da meta no fim da temporada.
   if (estado.torcida && relatorioMeta) {
     const deltaConfiancaMeta = metaCumprida
@@ -1855,6 +1869,7 @@ function renderizarFinancas() {
   renderizarBaseFinancas();
   renderizarReputacao();
   renderizarIndicadoresTorcida();
+  renderizarRankingCamisas();
 
   const moralEl = document.getElementById("financas-moral-torcida");
   if (moralEl) {
@@ -2357,6 +2372,13 @@ function fecharContratacaoCompleta(jogadorOriginal, nomeTimeVendedor, divisaoVen
   estado.contratos[novoId] = { anosRestantes: duracaoAnos, multiplicadorSalario: multiplicadorSalario, clausulaRescisao: clausulaRescisao };
   estado.energiaPorJogador[novoId] = 100;
 
+  // Contratação de craque vira boom de vendas de camisas na hora (Fase 21).
+  const vendaCamisas = calcularVendaCamisasContratacao(valorTransferencia, jogadorContratado.forca);
+  if (vendaCamisas > 0) {
+    creditarVendaCamisas(novoId, vendaCamisas);
+    alert("🎽 A torcida foi à loucura com a contratação de " + jogadorContratado.nome + "! Vendas de camisas: +" + formatarReais(vendaCamisas) + ".");
+  }
+
   salvarProgresso();
 }
 
@@ -2516,6 +2538,47 @@ function processarEmprestimosNaRodada() {
   idsQueVoltam.forEach(function (id) { removerJogadorDoElenco(id); });
 }
 
+/* ---------- Marketing & venda de camisas (Fase 21) ---------- */
+
+/** Credita uma venda de camisas no caixa e soma no total do jogador pro ranking (Fase 21). */
+function creditarVendaCamisas(idJogador, valor) {
+  if (!(valor > 0)) return;
+  estado.financas.caixa = Math.round((estado.financas.caixa + valor) * 100) / 100;
+  estado.vendasCamisasPorJogador[idJogador] = Math.round(((estado.vendasCamisasPorJogador[idJogador] || 0) + valor) * 100) / 100;
+}
+
+function renderizarRankingCamisas() {
+  const listaEl = document.getElementById("lista-ranking-camisas");
+  if (!listaEl || !estado.timeAtual) return;
+  listaEl.innerHTML = "";
+
+  const ranking = Object.keys(estado.vendasCamisasPorJogador)
+    .map(function (id) {
+      const jogador = encontrarJogadorPorId(estado.timeAtual.jogadores, Number(id));
+      return jogador ? { jogador: jogador, total: estado.vendasCamisasPorJogador[id] } : null;
+    })
+    .filter(function (item) { return item !== null; })
+    .sort(function (a, b) { return b.total - a.total; })
+    .slice(0, 5);
+
+  if (ranking.length === 0) {
+    listaEl.innerHTML = "<li class=\"mensagem-vazia-mercado\">Nenhuma venda de camisa registrada ainda — contrate um craque ou revele uma joia na base.</li>";
+    return;
+  }
+
+  ranking.forEach(function (item, indice) {
+    const li = document.createElement("li");
+    li.className = "item-contrato";
+    li.innerHTML =
+      "<span class=\"pos\">" + (indice + 1) + "º</span>" +
+      "<span class=\"info-contrato\">" +
+        "<span class=\"nome-contrato\">" + escaparHtml(item.jogador.nome) + "</span>" +
+        "<span class=\"detalhes-contrato\">" + formatarReais(item.total) + " em camisas vendidas</span>" +
+      "</span>";
+    listaEl.appendChild(li);
+  });
+}
+
 /* ---------- Tela: mercado, vender — propostas espontâneas e dispensa (Fase 13) ---------- */
 
 /** Tira um jogador do elenco de vez (dispensa, venda aceita) — limpa titular/setas/energia/contrato junto. */
@@ -2523,6 +2586,7 @@ function removerJogadorDoElenco(idJogador) {
   estado.timeAtual.jogadores = estado.timeAtual.jogadores.filter(function (j) { return j._id !== idJogador; });
   delete estado.contratos[idJogador];
   delete estado.energiaPorJogador[idJogador];
+  delete estado.vendasCamisasPorJogador[idJogador]; // ranking de camisas é só de quem está no elenco (Fase 21)
   Object.keys(estado.titulares).forEach(function (vagaId) {
     if (estado.titulares[vagaId] === idJogador) {
       delete estado.titulares[vagaId];
@@ -2824,8 +2888,16 @@ function gerarJovemDaBase() {
   estado.energiaPorJogador[novoId] = 100;
 
   const estrelas = calcularEstrelasPotencial(jovem);
-  alert("A base revelou um talento! " + jovem.nome + " (" + jovem.pos + ", força " + jovem.forca + ", " + jovem.idade + " anos" +
-    (estrelas > 0 ? ", " + "⭐".repeat(estrelas) : "") + ") chegou de graça ao elenco.");
+  let mensagem = "A base revelou um talento! " + jovem.nome + " (" + jovem.pos + ", força " + jovem.forca + ", " + jovem.idade + " anos" +
+    (estrelas > 0 ? ", " + "⭐".repeat(estrelas) : "") + ") chegou de graça ao elenco.";
+
+  // Joia com bastante potencial já nasce com boom de vendas de camisas (Fase 21).
+  const vendaCamisas = calcularVendaCamisasRevelacaoBase(estrelas);
+  if (vendaCamisas > 0) {
+    creditarVendaCamisas(novoId, vendaCamisas);
+    mensagem += " 🎽 A torcida se empolgou: +" + formatarReais(vendaCamisas) + " em vendas de camisas.";
+  }
+  alert(mensagem);
 }
 
 /** Só com o investimento ativo: sorteia se a base revela um jovem nesta rodada oficial. */
@@ -3419,6 +3491,9 @@ async function continuarJogoSalvo() {
 
     // Saves de antes da Fase 20 não têm confiança da torcida — começa no valor inicial padrão.
     estado.torcida = registro.torcida || { confianca: CONFIG_FINANCEIRO.torcidaConfiancaInicial };
+
+    // Saves de antes da Fase 21 não têm vendas de camisas registradas.
+    estado.vendasCamisasPorJogador = registro.vendasCamisasPorJogador || {};
 
     // Saves de antes da Fase 11 não têm contratos — cria um pra cada jogador que ainda não tiver.
     estado.contratos = registro.contratos || {};
