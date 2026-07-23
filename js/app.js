@@ -551,13 +551,15 @@ function renderizarCampo() {
   }
 }
 
-/** Barrinha de energia embaixo da bolinha, pra ver o cansaço direto no campo (ex.: ao "mexer no time"). */
+/** Barrinha de energia (blocos coloridos) embaixo da bolinha, pra ver o cansaço direto no campo (ex.: ao "mexer no time"). */
 function montarBarraEnergiaVaga(jogador) {
   const energia = obterEnergiaJogador(jogador._id);
-  const nivel = energia >= 70 ? "alta" : energia >= 40 ? "media" : "baixa";
-  return "<span class=\"barra-energia-vaga\" title=\"Energia: " + energia + "%\">" +
-    "<span class=\"preenchimento-energia-vaga energia-vaga-" + nivel + "\" style=\"width:" + energia + "%\"></span>" +
-  "</span>" +
+  const nivel = energia > 80 ? "alta" : energia >= 60 ? "media" : "baixa";
+  const blocoAceso = nivel === "alta" ? "🟩" : nivel === "media" ? "🟨" : "🟥";
+  const TOTAL_BLOCOS = 5;
+  const acesos = Math.max(0, Math.min(TOTAL_BLOCOS, Math.round(energia / 100 * TOTAL_BLOCOS)));
+  const blocos = blocoAceso.repeat(acesos) + "⬜".repeat(TOTAL_BLOCOS - acesos);
+  return "<span class=\"barra-energia-vaga\" title=\"Energia: " + energia + "%\">" + blocos + "</span>" +
   "<span class=\"numero-energia-vaga energia-vaga-" + nivel + "\">" + energia + "%</span>";
 }
 

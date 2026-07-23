@@ -600,26 +600,14 @@ body::before {
   text-overflow: ellipsis;
 }
 
-/* Barrinha de energia embaixo do nome, visível ao montar/mexer na escalação */
+/* Barrinha de energia (blocos coloridos 🟩🟨🟥⬜) embaixo do nome, visível ao montar/mexer na escalação */
 .barra-energia-vaga {
   display: block;
-  width: 34px;
-  height: 4px;
-  border-radius: 3px;
-  background: rgba(0, 0, 0, 0.4);
-  border: 1px solid rgba(255, 255, 255, 0.25);
-  overflow: hidden;
+  font-size: 7px;
+  line-height: 1;
+  letter-spacing: -1px;
+  white-space: nowrap;
 }
-
-.preenchimento-energia-vaga {
-  display: block;
-  height: 100%;
-  border-radius: 2px;
-}
-
-.preenchimento-energia-vaga.energia-vaga-alta { background: #7ee0a5; }
-.preenchimento-energia-vaga.energia-vaga-media { background: #ffb85c; }
-.preenchimento-energia-vaga.energia-vaga-baixa { background: #ff8f8f; }
 
 /* Número da energia embaixo da barrinha — chip escuro sólido por trás, pra
    o texto colorido nunca cair em cima de um fundo da mesma cor (sem contraste). */
