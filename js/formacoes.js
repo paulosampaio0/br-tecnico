@@ -117,3 +117,66 @@ function autoEscalarMelhores(jogadores, formacaoId) {
 
   return titulares;
 }
+
+/**
+ * Pontuação de um jogador pra escalação/substituição automática (Escalação
+ * Inteligente): 60% força (normalizada) + 40% energia atual — um jogador
+ * mais fraco mas descansado pode superar um titular melhor, porém cansado.
+ * Módulo puro (sem DOM), reaproveitado tanto pra montar os 11 quanto pra
+ * sugerir o melhor substituto do banco.
+ */
+function pontuarJogadorParaEscalacao(jogador, energiaAtual) {
+  const forcaNormalizada = Math.max(0, Math.min(1, jogador.forca / 50));
+  const energiaNormalizada = Math.max(0, Math.min(1, (energiaAtual !== undefined ? energiaAtual : 100) / 100));
+  return forcaNormalizada * 0.6 + energiaNormalizada * 0.4;
+}
+
+/**
+ * Escalação Inteligente (1 clique): monta os 11 titulares pra uma formação
+ * levando em conta a posição de cada vaga E a energia atual de cada
+ * jogador (via `pontuarJogadorParaEscalacao`), não só a força bruta.
+ * `contexto.elegivel(jogador)` filtra fora quem não pode jogar (suspensos
+ * etc.) — por padrão todo mundo é elegível. `contexto.energiaPorJogador`
+ * é o mapa { _id: energia } de onde vem a energia de cada um.
+ * @returns {Object<string,number>} mapa { idDaVaga: _id do jogador }
+ */
+function gerarEscalacaoAutomatica(jogadores, formacaoId, contexto) {
+  contexto = contexto || {};
+  const elegivel = contexto.elegivel || function () { return true; };
+  const energiaPorJogador = contexto.energiaPorJogador || {};
+
+  const vagas = obterFormacao(formacaoId);
+  const usados = new Set();
+  const titulares = {};
+
+  function pontuar(jogador) {
+    return pontuarJogadorParaEscalacao(jogador, energiaPorJogador[jogador._id]);
+  }
+
+  function disponiveis() {
+    return jogadores.filter(function (j) { return !usados.has(j._id) && elegivel(j); });
+  }
+
+  vagas.forEach(function (vaga) {
+    const candidatos = disponiveis()
+      .filter(function (j) { return j.pos === vaga.pos; })
+      .sort(function (a, b) { return pontuar(b) - pontuar(a); });
+    if (candidatos.length > 0) {
+      titulares[vaga.id] = candidatos[0]._id;
+      usados.add(candidatos[0]._id);
+    }
+  });
+
+  // Reforço: vaga que ficou vazia (elenco incompleto ou suspenso demais naquela
+  // posição) é preenchida pelo melhor jogador elegível restante, de qualquer posição.
+  vagas.forEach(function (vaga) {
+    if (titulares[vaga.id] !== undefined) return;
+    const resto = disponiveis().sort(function (a, b) { return pontuar(b) - pontuar(a); });
+    if (resto.length > 0) {
+      titulares[vaga.id] = resto[0]._id;
+      usados.add(resto[0]._id);
+    }
+  });
+
+  return titulares;
+}

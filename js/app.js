@@ -414,6 +414,11 @@ function abrirTelaEscalacao() {
   renderizarBanco();
   atualizarInfoRodada();
   atualizarTopoHub();
+
+  // Escalação automática só faz sentido pré-jogo; sugestão de substituição só com o jogo rolando.
+  const emPartidaAtiva = estaEmPartidaAtiva();
+  document.getElementById("btn-escalacao-automatica").hidden = emPartidaAtiva;
+  document.getElementById("btn-sugerir-substituicao").hidden = !emPartidaAtiva;
 }
 
 /** Mostra quantas substituições ainda restam, só quando há uma partida em andamento. */
@@ -459,6 +464,99 @@ function trocarFormacao(novaFormacaoId) {
   renderizarResumoSetas();
   renderizarBanco();
   if (typeof atualizarRadarTaticoSeAberto === "function") atualizarRadarTaticoSeAberto();
+}
+
+/**
+ * Escalação Inteligente (pré-jogo, botão 🎲): reescala os 11 titulares do
+ * zero pra formação atual, usando `gerarEscalacaoAutomatica` (formacoes.js —
+ * 60% força + 40% energia, respeitando a posição de cada vaga). Só faz
+ * sentido ANTES da partida começar — com o jogo rolando isso bagunçaria o
+ * controle de substituições, por isso fica bloqueado igual à troca de
+ * formação já era antes da Fase de reencaixe em partida.
+ */
+function aplicarEscalacaoAutomatica() {
+  if (estaEmPartidaAtiva()) return;
+
+  const novosTitulares = gerarEscalacaoAutomatica(estado.timeAtual.jogadores, estado.formacaoId, {
+    elegivel: function (jogador) { return !jogadorEstaSuspenso(jogador._id); },
+    energiaPorJogador: estado.energiaPorJogador,
+  });
+
+  estado.titulares = novosTitulares;
+  estado.setas = {}; // nova escalação do zero — as setas eram por jogador/vaga da escalação anterior
+  salvarProgresso();
+  renderizarCampo();
+  renderizarResumoSetas();
+  renderizarBanco();
+  if (typeof atualizarRadarTaticoSeAberto === "function") atualizarRadarTaticoSeAberto();
+}
+
+// Abaixo dessa energia (%), um titular em campo é candidato a sair na Sugestão de Substituição.
+const LIMIAR_ENERGIA_SUGESTAO_TROCA = 65;
+
+/**
+ * Sugestão de Substituição (durante a partida, botão 🎲 em "Mexer no
+ * time"): acha o titular em campo com menor energia (abaixo do limiar),
+ * acha o melhor substituto disponível no banco pra aquela posição, pede
+ * confirmação e — só se confirmado — executa EXATAMENTE 1 substituição,
+ * reaproveitando `escolherJogadorParaVaga` (mesma função da troca manual),
+ * que já cuida do limite de substituições, do registro do evento e do
+ * "quem já saiu não volta". Clicar de novo sugere a próxima troca.
+ */
+function sugerirSubstituicao() {
+  if (!estaEmPartidaAtiva()) return;
+
+  if ((partidaAtual.substituicoesFeitas || 0) >= LIMITE_SUBSTITUICOES) {
+    alert("Limite de substituições atingido (" + LIMITE_SUBSTITUICOES + " de " + LIMITE_SUBSTITUICOES + ").");
+    return;
+  }
+
+  const vagas = obterFormacao(estado.formacaoId);
+  const emCampo = vagas.map(function (vaga) {
+    const idJogador = estado.titulares[vaga.id];
+    if (idJogador === undefined) return null;
+    const jogador = encontrarJogadorPorId(estado.timeAtual.jogadores, idJogador);
+    if (!jogador) return null;
+    return { vaga: vaga, jogador: jogador, energia: obterEnergiaJogador(jogador._id) };
+  }).filter(Boolean);
+
+  const maisCansado = emCampo
+    .filter(function (info) { return info.energia < LIMIAR_ENERGIA_SUGESTAO_TROCA; })
+    .sort(function (a, b) { return a.energia - b.energia; })[0];
+
+  if (!maisCansado) {
+    alert("Ninguém em campo está com a energia abaixo de " + LIMIAR_ENERGIA_SUGESTAO_TROCA + "% agora — nenhuma troca sugerida.");
+    return;
+  }
+
+  const idsEmCampo = new Set(Object.values(estado.titulares));
+  const jaSairam = new Set(partidaAtual.jogadoresQueSairam || []);
+  const bancoDisponivel = calcularBancoRelacionado().filter(function (j) {
+    return !idsEmCampo.has(j._id) && !jaSairam.has(j._id) && !jogadorEstaSuspenso(j._id);
+  });
+
+  const candidatosMesmaPos = bancoDisponivel.filter(function (j) { return j.pos === maisCansado.vaga.pos; });
+  const poolSubstituto = candidatosMesmaPos.length > 0 ? candidatosMesmaPos : bancoDisponivel;
+
+  if (poolSubstituto.length === 0) {
+    alert("Não há ninguém disponível no banco pra substituir " + maisCansado.jogador.nome + " agora.");
+    return;
+  }
+
+  const substituto = poolSubstituto.slice().sort(function (a, b) {
+    return pontuarJogadorParaEscalacao(b, obterEnergiaJogador(b._id)) - pontuarJogadorParaEscalacao(a, obterEnergiaJogador(a._id));
+  })[0];
+
+  const energiaTitular = maisCansado.energia;
+  const energiaSubstituto = obterEnergiaJogador(substituto._id);
+
+  const confirmou = confirm(
+    "Substituir " + maisCansado.jogador.nome + " (" + energiaTitular + "% energia) por " +
+    substituto.nome + " (" + energiaSubstituto + "% energia)?"
+  );
+  if (!confirmou) return;
+
+  escolherJogadorParaVaga(maisCansado.vaga.id, substituto._id);
 }
 
 /**
@@ -3868,6 +3966,12 @@ function ligarBotoes() {
       if (ancora) ancora.scrollIntoView({ behavior: "smooth", block: "start" });
     });
   }
+
+  const btnEscalacaoAutomatica = document.getElementById("btn-escalacao-automatica");
+  if (btnEscalacaoAutomatica) btnEscalacaoAutomatica.addEventListener("click", aplicarEscalacaoAutomatica);
+
+  const btnSugerirSubstituicao = document.getElementById("btn-sugerir-substituicao");
+  if (btnSugerirSubstituicao) btnSugerirSubstituicao.addEventListener("click", sugerirSubstituicao);
 
   const btnVoltarPartida = document.getElementById("btn-voltar-partida");
   if (btnVoltarPartida) {

@@ -661,6 +661,26 @@ body::before {
   font-weight: 700;
 }
 
+/* Botão de dado — Escalação Inteligente (pré-jogo) e Sugestão de Substituição (durante o jogo) */
+.btn-dado {
+  width: 100%;
+  min-height: 44px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 210, 63, 0.4);
+  background: rgba(255, 210, 63, 0.12);
+  color: var(--amarelo);
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  transition: transform 0.08s ease, background 0.15s ease;
+}
+
+.btn-dado:active {
+  transform: scale(0.97);
+  background: rgba(255, 210, 63, 0.2);
+}
+
 /* Campo de futebol */
 .campo {
   position: relative;
