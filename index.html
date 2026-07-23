@@ -331,6 +331,28 @@
 
     <ul class="lista lista-infraestrutura" id="lista-infraestrutura"></ul>
 
+    <section class="secao-olheiros">
+      <div class="cabecalho-secao-torcida">
+        <h3>🔭 Olheiros</h3>
+        <span class="capacidade-estadio-financas" id="contador-olheiros">0/1 contratados</span>
+      </div>
+      <p class="dica-contratos">Sem cobertura de olheiro, jogadores de outros times aparecem no Mercado com uma força estimada, não exata. O nível do Centro de Olheiros (acima) define quantos você pode contratar.</p>
+
+      <ul class="lista lista-contratos" id="lista-olheiros"></ul>
+
+      <div class="linha-filtros-mercado">
+        <select id="select-tipo-olheiro">
+          <option value="regional">Regional (times da Série B)</option>
+          <option value="nacional">Nacional (Séries A e B)</option>
+          <option value="internacional">Internacional (estrangeiros)</option>
+          <option value="jovens">Especialista em jovens</option>
+          <option value="posicao">Especialista por posição</option>
+        </select>
+        <select id="select-posicao-olheiro" hidden></select>
+      </div>
+      <button class="btn btn-secundario" id="btn-contratar-olheiro" type="button">Contratar olheiro</button>
+    </section>
+
   </main>
 
   <!-- Proposta de compra de um jogador do mercado -->

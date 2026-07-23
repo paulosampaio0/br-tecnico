@@ -102,6 +102,8 @@ const estado = {
   investimentoBase: false, // decisão do técnico: investir mensalmente na categoria de base (Fase 15)
   reputacao: null, // { pontos: 0-100 } — Fase 16
   infraestrutura: null, // { ct, dm, analise, base, olheiros } — cada 1 a 5 (Fase 18)
+  olheirosContratados: [], // [{ id, tipo, posicaoEspecialidade }] — Fase 19
+  proximoIdOlheiro: 1,
 };
 
 // Filtros e resultado da busca no Mercado, e proposta em andamento (Fase 12).
@@ -169,6 +171,8 @@ function salvarProgresso() {
     investimentoBase: estado.investimentoBase,
     reputacao: estado.reputacao,
     infraestrutura: estado.infraestrutura,
+    olheirosContratados: estado.olheirosContratados,
+    proximoIdOlheiro: estado.proximoIdOlheiro,
     atualizadoEm: new Date().toISOString(),
   };
   try {
@@ -371,6 +375,8 @@ async function escalarEsteTime(time) {
   estado.investimentoBase = false;
   estado.reputacao = { pontos: null };
   estado.infraestrutura = { ct: 1, dm: 1, analise: 1, base: 1, olheiros: 1 };
+  estado.olheirosContratados = [];
+  estado.proximoIdOlheiro = 1;
 
   await garantirTemporada();
   salvarProgresso();
@@ -1957,6 +1963,14 @@ function renderizarContratos() {
 
 let dadosParaMercado = null; // cache local (o mesmo objeto de carregarDados()), preenchido ao abrir a tela
 
+/** Força exata se algum olheiro cobre o jogador (Fase 19); senão, uma faixa estimada. */
+function formatarForcaMercado(item) {
+  const coberto = estado.olheirosContratados.some(function (olheiro) { return jogadorCobertoPorOlheiro(olheiro, item); });
+  if (coberto) return "força " + item.jogador.forca;
+  const faixa = calcularFaixaForcaEstimada(item.jogador.forca);
+  return "força " + faixa.minimo + "–" + faixa.maximo + " (estimado)";
+}
+
 /** Info da janela atual: se está aberta agora e, se fechada, quando volta a abrir. */
 function obterInfoJanelaMercado() {
   const temporadaDivisao = estado.temporada[estado.timeAtual.divisaoChave];
@@ -2079,7 +2093,7 @@ function renderizarMercado() {
       "<span class=\"pos\">" + escaparHtml(jogador.pos) + "</span>" +
       "<span class=\"info-contrato\">" +
         "<span class=\"nome-contrato\">" + escaparHtml(jogador.nome) + (estrelas > 0 ? " " + "⭐".repeat(estrelas) : "") + "</span>" +
-        "<span class=\"detalhes-contrato\">" + escaparHtml(item.nomeTime) + " · " + jogador.idade + " anos · força " + jogador.forca +
+        "<span class=\"detalhes-contrato\">" + escaparHtml(item.nomeTime) + " · " + jogador.idade + " anos · " + formatarForcaMercado(item) +
           " · " + formatarReais(item.preco) +
         "</span>" +
       "</span>" +
@@ -2105,7 +2119,7 @@ function abrirPropostaMercado(item) {
 
   document.getElementById("proposta-titulo").textContent = item.jogador.nome;
   document.getElementById("proposta-info-jogador").textContent =
-    item.nomeTime + " · " + item.jogador.pos + " · " + item.jogador.idade + " anos · força " + item.jogador.forca;
+    item.nomeTime + " · " + item.jogador.pos + " · " + item.jogador.idade + " anos · " + formatarForcaMercado(item);
   document.getElementById("proposta-preco-pedido").textContent = "Preço pedido: " + formatarReais(item.preco);
   document.getElementById("input-valor-proposta").value = item.preco;
   const resultadoEl = document.getElementById("proposta-resultado");
@@ -2321,7 +2335,7 @@ function abrirPropostaEmprestimo(item) {
 
   document.getElementById("emprestimo-titulo").textContent = item.jogador.nome;
   document.getElementById("emprestimo-info-jogador").textContent =
-    item.nomeTime + " · " + item.jogador.pos + " · " + item.jogador.idade + " anos · força " + item.jogador.forca;
+    item.nomeTime + " · " + item.jogador.pos + " · " + item.jogador.idade + " anos · " + formatarForcaMercado(item);
 
   const valorSugerido = Math.round(
     calcularPrecoTransferencia(item.jogador, 2, item.divisaoChave) * CONFIG_FINANCEIRO.emprestimoFatorValorOpcaoCompra * 100
@@ -2839,6 +2853,97 @@ function renderizarInfraestrutura() {
     if (btn) btn.addEventListener("click", function () { melhorarInfraestrutura(setor); });
     listaEl.appendChild(li);
   });
+
+  renderizarOlheiros();
+}
+
+/* ---------- Olheiros (Fase 19) ---------- */
+
+const ROTULO_TIPO_OLHEIRO = {
+  regional: "Regional (times da Série B)", nacional: "Nacional (Séries A e B)",
+  internacional: "Internacional (estrangeiros)", jovens: "Especialista em jovens (até 23 anos)",
+  posicao: "Especialista por posição",
+};
+
+function contratarOlheiro() {
+  const selectTipo = document.getElementById("select-tipo-olheiro");
+  const selectPosicao = document.getElementById("select-posicao-olheiro");
+  const tipo = selectTipo.value;
+  const posicaoEspecialidade = tipo === "posicao" ? selectPosicao.value : undefined;
+
+  const nivelMaximoOlheiros = estado.infraestrutura ? estado.infraestrutura.olheiros : 1;
+  if (estado.olheirosContratados.length >= nivelMaximoOlheiros) {
+    alert("Seu Centro de Olheiros só comporta " + nivelMaximoOlheiros +
+      (nivelMaximoOlheiros === 1 ? " olheiro" : " olheiros") + " — melhore o setor na Infraestrutura pra contratar mais.");
+    return;
+  }
+
+  const custo = CONFIG_FINANCEIRO.olheiroCusto[tipo];
+  if (custo > estado.financas.caixa) {
+    alert("Caixa insuficiente pra contratar esse olheiro (" + formatarReais(custo) + ").");
+    return;
+  }
+  if (!window.confirm("Contratar olheiro " + ROTULO_TIPO_OLHEIRO[tipo] + " por " + formatarReais(custo) + "?")) return;
+
+  estado.financas.caixa = Math.round((estado.financas.caixa - custo) * 100) / 100;
+  estado.olheirosContratados.push({ id: estado.proximoIdOlheiro++, tipo: tipo, posicaoEspecialidade: posicaoEspecialidade });
+  salvarProgresso();
+  renderizarOlheiros();
+}
+
+function dispensarOlheiro(id) {
+  if (!window.confirm("Dispensar esse olheiro? A vaga fica livre pra contratar outro.")) return;
+  estado.olheirosContratados = estado.olheirosContratados.filter(function (o) { return o.id !== id; });
+  salvarProgresso();
+  renderizarOlheiros();
+}
+
+function popularSelectPosicaoOlheiro() {
+  const selectEl = document.getElementById("select-posicao-olheiro");
+  if (!selectEl || selectEl.options.length > 0) return;
+  ORDEM_POSICOES.forEach(function (pos) {
+    const opcao = document.createElement("option");
+    opcao.value = pos;
+    opcao.textContent = pos;
+    selectEl.appendChild(opcao);
+  });
+}
+
+function renderizarOlheiros() {
+  const listaEl = document.getElementById("lista-olheiros");
+  const contadorEl = document.getElementById("contador-olheiros");
+  if (!listaEl || !estado.infraestrutura) return;
+
+  popularSelectPosicaoOlheiro();
+  const nivelMaximoOlheiros = estado.infraestrutura.olheiros;
+  if (contadorEl) contadorEl.textContent = estado.olheirosContratados.length + "/" + nivelMaximoOlheiros + " contratados";
+
+  const selectTipo = document.getElementById("select-tipo-olheiro");
+  const selectPosicao = document.getElementById("select-posicao-olheiro");
+  if (selectTipo && selectPosicao) {
+    selectPosicao.hidden = selectTipo.value !== "posicao";
+  }
+
+  listaEl.innerHTML = "";
+  if (estado.olheirosContratados.length === 0) {
+    listaEl.innerHTML = "<li class=\"mensagem-vazia-mercado\">Nenhum olheiro contratado — no Mercado, jogadores de outros times mostram só uma força estimada.</li>";
+    return;
+  }
+
+  estado.olheirosContratados.forEach(function (olheiro) {
+    const li = document.createElement("li");
+    li.className = "item-contrato";
+    const descricao = olheiro.tipo === "posicao"
+      ? "Especialista em " + olheiro.posicaoEspecialidade
+      : ROTULO_TIPO_OLHEIRO[olheiro.tipo];
+    li.innerHTML =
+      "<span class=\"info-contrato\">" +
+        "<span class=\"nome-contrato\">" + descricao + "</span>" +
+      "</span>" +
+      "<button class=\"btn-renovar-contrato btn-dispensar-contrato\" type=\"button\">Dispensar</button>";
+    li.querySelector(".btn-dispensar-contrato").addEventListener("click", function () { dispensarOlheiro(olheiro.id); });
+    listaEl.appendChild(li);
+  });
 }
 
 function abrirTelaTabela() {
@@ -3239,6 +3344,10 @@ async function continuarJogoSalvo() {
     // Saves de antes da Fase 18 não têm infraestrutura — todos os setores começam no nível 1.
     estado.infraestrutura = registro.infraestrutura || { ct: 1, dm: 1, analise: 1, base: 1, olheiros: 1 };
 
+    // Saves de antes da Fase 19 não têm olheiros contratados.
+    estado.olheirosContratados = registro.olheirosContratados || [];
+    estado.proximoIdOlheiro = registro.proximoIdOlheiro || 1;
+
     // Saves de antes da Fase 11 não têm contratos — cria um pra cada jogador que ainda não tiver.
     estado.contratos = registro.contratos || {};
     estado.timeAtual.jogadores.forEach(function (jogador) {
@@ -3359,6 +3468,12 @@ function ligarBotoes() {
 
   const btnVoltarEscalacaoInfraestrutura = document.getElementById("btn-voltar-escalacao-infraestrutura");
   if (btnVoltarEscalacaoInfraestrutura) btnVoltarEscalacaoInfraestrutura.addEventListener("click", abrirTelaEscalacao);
+
+  const selectTipoOlheiro = document.getElementById("select-tipo-olheiro");
+  if (selectTipoOlheiro) selectTipoOlheiro.addEventListener("change", renderizarOlheiros);
+
+  const btnContratarOlheiro = document.getElementById("btn-contratar-olheiro");
+  if (btnContratarOlheiro) btnContratarOlheiro.addEventListener("click", contratarOlheiro);
 
   const btnVerMercado = document.getElementById("btn-ver-mercado");
   if (btnVerMercado) btnVerMercado.addEventListener("click", abrirTelaMercado);

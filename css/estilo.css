@@ -2211,6 +2211,18 @@ body::before {
   background: rgba(61, 220, 122, 0.1);
 }
 
+.secao-olheiros {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 6px;
+}
+
+.secao-olheiros h3 {
+  font-size: 14px;
+  margin: 0;
+}
+
 .proposta-resultado-positivo { color: #3ddc7a; }
 .proposta-resultado-negativo { color: #ff8f8f; }
 .proposta-resultado-neutro { color: var(--amarelo); }

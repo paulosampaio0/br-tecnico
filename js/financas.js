@@ -177,6 +177,13 @@ const CONFIG_FINANCEIRO = {
   // Categorias de Base: jovens revelados mais fortes e com mais frequência (mexe nos limites da Fase 15).
   infraBaseBonusForcaPorNivel: 1,
   infraBaseBonusChancePorNivel: 0.01,
+
+  // --- Olheiros (Fase 19) ---
+
+  // Custo de contratação (único, não recorrente) por tipo de olheiro, em R$ milhões.
+  olheiroCusto: { regional: 15, nacional: 40, internacional: 35, jovens: 25, posicao: 20 },
+  // Sem cobertura de olheiro, a força mostrada no Mercado vira uma faixa (real ± isto).
+  olheiroFaixaEstimativaForca: 5,
 };
 
 function converterEuroParaReal(valorEmMilhoesEuro) {
@@ -489,6 +496,28 @@ function calcularLuvasPedidas(valorTransferencia) {
 /** Cláusula de rescisão mínima aceitável — sempre acima do que o clube acabou de pagar, senão o jogador sairia barato demais depois. */
 function calcularClausulaMinima(valorTransferencia) {
   return Math.round(valorTransferencia * CONFIG_FINANCEIRO.empresarioFatorClausulaMinimaSobrePreco * 100) / 100;
+}
+
+/* ============================================================
+   Olheiros (Fase 19)
+   ============================================================ */
+
+/** Se um olheiro contratado cobre este jogador do mercado (mostra a força exata em vez de faixa estimada). */
+function jogadorCobertoPorOlheiro(olheiro, itemMercado) {
+  switch (olheiro.tipo) {
+    case "regional": return itemMercado.divisaoChave === "serie_b";
+    case "nacional": return true;
+    case "internacional": return itemMercado.jogador.nac !== "BRA";
+    case "jovens": return itemMercado.jogador.idade <= 23;
+    case "posicao": return itemMercado.jogador.pos === olheiro.posicaoEspecialidade;
+    default: return false;
+  }
+}
+
+/** Faixa estimada de força ("35–40") pra jogador sem cobertura de olheiro nenhum. */
+function calcularFaixaForcaEstimada(forcaReal) {
+  const faixa = CONFIG_FINANCEIRO.olheiroFaixaEstimativaForca;
+  return { minimo: Math.max(20, forcaReal - faixa), maximo: Math.min(50, forcaReal + faixa) };
 }
 
 /* ============================================================
