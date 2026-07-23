@@ -419,6 +419,15 @@ function abrirTelaEscalacao() {
   const emPartidaAtiva = estaEmPartidaAtiva();
   document.getElementById("btn-escalacao-automatica").hidden = emPartidaAtiva;
   document.getElementById("btn-sugerir-substituicao").hidden = !emPartidaAtiva;
+
+  // Correção de bug: com a partida rolando ("Mexer no time"), a tela de escalação NÃO pode
+  // mostrar elementos de Home (menu horizontal, card do próximo jogo, CTA "Jogar rodada") —
+  // clicar em "Jogar rodada" ali reiniciava a partida em andamento e perdia o progresso.
+  document.getElementById("topo-hub").hidden = emPartidaAtiva;
+  document.getElementById("hub-nav").hidden = emPartidaAtiva;
+  document.getElementById("cartao-proximo-jogo").hidden = emPartidaAtiva;
+  document.getElementById("btn-jogar-rodada").hidden = emPartidaAtiva;
+  document.getElementById("btn-jogar-amistoso").hidden = emPartidaAtiva;
 }
 
 /** Mostra quantas substituições ainda restam, só quando há uma partida em andamento. */
@@ -950,6 +959,9 @@ function definirTatica(campo, valor) {
 
 /** Sorteia um adversário da mesma divisão e começa uma partida amistosa (não conta pra tabela). */
 async function iniciarAmistoso() {
+  // Trava de segurança: nunca inicia uma partida nova por cima de uma já em andamento.
+  if (estaEmPartidaAtiva()) return;
+
   const dados = await carregarDados();
   const divisao = dados.divisoes[estado.timeAtual.divisaoChave];
   const candidatos = divisao.times.filter(function (t) { return t.nome !== estado.timeAtual.nome; });
@@ -1034,9 +1046,67 @@ function calcularTimeSimuladoUsuario() {
   return criarTimeSimulado(estado.timeAtual.nome, titularesComFadiga, estado.tatica, estado.setas, { mando: meuLadoNaPartida });
 }
 
+/**
+ * Correção de bug (2026-07-23): a energia ficava travada em 100% (ou no valor de entrada) a
+ * partida inteira, porque só era recalculada no apito final (`aplicarDesgastePosPartida`). Agora,
+ * enquanto a partida está rolando, quem está EM CAMPO nesse exato minuto perde energia ao vivo
+ * (~0.4%/min, dentro da faixa pedida de 0,3% a 0,5%, mais rápido com seta ativa) — o valor final
+ * "de verdade" que fica salvo continua vindo de `aplicarDesgastePosPartida` no apito final, essa
+ * conta aqui é só a evolução minuto a minuto enquanto o jogo está em andamento.
+ */
+function calcularTaxaPerdaEnergiaPorMinuto(jogador, idJogador) {
+  let taxa = 0.4; // % por minuto, dentro da faixa pedida (0.3 a 0.5)
+  if (jogador.idade >= 30) taxa *= 1.15;
+  const temResistencia = jogador.caracteristica_1 === "Resistência" || jogador.caracteristica_2 === "Resistência";
+  if (temResistencia) taxa *= 0.75;
+
+  // Mesma regra de setas do Rebalanceamento de setas: 30% a mais com 1 seta ativa, 50% com 2.
+  const vagaId = Object.keys(estado.titulares).find(function (id) { return estado.titulares[id] === idJogador; });
+  const setasJogador = vagaId ? (estado.setas[vagaId] || []) : [];
+  if (setasJogador.length === 1) taxa *= 1.3;
+  else if (setasJogador.length >= 2) taxa *= 1.5;
+
+  const fatorDesgasteDM = estado.infraestrutura ? calcularFatorDesgasteDM(estado.infraestrutura.dm) : 1;
+  return taxa * fatorDesgasteDM;
+}
+
+/** Quantos minutos esse jogador já está EM CAMPO nesta partida em andamento (0 se está no banco/ainda não entrou). */
+function calcularMinutosEmCampoAoVivo(idJogador) {
+  if (!partidaAtual) return 0;
+
+  const estavaNaEscalacaoInicial = partidaAtual.escalacaoInicial &&
+    Object.values(partidaAtual.escalacaoInicial).indexOf(idJogador) !== -1;
+
+  let minutoEntrada = 0;
+  if (!estavaNaEscalacaoInicial) {
+    const eventoEntrada = partidaAtual.eventos.slice().reverse().find(function (e) {
+      return e.tipo === "substituicao" && e.idJogadorEntra === idJogador;
+    });
+    if (!eventoEntrada) return 0; // ainda não entrou em campo nesta partida
+    minutoEntrada = eventoEntrada.minuto;
+  }
+
+  return Math.max(0, partidaAtual.minuto - minutoEntrada);
+}
+
 /** Energia atual de um jogador do MEU elenco (100 se ainda não foi registrada). */
 function obterEnergiaJogador(idJogador) {
-  return estado.energiaPorJogador[idJogador] !== undefined ? estado.energiaPorJogador[idJogador] : 100;
+  const energiaBase = estado.energiaPorJogador[idJogador] !== undefined ? estado.energiaPorJogador[idJogador] : 100;
+
+  if (!estaEmPartidaAtiva()) return energiaBase;
+
+  // Só quem está EM CAMPO agora (não o banco) desgasta ao vivo.
+  const estaEmCampoAgora = Object.values(estado.titulares).indexOf(idJogador) !== -1;
+  if (!estaEmCampoAgora) return energiaBase;
+
+  const minutos = calcularMinutosEmCampoAoVivo(idJogador);
+  if (minutos <= 0) return energiaBase;
+
+  const jogador = encontrarJogadorPorId(estado.timeAtual.jogadores, idJogador);
+  if (!jogador) return energiaBase;
+
+  const perda = calcularTaxaPerdaEnergiaPorMinuto(jogador, idJogador) * minutos;
+  return Math.max(10, Math.round(energiaBase - perda));
 }
 
 /**
@@ -1710,6 +1780,10 @@ function atualizarTopoHub() {
 
 /** Começa a partida OFICIAL da temporada (conta pra tabela), seguindo o calendário. */
 async function iniciarRodadaOficial() {
+  // Trava de segurança (correção de bug): se já existe uma partida em andamento, bloqueia — clicar
+  // em "Jogar rodada" nunca pode reiniciar/sobrescrever uma partida que já está rolando.
+  if (estaEmPartidaAtiva()) return;
+
   await garantirTemporada();
 
   const divisaoChave = estado.timeAtual.divisaoChave;
