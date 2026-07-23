@@ -152,6 +152,16 @@ const MANDO_PENALIDADE_FORA = { ataque: -0.3, defesa: -0.25 };
 // pedido explícito de balanceamento: fora de casa deve ser bem mais difícil.
 const MANDO_BONUS_EXTRA_IA_CASA = { ataque: 0.7, defesa: 0.5 };
 
+/* ============================================================
+   Cartões e expulsão (Correção de bug — 2026-07-23)
+   Antes o cartão vermelho só virava um evento de texto: o jogador
+   continuava em campo, o time seguia com 11, e o 2º amarelo nem
+   existia como conceito dentro de uma mesma partida.
+   ============================================================ */
+
+// Penalidade de desvantagem numérica, por jogador expulso, até o fim da partida.
+const PENALIDADE_NUMERICA_POR_EXPULSO = { ataque: -2.2, defesa: -2.5, meio: -2.8 };
+
 /** Monta a lista { vaga, jogador } dos titulares, a partir do mapa da escalação. */
 function resolverTitulares(jogadores, formacaoId, titularesMap) {
   const vagas = obterFormacao(formacaoId);
@@ -225,11 +235,17 @@ function criarTimeSimulado(nome, titularesResolvidos, tatica, setasPorVaga, opco
   return {
     nome: nome,
     titulares: titularesResolvidos, // guardado pra sortear nomes de jogadores nos eventos
-    setores: setores, // { defesa, meio, ataque } — força EFETIVA do setor, recalculada minuto a minuto (setas + reatividade da IA)
-    setoresBase: Object.assign({}, setores), // referência fixa (mando+tática já aplicados), sem setas nem reatividade de placar
+    setores: setores, // { defesa, meio, ataque } — força EFETIVA do setor, recalculada minuto a minuto (setas + reatividade da IA + expulsão)
+    setoresBase: Object.assign({}, setores), // referência fixa (mando+tática já aplicados), sem setas/reatividade/expulsão
     setasAtivas: montarSetasAtivas(titularesResolvidos, setasPorVaga), // Rebalanceamento: cada seta com sua taxa de sucesso (Overall)
     fatorContraAtaqueConcedido: 1, // recalculado minuto a minuto quando alguém do setor defensivo tem seta ofensiva bem-sucedida
+    expulsos: [], // _ids de quem já foi expulso NESTA partida — excluídos dos sorteios de cartão/finalização
   };
+}
+
+/** Esse jogador já foi expulso nesta partida (não pode mais ser sorteado pra nada em campo)? */
+function estaExpulso(time, idJogador) {
+  return !!(time.expulsos && time.expulsos.indexOf(idJogador) !== -1);
 }
 
 function criarEstatisticasVazias() {
@@ -249,12 +265,18 @@ function sortearFatorZebra() {
   return 0.94 + Math.random() * 0.12; // dia normal, com uma leve variação
 }
 
-/** Cria o estado inicial (zerado) de uma partida. */
-function novaPartida() {
+/**
+ * Cria o estado inicial (zerado) de uma partida.
+ * `interativa` (Correção de bug — cartão vermelho, 2026-07-23): true só pra partida que o
+ * usuário está de fato assistindo/jogando (`partidaAtual`) — é ela que pausa e mostra o modal
+ * de expulsão. Os "outros jogos da rodada" e `simularJogoCompleto` (temporada.js) rodam
+ * inteiramente no automático e NUNCA podem travar esperando alguém clicar em nada.
+ */
+function novaPartida(interativa) {
   return {
     minuto: 0,
     tempo: 1,
-    status: "nao-iniciada", // nao-iniciada | jogando | pausada | intervalo | fim
+    status: "nao-iniciada", // nao-iniciada | jogando | pausada | intervalo | fim | penalti | expulsao
     placarCasa: 0,
     placarFora: 0,
     eventos: [],
@@ -267,10 +289,13 @@ function novaPartida() {
     fatorZebra: { casa: sortearFatorZebra(), fora: sortearFatorZebra() }, // dia do goleiro/defesa de cada lado
     ehRodadaOficial: false, // true quando é uma rodada de verdade da temporada (Fase 6), não amistoso
     numeroRodadaOficial: null,
-    pendencia: null, // { lado } quando há um pênalti do usuário esperando o cobrador ser escolhido
+    interativa: !!interativa,
+    pendencia: null, // { tipo: "penalti", lado } ou { tipo: "expulsao", lado, idJogador, motivo } — pausa a simulação
     substituicoesFeitas: 0, // máx. 5 por partida, igual à regra oficial
-    jogadoresQueSairam: [], // _ids que já saíram nesta partida — não podem voltar
+    jogadoresQueSairam: [], // _ids que já saíram nesta partida (substituídos OU expulsos) — não podem voltar
     jogadoresQueJogaram: [], // _ids de quem entrou em campo (titular de saída + quem entrou depois) — pro pós-jogo
+    cartoesNoJogoPorJogador: {}, // _id -> qtd de amarelos NESTA partida (2º vira vermelho)
+    jogadoresExpulsos: [], // [{ idJogador, lado, minuto, motivo: "vermelho-direto"|"segundo-amarelo" }]
   };
 }
 
@@ -278,20 +303,26 @@ function clamp(valor, min, max) {
   return Math.max(min, Math.min(max, valor));
 }
 
+/** Titulares ainda EM CAMPO — exclui quem já foi expulso nesta partida (Correção de bug 2026-07-23). */
+function titularesEmCampo(timeSimulado) {
+  const emCampo = timeSimulado.titulares.filter(function (i) { return !estaExpulso(timeSimulado, i.jogador._id); });
+  return emCampo.length > 0 ? emCampo : timeSimulado.titulares; // nunca deixa a lista vazia (evita crash num cenário extremo)
+}
+
 function jogadorAleatorio(timeSimulado) {
-  const lista = timeSimulado.titulares;
+  const lista = titularesEmCampo(timeSimulado);
   return lista[Math.floor(Math.random() * lista.length)].jogador;
 }
 
 /** Como jogadorAleatorio, mas nunca sorteia o goleiro — ele não finaliza a gol. */
 function jogadorDeLinhaAleatorio(timeSimulado) {
-  const linha = timeSimulado.titulares.filter(function (i) { return i.vaga.pos !== "GOL"; });
-  const lista = linha.length > 0 ? linha : timeSimulado.titulares;
+  const linha = titularesEmCampo(timeSimulado).filter(function (i) { return i.vaga.pos !== "GOL"; });
+  const lista = linha.length > 0 ? linha : titularesEmCampo(timeSimulado);
   return lista[Math.floor(Math.random() * lista.length)].jogador;
 }
 
 function encontrarGoleiro(timeSimulado) {
-  const item = timeSimulado.titulares.find(function (i) { return i.vaga.pos === "GOL"; });
+  const item = titularesEmCampo(timeSimulado).find(function (i) { return i.vaga.pos === "GOL"; });
   return item ? item.jogador : null;
 }
 
@@ -382,7 +413,7 @@ function processarLadoPartida(partida, atacante, defensor, ladoAtacante, permiti
       if (ehPenalti && permitirPausaPenalti) {
         // O time do usuário ganhou o pênalti: pausa a simulação pra ele escolher o cobrador.
         estatAtacante.noGol++;
-        partida.pendencia = { lado: ladoAtacante };
+        partida.pendencia = { tipo: "penalti", lado: ladoAtacante };
         registrarEvento(partida, "penalti", ladoAtacante, "🎯 Pênalti marcado!");
         return;
       }
@@ -418,11 +449,54 @@ function processarLadoPartida(partida, atacante, defensor, ladoAtacante, permiti
   if (Math.random() < 0.05) estatAtacante.errosPasse++;
 
   if (Math.random() < 0.015) {
-    const jogador = jogadorAleatorio(atacante);
-    registrarEvento(partida, "cartao-amarelo", ladoAtacante, "🟨 Cartão amarelo para " + jogador.nome + ".", jogador._id);
+    processarCartao(partida, atacante, ladoAtacante, "amarelo");
   } else if (Math.random() < 0.001) {
-    const jogador = jogadorAleatorio(atacante);
-    registrarEvento(partida, "cartao-vermelho", ladoAtacante, "🟥 Cartão vermelho para " + jogador.nome + "!", jogador._id);
+    processarCartao(partida, atacante, ladoAtacante, "vermelho");
+  }
+}
+
+/**
+ * Cartão amarelo ou vermelho pra alguém do time `atacante` (Correção de bug — 2026-07-23):
+ * controla o 2º amarelo (vira vermelho automático) e dispara a expulsão de verdade — antes o
+ * cartão vermelho só virava texto no histórico, sem tirar ninguém de campo.
+ */
+function processarCartao(partida, time, lado, tipo) {
+  const elegiveis = titularesEmCampo(time);
+  if (elegiveis.length === 0) return;
+  const jogador = elegiveis[Math.floor(Math.random() * elegiveis.length)].jogador;
+
+  if (tipo === "vermelho") {
+    registrarEvento(partida, "cartao-vermelho", lado, "🟥 Cartão vermelho para " + jogador.nome + "!", jogador._id);
+    expulsarJogador(partida, time, lado, jogador, "vermelho-direto");
+    return;
+  }
+
+  const qtdAmarelos = partida.cartoesNoJogoPorJogador[jogador._id] || 0;
+  if (qtdAmarelos >= 1) {
+    // 2º amarelo na mesma partida = expulsão automática.
+    partida.cartoesNoJogoPorJogador[jogador._id] = qtdAmarelos + 1;
+    registrarEvento(partida, "cartao-vermelho", lado,
+      "🟨🟥 Segundo amarelo: " + jogador.nome + " está expulso!", jogador._id);
+    expulsarJogador(partida, time, lado, jogador, "segundo-amarelo");
+    return;
+  }
+
+  partida.cartoesNoJogoPorJogador[jogador._id] = 1;
+  registrarEvento(partida, "cartao-amarelo", lado, "🟨 Cartão amarelo para " + jogador.nome + ".", jogador._id);
+}
+
+/**
+ * Expulsa um jogador de verdade: marca em `time.expulsos` (some dos sorteios de cartão/finalização
+ * e o time passa a jogar com a desvantagem numérica), soma em `partida.jogadoresExpulsos` (pro app.js
+ * mostrar o modal) e, só se a partida for `interativa`, pausa a simulação imediatamente (`pendencia`)
+ * — os "outros jogos da rodada" e `simularJogoCompleto` seguem sozinhos, sem ninguém pra clicar em nada.
+ */
+function expulsarJogador(partida, time, lado, jogador, motivo) {
+  time.expulsos.push(jogador._id);
+  partida.jogadoresExpulsos.push({ idJogador: jogador._id, lado: lado, minuto: partida.minuto, motivo: motivo });
+
+  if (partida.interativa) {
+    partida.pendencia = { tipo: "expulsao", lado: lado, idJogador: jogador._id, minuto: partida.minuto, motivo: motivo };
   }
 }
 
@@ -465,6 +539,16 @@ function calcularSetoresEfetivosDoMinuto(time, lado, partida, ladoComEscolhaCobr
   }
 
   aplicarEfeitoSetasDoMinuto(time, setores, partida.estatisticas[lado]);
+
+  // Desvantagem numérica (Correção de bug — cartão vermelho, 2026-07-23): cada expulso pesa no
+  // ataque, defesa E meio (posse de bola é puxada do meio/ataque em calcularPosse, então já
+  // cai sozinha por tabela) — até o fim da partida, sem limite de rodadas como a suspensão normal.
+  if (time.expulsos && time.expulsos.length > 0) {
+    const qtd = time.expulsos.length;
+    setores.ataque += PENALIDADE_NUMERICA_POR_EXPULSO.ataque * qtd;
+    setores.defesa += PENALIDADE_NUMERICA_POR_EXPULSO.defesa * qtd;
+    setores.meio += PENALIDADE_NUMERICA_POR_EXPULSO.meio * qtd;
+  }
 
   time.setores = setores;
 }

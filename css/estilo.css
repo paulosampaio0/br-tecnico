@@ -1014,6 +1014,18 @@ body::before {
   margin-right: 4px;
 }
 
+.tag-expulso {
+  display: inline-block;
+  font-size: 10px;
+  font-weight: 800;
+  color: #ff4d4d;
+  background: rgba(255, 77, 77, 0.18);
+  border: 1px solid rgba(255, 77, 77, 0.4);
+  border-radius: 6px;
+  padding: 1px 6px;
+  margin-right: 4px;
+}
+
 /* Seletor de jogador (folha que sobe de baixo) */
 .sobreposicao {
   position: fixed;
@@ -1026,6 +1038,50 @@ body::before {
 
 .sobreposicao[hidden] {
   display: none;
+}
+
+/* Pop-up de expulsão (cartão vermelho) — modal centralizado de alto destaque, não uma folha de baixo */
+.sobreposicao-expulsao {
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(0, 0, 0, 0.78);
+}
+
+.cartao-expulsao {
+  width: 100%;
+  max-width: 360px;
+  background: linear-gradient(180deg, #3a0e0e, var(--verde-escuro));
+  border: 2px solid #ff4d4d;
+  border-radius: var(--raio);
+  padding: 24px 20px;
+  text-align: center;
+  box-shadow: 0 0 40px rgba(255, 77, 77, 0.45);
+  animation: surgir-expulsao 0.25s ease;
+}
+
+@keyframes surgir-expulsao {
+  from { opacity: 0; transform: scale(0.9); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+.cartao-expulsao h3 {
+  font-size: 20px;
+  font-weight: 800;
+  color: #ff4d4d;
+  margin-bottom: 12px;
+  line-height: 1.3;
+}
+
+.cartao-expulsao p {
+  font-size: 15px;
+  color: var(--branco);
+  margin-bottom: 20px;
+  line-height: 1.4;
+}
+
+.btn-expulsao-confirmar {
+  width: 100%;
 }
 
 .folha-seletor {

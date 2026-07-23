@@ -31,6 +31,7 @@ const ROTULO_STATUS_PARTIDA = {
   intervalo: "Intervalo",
   fim: "Fim de jogo",
   penalti: "Pênalti!",
+  expulsao: "Cartão vermelho!",
 };
 
 const VELOCIDADES_PARTIDA = [1, 2, 3];
@@ -319,6 +320,7 @@ function criarItemJogador(jogador, mostrarEnergia) {
   const estrelas = calcularEstrelasPotencial(jogador);
   const prefixoEstrelas = estrelas > 0 ? "<span class=\"estrelas-potencial\" title=\"Potencial de crescimento\">" + "★".repeat(estrelas) + "</span> " : "";
   const prefixoSuspenso = jogadorEstaSuspenso(jogador._id) ? "<span class=\"tag-suspenso\">🚫 Suspenso</span> " : "";
+  const prefixoExpulso = jogadorFoiExpulsoNestaPartida(jogador._id) ? "<span class=\"tag-expulso\">🔴 Expulso</span> " : "";
   const valorMercado = calcularValorMercado(jogador);
 
   let blocoEnergia = "";
@@ -337,7 +339,7 @@ function criarItemJogador(jogador, mostrarEnergia) {
   item.innerHTML =
     "<span class=\"pos\">" + escaparHtml(jogador.pos) + "</span>" +
     "<span class=\"info\">" +
-      "<span class=\"nome\">" + prefixoSuspenso + prefixoEstrelas + escaparHtml(jogador.nome) + "</span>" +
+      "<span class=\"nome\">" + prefixoExpulso + prefixoSuspenso + prefixoEstrelas + escaparHtml(jogador.nome) + "</span>" +
       "<span class=\"detalhes\">" +
         jogador.idade + " anos · " + escaparHtml(jogador.nac) + " · " +
         escaparHtml(caracteristicas) + " · €" + valorMercado + "mi</span>" +
@@ -997,7 +999,7 @@ async function iniciarAmistoso() {
   recalcularForcaUsuario();
   timeForaSimulado = criarTimeSimuladoAutomatico(oponente, "fora");
 
-  partidaAtual = novaPartida();
+  partidaAtual = novaPartida(true); // interativa: é a partida que o usuário está de fato jogando
   // Amistoso: o usuário sempre manda o jogo — bilheteria com os dados reais do meu clube.
   partidaAtual.bilheteria = calcularBilheteriaExibicao(
     estado.timeAtual.jogadores, estado.timeAtual.divisaoChave,
@@ -1075,7 +1077,19 @@ function calcularTimeSimuladoUsuario() {
 
   // Mando de campo (Rebalanceamento 2026-07-23): o time do usuário também sente o efeito de
   // jogar em casa/fora, só nunca recebe o reforço extra de mando reservado pra IA visitada.
-  return criarTimeSimulado(estado.timeAtual.nome, titularesComFadiga, estado.tatica, estado.setas, { mando: meuLadoNaPartida });
+  const time = criarTimeSimulado(estado.timeAtual.nome, titularesComFadiga, estado.tatica, estado.setas, { mando: meuLadoNaPartida });
+
+  // Correção de bug — cartão vermelho: essa função RECRIA o time do zero toda vez que a
+  // simulação retoma de uma pausa (pra escalação/tática valerem), o que apagaria a lista de
+  // expulsos (e com ela a penalidade de desvantagem numérica) a cada "Retomar". Repõe a partir
+  // do registro oficial e persistente da partida (`partidaAtual.jogadoresExpulsos`).
+  if (partidaAtual && partidaAtual.jogadoresExpulsos) {
+    time.expulsos = partidaAtual.jogadoresExpulsos
+      .filter(function (e) { return e.lado === meuLadoNaPartida; })
+      .map(function (e) { return e.idJogador; });
+  }
+
+  return time;
 }
 
 /**
@@ -1235,6 +1249,14 @@ function tickPartida() {
     else if (evento.tipo === "penalti") tocarSom("apito-curto");
   });
 
+  if (partidaAtual.pendencia && partidaAtual.pendencia.tipo === "expulsao") {
+    partidaAtual.status = "expulsao";
+    pararIntervaloPartida();
+    renderizarPartida();
+    abrirModalExpulsao();
+    return;
+  }
+
   if (partidaAtual.pendencia) {
     partidaAtual.status = "penalti";
     pararIntervaloPartida();
@@ -1303,6 +1325,62 @@ function resolverPenaltiUsuario(jogadorCobrador) {
   partidaAtual.status = "pausada";
   fecharSeletorJogador();
   renderizarPartida();
+}
+
+/**
+ * Correção de bug — cartão vermelho (2026-07-23): mostra o pop-up de expulsão (vermelho direto
+ * ou 2º amarelo) e, se for o jogador expulso do MEU time, já tira ele de `estado.titulares` na
+ * hora — a vaga fica vazia e o teto de jogadores em campo cai pra 10 (não dá pra chamar um 11º
+ * do banco pra cobrir, só reorganizar quem já está em campo).
+ */
+function abrirModalExpulsao() {
+  const info = partidaAtual.pendencia;
+  const timeDoExpulso = info.lado === "casa" ? timeCasaSimulado : timeForaSimulado;
+  const itemJogador = timeDoExpulso.titulares.find(function (i) { return i.jogador._id === info.idJogador; });
+  const nomeJogador = itemJogador ? itemJogador.jogador.nome : "Jogador";
+  const ehMeuTime = info.lado === meuLadoNaPartida;
+
+  const tituloEl = document.getElementById("titulo-expulsao");
+  const textoEl = document.getElementById("texto-expulsao");
+  const btnEl = document.getElementById("btn-confirmar-expulsao");
+
+  if (info.motivo === "vermelho-direto") {
+    tituloEl.textContent = "🔴 Cartão vermelho direto!";
+    textoEl.textContent = nomeJogador + " foi expulso aos " + info.minuto + "'!";
+  } else {
+    tituloEl.textContent = "🟨🔴 Segundo cartão amarelo (expulsão)!";
+    textoEl.textContent = nomeJogador + " recebeu o segundo amarelo e foi expulso aos " + info.minuto + "'!";
+  }
+  btnEl.textContent = ehMeuTime ? "Reorganizar time ▶" : "Continuar ▶";
+
+  if (ehMeuTime) {
+    const vagaId = Object.keys(estado.titulares).find(function (id) { return estado.titulares[id] === info.idJogador; });
+    if (vagaId) {
+      delete estado.titulares[vagaId];
+      delete estado.setas[vagaId];
+    }
+    partidaAtual.limiteJogadoresEmCampo = (partidaAtual.limiteJogadoresEmCampo !== undefined ? partidaAtual.limiteJogadoresEmCampo : 11) - 1;
+    partidaAtual.jogadoresQueSairam = partidaAtual.jogadoresQueSairam || [];
+    if (partidaAtual.jogadoresQueSairam.indexOf(info.idJogador) === -1) partidaAtual.jogadoresQueSairam.push(info.idJogador);
+    salvarProgresso();
+  }
+
+  document.getElementById("sobreposicao-expulsao").hidden = false;
+}
+
+/** Fecha o pop-up de expulsão e, se foi o MEU jogador expulso, vai direto pra "Mexer no time". */
+function fecharModalExpulsao() {
+  const info = partidaAtual.pendencia;
+  const ehMeuTime = info && info.lado === meuLadoNaPartida;
+
+  document.getElementById("sobreposicao-expulsao").hidden = true;
+  partidaAtual.pendencia = null;
+  partidaAtual.status = "pausada";
+  renderizarControlesPartida();
+
+  if (ehMeuTime) {
+    abrirTelaEscalacao();
+  }
 }
 
 /** Mostra a lista de placares dos outros jogos da rodada, atualizada a cada minuto. */
@@ -1409,7 +1487,7 @@ function renderizarControlesPartida() {
     return;
   }
 
-  if (partidaAtual.status === "penalti") {
+  if (partidaAtual.status === "penalti" || partidaAtual.status === "expulsao") {
     btnPausar.hidden = true;
     btnMexer.hidden = true;
     if (btnVelocidade) btnVelocidade.hidden = true;
@@ -1548,6 +1626,12 @@ function jogadorEstaSuspenso(idJogador) {
   if (!estado.temporada) return false;
   const ate = estado.suspensoAte[idJogador];
   return ate !== undefined && ate >= estado.temporada.rodadaAtual;
+}
+
+/** Foi expulso NA PARTIDA em andamento agora (diferente de suspensão, que é pra próxima rodada)? */
+function jogadorFoiExpulsoNestaPartida(idJogador) {
+  return !!(partidaAtual && partidaAtual.jogadoresExpulsos &&
+    partidaAtual.jogadoresExpulsos.some(function (e) { return e.idJogador === idJogador; }));
 }
 
 /**
@@ -1862,7 +1946,7 @@ async function iniciarRodadaOficial() {
   }
   recalcularForcaUsuario(); // preenche o lado que é o meu
 
-  partidaAtual = novaPartida();
+  partidaAtual = novaPartida(true); // interativa: é a partida que o usuário está de fato jogando
   partidaAtual.ehRodadaOficial = true;
   partidaAtual.numeroRodadaOficial = numeroRodada;
 
@@ -3883,6 +3967,17 @@ function escolherJogadorParaVaga(idVaga, idJogador) {
       alert("Você já usou as " + LIMITE_SUBSTITUICOES + " substituições permitidas nesta partida.");
       return;
     }
+    // Correção de bug — cartão vermelho: se um titular meu foi expulso, o teto de jogadores em
+    // campo cai (ex.: 10) — só bloqueia quando a vaga escolhida está VAZIA (trazer alguém do banco
+    // pra cobrir o buraco do expulso); reorganizar quem já está em campo continua livre.
+    if (idAntigoNaVaga === undefined) {
+      const limite = partidaAtual.limiteJogadoresEmCampo !== undefined ? partidaAtual.limiteJogadoresEmCampo : 11;
+      if (Object.keys(estado.titulares).length >= limite) {
+        alert("Seu time está jogando com um a menos por causa da expulsão — não dá pra colocar um " +
+          (limite + 1) + "º jogador em campo.");
+        return;
+      }
+    }
     const jogadorEntra = encontrarJogadorPorId(estado.timeAtual.jogadores, idJogador);
     const jogadorSai = idAntigoNaVaga !== undefined
       ? encontrarJogadorPorId(estado.timeAtual.jogadores, idAntigoNaVaga) : null;
@@ -4244,6 +4339,9 @@ function ligarBotoes() {
 
   const btnFecharSeletor = document.getElementById("btn-fechar-seletor");
   if (btnFecharSeletor) btnFecharSeletor.addEventListener("click", fecharSeletorJogador);
+
+  const btnConfirmarExpulsao = document.getElementById("btn-confirmar-expulsao");
+  if (btnConfirmarExpulsao) btnConfirmarExpulsao.addEventListener("click", fecharModalExpulsao);
 
   const sobreposicao = document.getElementById("sobreposicao-seletor");
   if (sobreposicao) {
