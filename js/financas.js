@@ -79,9 +79,8 @@ const CONFIG_FINANCEIRO = {
   fatorPrecoContratoTeto: 1.3,
   fatorPrecoClubeSerieB: 0.85, // clube da Série B costuma vender mais barato
 
-  // Negociação: abaixo do piso a proposta é recusada na hora; entre o piso e o
-  // teto o clube faz contraproposta pelo preço pedido; acima do teto, aceita.
-  razaoPropostaRecusaDireta: 0.6,
+  // Negociação: acima do teto o clube já aceita de cara; abaixo do piso ele
+  // rompe a negociação na hora. Entre os dois, é rodada de barganha (Fase 16).
   razaoPropostaAceitaDireto: 0.92,
 
   // O jogador (não o clube) pode recusar ir pra um clube pequeno demais pra ele.
@@ -121,6 +120,37 @@ const CONFIG_FINANCEIRO = {
   idadeMaximaRevelacaoBase: 19,
   forcaMinimaRevelacaoBase: 29,
   forcaMaximaRevelacaoBase: 35,
+
+  // --- Reputação do clube (Fase 16) ---
+
+  // Placar interno 0-100 (igual à moral da torcida) — as estrelas são só a "leitura" desse placar.
+  reputacaoPontosMinimo: 0,
+  reputacaoPontosMaximo: 100,
+  reputacaoLimiaresEstrelas: [20, 40, 60, 80], // pontos <=20 = 1 estrela, <=40 = 2, <=60 = 3, <=80 = 4, senão 5
+  reputacaoBonusTitulo: 18, // terminar em 1º na sua divisão
+  reputacaoBonusAcesso: 10,
+  reputacaoBonusMetaCumprida: 4,
+  reputacaoPenalidadeRebaixamento: 14,
+  reputacaoPenalidadeMetaFalhada: 6,
+  // Fator sobre o patrocínio: 3 estrelas é neutro, cada estrela acima/abaixo ajusta este %.
+  fatorReputacaoSobrePatrocinio: 0.15,
+  // Jogadores de elite (ver forcaMinimaJogadorExigente) só topam clubes com pelo menos esta reputação.
+  reputacaoEstrelaMinimaJogadorExigente: 4,
+
+  // --- Barganha (Fase 16) ---
+
+  negociacaoFatorConvergenciaClube: 0.5, // a cada rodada, o clube cede metade da diferença até o preço pedido
+  negociacaoLimiteRodadas: 4, // depois disso, sem fechar, o clube rompe a negociação
+  negociacaoRazaoRupturaMinima: 0.55, // oferta abaixo disso do preço pedido = ruptura na hora
+
+  // --- Negociação com o empresário do jogador (Fase 16) ---
+
+  empresarioFatorSalarioBase: 1.0,
+  empresarioBonusSalarioPorEstrelaFaltante: 0.12, // reputação baixa do clube comprador = empresário pede mais
+  empresarioFatorLuvasSobrePreco: 0.08, // luvas pedidas = % do valor pago na transferência
+  empresarioFatorClausulaMinimaSobrePreco: 1.3, // cláusula de rescisão mínima aceitável
+  duracaoContratoMinimaNegociavel: 1,
+  duracaoContratoMaximaNegociavel: 5,
 };
 
 function converterEuroParaReal(valorEmMilhoesEuro) {
@@ -229,8 +259,8 @@ function calcularReceitaBilheteria(publico, faixaPreco) {
   return Math.round(((publico * preco) / 1000000) * 100) / 100;
 }
 
-/** Valor total do contrato de patrocínio da temporada — porte do clube, divisão e desempenho passado. */
-function calcularPatrocinioTemporada(jogadores, divisaoChave, aproveitamentoTemporadaAnterior) {
+/** Valor total do contrato de patrocínio da temporada — porte do clube, divisão, desempenho passado e reputação. */
+function calcularPatrocinioTemporada(jogadores, divisaoChave, aproveitamentoTemporadaAnterior, estrelasReputacao) {
   const valorElenco = calcularValorElencoEmReais(jogadores);
   let valor = valorElenco * CONFIG_FINANCEIRO.fatorPatrocinioSobreElenco;
   if (divisaoChave === "serie_a") valor *= CONFIG_FINANCEIRO.bonusPatrocinioSerieA;
@@ -240,15 +270,46 @@ function calcularPatrocinioTemporada(jogadores, divisaoChave, aproveitamentoTemp
     aproveitamento * (CONFIG_FINANCEIRO.patrocinioTetoDesempenho - CONFIG_FINANCEIRO.patrocinioPisoDesempenho);
   valor *= fatorDesempenho;
 
+  if (estrelasReputacao !== undefined) valor *= calcularFatorReputacaoPatrocinio(estrelasReputacao);
+
   return Math.round(valor * 100) / 100;
 }
 
 /** Fecha (ou renova) o contrato de patrocínio no início de uma temporada, já rateado por rodada. */
-function definirPatrocinioDaTemporada(financas, jogadores, divisaoChave, totalRodadas, aproveitamentoTemporadaAnterior) {
-  const valorTemporada = calcularPatrocinioTemporada(jogadores, divisaoChave, aproveitamentoTemporadaAnterior);
+function definirPatrocinioDaTemporada(financas, jogadores, divisaoChave, totalRodadas, aproveitamentoTemporadaAnterior, estrelasReputacao) {
+  const valorTemporada = calcularPatrocinioTemporada(jogadores, divisaoChave, aproveitamentoTemporadaAnterior, estrelasReputacao);
   financas.patrocinioValorTemporada = valorTemporada;
   financas.patrocinioPorRodada = totalRodadas > 0 ? Math.round((valorTemporada / totalRodadas) * 100) / 100 : 0;
   return valorTemporada;
+}
+
+/* ============================================================
+   Reputação do clube (Fase 16)
+   ============================================================ */
+
+/** Reputação inicial (0-100) — deriva do mesmo percentil de porte do elenco usado pra definir a meta da diretoria. */
+function calcularReputacaoInicial(jogadores, divisaoChave, dados) {
+  const fracaoRank = calcularPercentilElenco(jogadores, divisaoChave, dados);
+  return Math.round(fracaoRank * 100);
+}
+
+/** Converte o placar 0-100 em estrelas (1 a 5). */
+function obterEstrelasReputacao(pontos) {
+  const limiares = CONFIG_FINANCEIRO.reputacaoLimiaresEstrelas;
+  for (let i = 0; i < limiares.length; i++) {
+    if (pontos <= limiares[i]) return i + 1;
+  }
+  return 5;
+}
+
+function ajustarReputacao(pontosAtuais, delta) {
+  return Math.round(clampFrac(pontosAtuais + delta, CONFIG_FINANCEIRO.reputacaoPontosMinimo, CONFIG_FINANCEIRO.reputacaoPontosMaximo));
+}
+
+/** Fator multiplicador sobre o patrocínio conforme a reputação — 3 estrelas é neutro (fator 1). */
+function calcularFatorReputacaoPatrocinio(estrelasReputacao) {
+  const diferenca = estrelasReputacao - 3;
+  return clampFrac(1 + diferenca * CONFIG_FINANCEIRO.fatorReputacaoSobrePatrocinio, 0.4, 1.6);
 }
 
 /** Estado financeiro inicial de um clube, criado quando o técnico assume o time. */
@@ -356,26 +417,48 @@ function calcularPrecoTransferencia(jogador, anosContratoRestante, divisaoVended
 }
 
 /**
- * Avalia uma proposta de compra. Devolve um destes resultados:
- * { status: "recusada" }               — muito abaixo do preço pedido.
- * { status: "contraproposta", valor }  — o clube quer o preço pedido cheio.
- * { status: "recusada-pelo-jogador" }  — o clube toparia, mas o jogador não quer um clube pequeno.
- * { status: "aceita" }                 — negócio fechado no valor proposto.
+ * Avalia UMA rodada de barganha com o clube vendedor (Fase 16 — antes disso
+ * era uma resposta única; agora o clube cede aos poucos, rodada a rodada, até
+ * um valor bem acima do pedido inicial fazer ele aceitar de vez, ou rodadas
+ * demais/oferta baixa demais fazerem ele romper a negociação). Devolve:
+ * { status: "ruptura" }               — oferta baixa demais, ou rodadas esgotadas: o clube encerra.
+ * { status: "contraproposta", valor } — o clube quer esse valor (convergindo aos poucos pro preço pedido).
+ * { status: "aceita" }                — negócio fechado nesse valor.
  */
-function avaliarPropostaTransferencia(jogador, precoPedido, valorProposta, divisaoCompradora) {
-  const razao = precoPedido > 0 ? valorProposta / precoPedido : 1;
+function avaliarRodadaNegociacaoClube(precoPedido, ofertaAtual, rodada) {
+  const razao = precoPedido > 0 ? ofertaAtual / precoPedido : 1;
 
-  if (razao < CONFIG_FINANCEIRO.razaoPropostaRecusaDireta) return { status: "recusada" };
-  if (razao < CONFIG_FINANCEIRO.razaoPropostaAceitaDireto) {
-    return { status: "contraproposta", valor: precoPedido };
-  }
+  if (razao < CONFIG_FINANCEIRO.negociacaoRazaoRupturaMinima) return { status: "ruptura" };
+  if (razao >= CONFIG_FINANCEIRO.razaoPropostaAceitaDireto) return { status: "aceita" };
+  if (rodada >= CONFIG_FINANCEIRO.negociacaoLimiteRodadas) return { status: "ruptura" };
 
-  if (jogador.forca >= CONFIG_FINANCEIRO.forcaMinimaJogadorExigente && divisaoCompradora === "serie_b") {
-    // Determinístico (não aleatório de verdade) pra ser consistente se o jogo recarregar.
-    if (jogador._id % 3 === 0) return { status: "recusada-pelo-jogador" };
-  }
+  const diferenca = precoPedido - ofertaAtual;
+  const valor = Math.round((ofertaAtual + diferenca * CONFIG_FINANCEIRO.negociacaoFatorConvergenciaClube) * 100) / 100;
+  return { status: "contraproposta", valor: valor };
+}
 
-  return { status: "aceita" };
+/** O jogador (empresário) recusa clubes de reputação baixa demais pro tamanho dele, mesmo com o clube já topando o preço. */
+function jogadorRecusaPorReputacao(jogador, estrelasReputacaoCompradora) {
+  return jogador.forca >= CONFIG_FINANCEIRO.forcaMinimaJogadorExigente &&
+    estrelasReputacaoCompradora < CONFIG_FINANCEIRO.reputacaoEstrelaMinimaJogadorExigente;
+}
+
+/** Pedido inicial de salário do empresário (em €/mês, mesma unidade de calcularSalarioMensal) — reputação baixa pesa mais no bolso. */
+function calcularPedidoSalarioEmpresario(jogador, estrelasReputacaoCompradora) {
+  const base = calcularSalarioMensal(jogador);
+  const estrelasFaltantes = Math.max(0, 5 - estrelasReputacaoCompradora);
+  const fator = CONFIG_FINANCEIRO.empresarioFatorSalarioBase + estrelasFaltantes * CONFIG_FINANCEIRO.empresarioBonusSalarioPorEstrelaFaltante;
+  return Math.round(base * fator * 1000) / 1000;
+}
+
+/** Luvas (bônus de assinatura) exigidas pelo empresário — % do valor pago na transferência, à vista. */
+function calcularLuvasPedidas(valorTransferencia) {
+  return Math.round(valorTransferencia * CONFIG_FINANCEIRO.empresarioFatorLuvasSobrePreco * 100) / 100;
+}
+
+/** Cláusula de rescisão mínima aceitável — sempre acima do que o clube acabou de pagar, senão o jogador sairia barato demais depois. */
+function calcularClausulaMinima(valorTransferencia) {
+  return Math.round(valorTransferencia * CONFIG_FINANCEIRO.empresarioFatorClausulaMinimaSobrePreco * 100) / 100;
 }
 
 /* ============================================================

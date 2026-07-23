@@ -100,6 +100,7 @@ const estado = {
   proximoIdProposta: 1,
   diretoria: null, // { meta, orcamentoContratacoes, orcamentoGasto, falhasConsecutivas, contratacoesBloqueadas } — Fase 14
   investimentoBase: false, // decisão do técnico: investir mensalmente na categoria de base (Fase 15)
+  reputacao: null, // { pontos: 0-100 } — Fase 16
 };
 
 // Filtros e resultado da busca no Mercado, e proposta em andamento (Fase 12).
@@ -164,6 +165,7 @@ function salvarProgresso() {
     proximoIdProposta: estado.proximoIdProposta,
     diretoria: estado.diretoria,
     investimentoBase: estado.investimentoBase,
+    reputacao: estado.reputacao,
     atualizadoEm: new Date().toISOString(),
   };
   try {
@@ -364,6 +366,7 @@ async function escalarEsteTime(time) {
   estado.proximoIdProposta = 1;
   estado.diretoria = { meta: null, orcamentoContratacoes: 0, orcamentoGasto: 0, falhasConsecutivas: 0, contratacoesBloqueadas: false };
   estado.investimentoBase = false;
+  estado.reputacao = { pontos: null };
 
   await garantirTemporada();
   salvarProgresso();
@@ -1379,19 +1382,34 @@ function evoluirJogador(jogador) {
 /** Se ainda não existe uma temporada em andamento, cria a primeira. */
 async function garantirTemporada() {
   if (estado.temporada) {
+    await garantirReputacaoInicial();
     await garantirMetaDaDiretoria();
     return;
   }
   const dados = await carregarDados();
   estado.temporada = criarNovaTemporada(dados.divisoes.serie_a.times, dados.divisoes.serie_b.times, 2026);
 
+  // A reputação precisa existir ANTES do patrocínio, porque ela entra na conta do valor do contrato.
+  await garantirReputacaoInicial(dados);
+
   // Primeira temporada do clube: fecha o contrato de patrocínio com um desempenho-base (sem histórico ainda).
   if (estado.financas) {
     const totalRodadas = estado.temporada[estado.timeAtual.divisaoChave].calendario.length;
-    definirPatrocinioDaTemporada(estado.financas, estado.timeAtual.jogadores, estado.timeAtual.divisaoChave, totalRodadas, 0.5);
+    const estrelas = obterEstrelasReputacao(estado.reputacao.pontos);
+    definirPatrocinioDaTemporada(estado.financas, estado.timeAtual.jogadores, estado.timeAtual.divisaoChave, totalRodadas, 0.5, estrelas);
   }
 
   await garantirMetaDaDiretoria(dados);
+}
+
+/**
+ * Garante que existe uma reputação inicial pra carreira (Fase 16) — cobre tanto
+ * uma carreira nova quanto um save de antes da Fase 16 que ainda não tem reputação.
+ */
+async function garantirReputacaoInicial(dadosJaCarregados) {
+  if (!estado.reputacao || estado.reputacao.pontos !== null) return;
+  const dados = dadosJaCarregados || await carregarDados();
+  estado.reputacao.pontos = calcularReputacaoInicial(estado.timeAtual.jogadores, estado.timeAtual.divisaoChave, dados);
 }
 
 /**
@@ -1607,18 +1625,21 @@ async function processarFimDeTemporada() {
 
   const resultado = aplicarAcessoRebaixamento(estado.temporada.serie_a.tabela, estado.temporada.serie_b.tabela);
 
-  // Avalia a meta da diretoria da temporada que está terminando (Fase 14), ANTES da
-  // tabela ser substituída pela nova — senão a posição final se perde.
+  // Posição final e acesso/rebaixamento da temporada que está terminando (ANTES da
+  // tabela ser substituída pela nova) — usados tanto pra meta da diretoria quanto pra reputação.
+  const tabelaOrdenada = ordenarTabela(estado.temporada[divisaoAntiga].tabela);
+  const posicaoFinal = tabelaOrdenada.findIndex(function (t) { return t.nome === estado.timeAtual.nome; }) + 1;
+  const contextoTemporada = {
+    posicaoFinal: posicaoFinal, totalTimes: tabelaOrdenada.length,
+    foiRebaixado: resultado.rebaixados.indexOf(estado.timeAtual.nome) !== -1,
+    foiPromovido: resultado.promovidos.indexOf(estado.timeAtual.nome) !== -1,
+  };
+
+  // Avalia a meta da diretoria (Fase 14).
   let relatorioMeta = null;
+  let metaCumprida = true;
   if (estado.diretoria && estado.diretoria.meta) {
-    const tabelaOrdenada = ordenarTabela(estado.temporada[divisaoAntiga].tabela);
-    const posicaoFinal = tabelaOrdenada.findIndex(function (t) { return t.nome === estado.timeAtual.nome; }) + 1;
-    const contexto = {
-      posicaoFinal: posicaoFinal, totalTimes: tabelaOrdenada.length,
-      foiRebaixado: resultado.rebaixados.indexOf(estado.timeAtual.nome) !== -1,
-      foiPromovido: resultado.promovidos.indexOf(estado.timeAtual.nome) !== -1,
-    };
-    const metaCumprida = avaliarMeta(estado.diretoria.meta, contexto);
+    metaCumprida = avaliarMeta(estado.diretoria.meta, contextoTemporada);
     relatorioMeta = { descricao: estado.diretoria.meta.descricao, cumprida: metaCumprida, posicaoFinal: posicaoFinal };
     estado.diretoria.falhasConsecutivas = metaCumprida ? 0 : (estado.diretoria.falhasConsecutivas || 0) + 1;
 
@@ -1626,6 +1647,18 @@ async function processarFimDeTemporada() {
       aplicarDemissao("a diretoria perdeu a paciência — meta não cumprida " + estado.diretoria.falhasConsecutivas + " temporadas seguidas.");
       return;
     }
+  }
+
+  // Ajusta a reputação do clube (Fase 16): título, acesso, rebaixamento e o resultado da meta.
+  if (estado.reputacao && estado.reputacao.pontos !== null) {
+    let deltaReputacao = 0;
+    if (contextoTemporada.posicaoFinal === 1) deltaReputacao += CONFIG_FINANCEIRO.reputacaoBonusTitulo;
+    if (contextoTemporada.foiPromovido) deltaReputacao += CONFIG_FINANCEIRO.reputacaoBonusAcesso;
+    if (contextoTemporada.foiRebaixado) deltaReputacao -= CONFIG_FINANCEIRO.reputacaoPenalidadeRebaixamento;
+    if (relatorioMeta) {
+      deltaReputacao += metaCumprida ? CONFIG_FINANCEIRO.reputacaoBonusMetaCumprida : -CONFIG_FINANCEIRO.reputacaoPenalidadeMetaFalhada;
+    }
+    estado.reputacao.pontos = ajustarReputacao(estado.reputacao.pontos, deltaReputacao);
   }
 
   // Evolução do MEU elenco: todo mundo fica 1 ano mais velho, a força sobe ou cai.
@@ -1688,10 +1721,11 @@ async function processarFimDeTemporada() {
     estado.timeAtual.divisaoChave = "serie_a";
   }
 
-  // Renova o patrocínio pra temporada nova, já considerando a divisão atualizada e o desempenho passado.
+  // Renova o patrocínio pra temporada nova, já considerando a divisão atualizada, o desempenho passado e a reputação nova.
   if (estado.financas) {
     const totalRodadasNovas = estado.temporada[estado.timeAtual.divisaoChave].calendario.length;
-    definirPatrocinioDaTemporada(estado.financas, estado.timeAtual.jogadores, estado.timeAtual.divisaoChave, totalRodadasNovas, aproveitamentoAnterior);
+    const estrelasNovas = estado.reputacao ? obterEstrelasReputacao(estado.reputacao.pontos) : 3;
+    definirPatrocinioDaTemporada(estado.financas, estado.timeAtual.jogadores, estado.timeAtual.divisaoChave, totalRodadasNovas, aproveitamentoAnterior, estrelasNovas);
   }
 
   // Nova meta e novo orçamento de contratações pra temporada que está começando (Fase 14).
@@ -1766,6 +1800,7 @@ function renderizarFinancas() {
   renderizarOpcoesPrecoIngresso();
   renderizarDiretoria();
   renderizarBaseFinancas();
+  renderizarReputacao();
 
   const moralEl = document.getElementById("financas-moral-torcida");
   if (moralEl) {
@@ -1861,6 +1896,7 @@ function renderizarContratos() {
         "<span class=\"nome-contrato\">" + escaparHtml(jogador.nome) + "</span>" +
         "<span class=\"detalhes-contrato\">" + formatarReais(salarioMensalReais) + "/mês · " +
           (vencendo ? "⚠ " : "") + contrato.anosRestantes + (contrato.anosRestantes === 1 ? " ano restante" : " anos restantes") +
+          (contrato.clausulaRescisao ? " · Cláusula: " + formatarReais(contrato.clausulaRescisao) : "") +
         "</span>" +
       "</span>" +
       "<button class=\"btn-renovar-contrato\" type=\"button\">Renovar</button>" +
@@ -2015,8 +2051,12 @@ function renderizarMercado() {
   });
 }
 
+/** Abre a barganha com o clube vendedor (fase 1 de 2 — Fase 16). */
 function abrirPropostaMercado(item) {
-  propostaMercadoAberta = { jogador: item.jogador, nomeTime: item.nomeTime, divisaoChave: item.divisaoChave, precoPedido: item.preco };
+  propostaMercadoAberta = {
+    jogador: item.jogador, nomeTime: item.nomeTime, divisaoChave: item.divisaoChave,
+    precoPedido: item.preco, rodada: 0, fase: "clube",
+  };
 
   document.getElementById("proposta-titulo").textContent = item.jogador.nome;
   document.getElementById("proposta-info-jogador").textContent =
@@ -2026,6 +2066,9 @@ function abrirPropostaMercado(item) {
   const resultadoEl = document.getElementById("proposta-resultado");
   resultadoEl.textContent = "";
   resultadoEl.className = "proposta-resultado";
+
+  document.getElementById("proposta-fase-clube").hidden = false;
+  document.getElementById("proposta-fase-empresario").hidden = true;
   document.getElementById("sobreposicao-proposta").hidden = false;
 }
 
@@ -2034,8 +2077,9 @@ function fecharPropostaMercado() {
   propostaMercadoAberta = null;
 }
 
+/** Uma rodada de barganha com o clube vendedor: recusa/contraproposta/aceita (Fase 16). */
 function enviarPropostaMercado() {
-  if (!propostaMercadoAberta) return;
+  if (!propostaMercadoAberta || propostaMercadoAberta.fase !== "clube") return;
   const resultadoEl = document.getElementById("proposta-resultado");
   const valorProposta = Number(document.getElementById("input-valor-proposta").value);
 
@@ -2061,35 +2105,147 @@ function enviarPropostaMercado() {
     return;
   }
 
-  const { jogador, nomeTime, divisaoChave, precoPedido } = propostaMercadoAberta;
-  const avaliacao = avaliarPropostaTransferencia(jogador, precoPedido, valorProposta, estado.timeAtual.divisaoChave);
+  propostaMercadoAberta.rodada++;
+  const avaliacao = avaliarRodadaNegociacaoClube(propostaMercadoAberta.precoPedido, valorProposta, propostaMercadoAberta.rodada);
 
-  if (avaliacao.status === "recusada") {
-    resultadoEl.textContent = nomeTime + " recusou: proposta muito abaixo do valor pedido.";
+  if (avaliacao.status === "ruptura") {
+    resultadoEl.textContent = propostaMercadoAberta.nomeTime + " encerrou a negociação — as propostas ficaram longe demais.";
     resultadoEl.className = "proposta-resultado proposta-resultado-negativo";
-  } else if (avaliacao.status === "contraproposta") {
-    resultadoEl.textContent = "Contraproposta: " + formatarReais(avaliacao.valor) + ". Ajuste o valor e envie de novo pra fechar.";
+    propostaMercadoAberta = null;
+    return;
+  }
+  if (avaliacao.status === "contraproposta") {
+    resultadoEl.textContent = "Contraproposta (rodada " + propostaMercadoAberta.rodada + " de " + CONFIG_FINANCEIRO.negociacaoLimiteRodadas + "): " +
+      formatarReais(avaliacao.valor) + ". Ajuste o valor e envie de novo, ou feche nesse valor.";
     resultadoEl.className = "proposta-resultado proposta-resultado-neutro";
     document.getElementById("input-valor-proposta").value = avaliacao.valor;
-  } else if (avaliacao.status === "recusada-pelo-jogador") {
-    resultadoEl.textContent = jogador.nome + " recusou: não quer jogar num clube desse tamanho.";
-    resultadoEl.className = "proposta-resultado proposta-resultado-negativo";
-  } else {
-    concluirTransferencia(jogador, nomeTime, divisaoChave, valorProposta);
-    resultadoEl.textContent = "Negócio fechado! " + jogador.nome + " agora joga no seu time.";
-    resultadoEl.className = "proposta-resultado proposta-resultado-positivo";
-    setTimeout(function () {
-      fecharPropostaMercado();
-      renderizarMercado();
-    }, 1300);
+    return;
   }
+
+  // O clube aceitou — falta o próprio jogador topar (reputação baixa demais pra ele = recusa).
+  const jogador = propostaMercadoAberta.jogador;
+  const estrelas = estado.reputacao ? obterEstrelasReputacao(estado.reputacao.pontos) : 3;
+  if (jogadorRecusaPorReputacao(jogador, estrelas)) {
+    resultadoEl.textContent = jogador.nome + " recusou: seu clube não tem reputação suficiente pra atraí-lo.";
+    resultadoEl.className = "proposta-resultado proposta-resultado-negativo";
+    propostaMercadoAberta = null;
+    return;
+  }
+
+  propostaMercadoAberta.valorAcordadoClube = valorProposta;
+  abrirFaseEmpresario();
 }
 
-/** Fecha a transferência: tira o dinheiro, remove o jogador do clube vendedor e traz pro seu elenco. */
-function concluirTransferencia(jogadorOriginal, nomeTimeVendedor, divisaoVendedora, valorPago) {
-  estado.financas.caixa = Math.round((estado.financas.caixa - valorPago) * 100) / 100;
+/** Abre a negociação de salário/luvas/duração/cláusula com o empresário (fase 2 de 2 — Fase 16). */
+function abrirFaseEmpresario() {
+  const jogador = propostaMercadoAberta.jogador;
+  const estrelas = estado.reputacao ? obterEstrelasReputacao(estado.reputacao.pontos) : 3;
+  const salarioPedidoReais = converterEuroParaReal(calcularPedidoSalarioEmpresario(jogador, estrelas));
+  const luvasReais = calcularLuvasPedidas(propostaMercadoAberta.valorAcordadoClube);
+  const clausulaMinima = calcularClausulaMinima(propostaMercadoAberta.valorAcordadoClube);
+
+  propostaMercadoAberta.fase = "empresario";
+  propostaMercadoAberta.rodadaEmpresario = 0;
+  propostaMercadoAberta.salarioPedido = salarioPedidoReais;
+  propostaMercadoAberta.luvas = luvasReais;
+  propostaMercadoAberta.clausulaMinima = clausulaMinima;
+
+  document.getElementById("proposta-fase-clube").hidden = true;
+  document.getElementById("proposta-fase-empresario").hidden = false;
+
+  document.getElementById("empresario-salario-pedido").textContent = "Pedido do empresário: " + formatarReais(salarioPedidoReais) + "/mês";
+  document.getElementById("input-salario-oferecido").value = salarioPedidoReais;
+  document.getElementById("empresario-luvas-pedidas").textContent = "Luvas exigidas (à vista, além da transferência): " + formatarReais(luvasReais);
+
+  const selectDuracao = document.getElementById("select-duracao-contrato");
+  selectDuracao.innerHTML = "";
+  for (let anos = CONFIG_FINANCEIRO.duracaoContratoMinimaNegociavel; anos <= CONFIG_FINANCEIRO.duracaoContratoMaximaNegociavel; anos++) {
+    const opcao = document.createElement("option");
+    opcao.value = String(anos);
+    opcao.textContent = anos + (anos === 1 ? " ano" : " anos");
+    selectDuracao.appendChild(opcao);
+  }
+  selectDuracao.value = "3";
+
+  const inputClausula = document.getElementById("input-clausula-rescisao");
+  inputClausula.value = clausulaMinima;
+  inputClausula.min = clausulaMinima;
+
+  const resultadoEl = document.getElementById("empresario-resultado");
+  resultadoEl.textContent = "";
+  resultadoEl.className = "proposta-resultado";
+}
+
+/** Uma rodada de negociação salarial com o empresário; se fechar, conclui a contratação (Fase 16). */
+function enviarTermosEmpresario() {
+  if (!propostaMercadoAberta || propostaMercadoAberta.fase !== "empresario") return;
+  const resultadoEl = document.getElementById("empresario-resultado");
+
+  const salarioOferecido = Number(document.getElementById("input-salario-oferecido").value);
+  const clausula = Number(document.getElementById("input-clausula-rescisao").value);
+  const duracao = Number(document.getElementById("select-duracao-contrato").value);
+
+  if (!(salarioOferecido > 0)) {
+    resultadoEl.textContent = "Digite um salário válido.";
+    resultadoEl.className = "proposta-resultado proposta-resultado-negativo";
+    return;
+  }
+  if (clausula < propostaMercadoAberta.clausulaMinima) {
+    resultadoEl.textContent = "A cláusula de rescisão não pode ser menor que " + formatarReais(propostaMercadoAberta.clausulaMinima) + ".";
+    resultadoEl.className = "proposta-resultado proposta-resultado-negativo";
+    return;
+  }
+
+  const custoImediato = Math.round((propostaMercadoAberta.valorAcordadoClube + propostaMercadoAberta.luvas) * 100) / 100;
+  if (custoImediato > estado.financas.caixa) {
+    resultadoEl.textContent = "Caixa insuficiente pra pagar a transferência + as luvas (" + formatarReais(custoImediato) + " no total).";
+    resultadoEl.className = "proposta-resultado proposta-resultado-negativo";
+    return;
+  }
+  if (estado.diretoria && (estado.diretoria.orcamentoGasto + custoImediato) > estado.diretoria.orcamentoContratacoes) {
+    resultadoEl.textContent = "Isso estoura o orçamento de contratações da diretoria pra esta temporada.";
+    resultadoEl.className = "proposta-resultado proposta-resultado-negativo";
+    return;
+  }
+
+  propostaMercadoAberta.rodadaEmpresario++;
+  const razao = salarioOferecido / propostaMercadoAberta.salarioPedido;
+
+  if (razao < 0.85) {
+    resultadoEl.textContent = "O empresário saiu da mesa: salário longe demais do pedido.";
+    resultadoEl.className = "proposta-resultado proposta-resultado-negativo";
+    propostaMercadoAberta = null;
+    return;
+  }
+  if (razao < 1 && propostaMercadoAberta.rodadaEmpresario < 3) {
+    resultadoEl.textContent = "O empresário insiste no valor pedido: " + formatarReais(propostaMercadoAberta.salarioPedido) + "/mês.";
+    resultadoEl.className = "proposta-resultado proposta-resultado-neutro";
+    document.getElementById("input-salario-oferecido").value = propostaMercadoAberta.salarioPedido;
+    return;
+  }
+
+  fecharContratacaoCompleta(
+    propostaMercadoAberta.jogador, propostaMercadoAberta.nomeTime, propostaMercadoAberta.divisaoChave,
+    propostaMercadoAberta.valorAcordadoClube, propostaMercadoAberta.luvas, salarioOferecido, duracao, clausula
+  );
+
+  resultadoEl.textContent = "Contrato fechado! " + propostaMercadoAberta.jogador.nome + " agora joga no seu time.";
+  resultadoEl.className = "proposta-resultado proposta-resultado-positivo";
+  setTimeout(function () {
+    fecharPropostaMercado();
+    renderizarMercado();
+  }, 1500);
+}
+
+/**
+ * Fecha a contratação de vez: tira o dinheiro (transferência + luvas), remove o
+ * jogador do clube vendedor e traz pro seu elenco já com o contrato negociado.
+ */
+function fecharContratacaoCompleta(jogadorOriginal, nomeTimeVendedor, divisaoVendedora, valorTransferencia, luvas, salarioMensalReais, duracaoAnos, clausulaRescisao) {
+  const custoTotal = Math.round((valorTransferencia + luvas) * 100) / 100;
+  estado.financas.caixa = Math.round((estado.financas.caixa - custoTotal) * 100) / 100;
   if (estado.diretoria) {
-    estado.diretoria.orcamentoGasto = Math.round(((estado.diretoria.orcamentoGasto || 0) + valorPago) * 100) / 100;
+    estado.diretoria.orcamentoGasto = Math.round(((estado.diretoria.orcamentoGasto || 0) + custoTotal) * 100) / 100;
   }
 
   const timeVendedor = buscarTime(dadosParaMercado, divisaoVendedora, nomeTimeVendedor);
@@ -2100,9 +2256,13 @@ function concluirTransferencia(jogadorOriginal, nomeTimeVendedor, divisaoVendedo
   const novoId = estado.proximoIdMercado++;
   const jogadorContratado = Object.assign({}, jogadorOriginal, { _id: novoId });
 
+  // O salário negociado vira o multiplicador sobre o salário-base — a mesma "moeda" usada nas renovações (Fase 11).
+  const salarioBaseReais = converterEuroParaReal(calcularSalarioMensal(jogadorContratado));
+  const multiplicadorSalario = salarioBaseReais > 0 ? Math.round((salarioMensalReais / salarioBaseReais) * 1000) / 1000 : 1;
+
   estado.timeAtual.jogadores.push(jogadorContratado);
   estado.jogadoresComprados.push(jogadorContratado);
-  estado.contratos[novoId] = criarContratoInicial(jogadorContratado);
+  estado.contratos[novoId] = { anosRestantes: duracaoAnos, multiplicadorSalario: multiplicadorSalario, clausulaRescisao: clausulaRescisao };
   estado.energiaPorJogador[novoId] = 100;
 
   salvarProgresso();
@@ -2148,7 +2308,9 @@ async function gerarPropostasEspontaneas(divisaoChave, numeroRodada, totalRodada
   const precoBase = calcularPrecoTransferencia(alvo, contrato.anosRestantes, divisaoChave);
   const fator = CONFIG_FINANCEIRO.fatorOfertaEspontaneaMinimo +
     Math.random() * (CONFIG_FINANCEIRO.fatorOfertaEspontaneaMaximo - CONFIG_FINANCEIRO.fatorOfertaEspontaneaMinimo);
-  const valor = Math.round(precoBase * fator * 100) / 100;
+  let valor = Math.round(precoBase * fator * 100) / 100;
+  // Cláusula de rescisão (Fase 16, se o contrato tiver uma): a IA nunca oferece abaixo dela.
+  if (contrato.clausulaRescisao) valor = Math.max(valor, contrato.clausulaRescisao);
 
   estado.propostasRecebidas.push({
     id: estado.proximoIdProposta++, idJogador: alvo._id, nomeJogador: alvo.nome,
@@ -2286,6 +2448,18 @@ function aplicarDemissao(motivo) {
 
   mostrarTela("tela-inicio");
   atualizarBotaoContinuar();
+}
+
+/* ---------- Reputação do clube (Fase 16) ---------- */
+
+function renderizarReputacao() {
+  const el = document.getElementById("reputacao-estrelas");
+  if (!el || !estado.reputacao || estado.reputacao.pontos === null) { if (el) el.parentElement.hidden = true; return; }
+  el.parentElement.hidden = false;
+
+  const estrelas = obterEstrelasReputacao(estado.reputacao.pontos);
+  el.textContent = "★".repeat(estrelas) + "☆".repeat(5 - estrelas);
+  el.title = estado.reputacao.pontos + "/100";
 }
 
 function renderizarDiretoria() {
@@ -2779,6 +2953,9 @@ async function continuarJogoSalvo() {
       { meta: null, orcamentoContratacoes: 0, orcamentoGasto: 0, falhasConsecutivas: 0, contratacoesBloqueadas: false };
     estado.investimentoBase = registro.investimentoBase || false;
 
+    // Saves de antes da Fase 16 não têm reputação — cria do zero (o valor inicial é definido em garantirTemporada()).
+    estado.reputacao = registro.reputacao || { pontos: null };
+
     // Saves de antes da Fase 11 não têm contratos — cria um pra cada jogador que ainda não tiver.
     estado.contratos = registro.contratos || {};
     estado.timeAtual.jogadores.forEach(function (jogador) {
@@ -2911,6 +3088,9 @@ function ligarBotoes() {
 
   const btnEnviarProposta = document.getElementById("btn-enviar-proposta");
   if (btnEnviarProposta) btnEnviarProposta.addEventListener("click", enviarPropostaMercado);
+
+  const btnProporTermosEmpresario = document.getElementById("btn-propor-termos-empresario");
+  if (btnProporTermosEmpresario) btnProporTermosEmpresario.addEventListener("click", enviarTermosEmpresario);
 
   const sobreposicaoProposta = document.getElementById("sobreposicao-proposta");
   if (sobreposicaoProposta) {
