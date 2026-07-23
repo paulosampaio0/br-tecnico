@@ -957,6 +957,32 @@ function definirTatica(campo, valor) {
 
 /* ---------- Partida ao vivo (Fase 4) ---------- */
 
+/** Aproveitamento (0-1) do MEU time na temporada atual, ANTES da partida que está prestes a começar. */
+function calcularAproveitamentoAtual() {
+  if (!estado.temporada || !estado.timeAtual) return 0.5;
+  const temporadaDivisao = estado.temporada[estado.timeAtual.divisaoChave];
+  if (!temporadaDivisao) return 0.5;
+  const linha = temporadaDivisao.tabela[estado.timeAtual.nome];
+  return linha && linha.jogos > 0 ? linha.pontos / (linha.jogos * 3) : 0.5;
+}
+
+/** Em qual divisão (chave), no arquivo de dados, um time mora fisicamente — usado só pro "porte" do estádio dele. */
+function buscarDivisaoFisicaDoTime(dados, nomeTime) {
+  return buscarTime(dados, "serie_a", nomeTime) ? "serie_a" : "serie_b";
+}
+
+/**
+ * Público e renda (Task 3) do jogo que está prestes a começar — sempre a partir de quem MANDA o
+ * jogo (só o mandante tem bilheteria, mesma regra já usada em `aplicarFinancasDaRodada`). Calculado
+ * 1x no início da partida (não muda minuto a minuto) e guardado em `partidaAtual.bilheteria`.
+ */
+function calcularBilheteriaExibicao(jogadoresMandante, divisaoMandante, moralTorcida, aproveitamentoMandante, faixaPreco) {
+  const capacidade = calcularCapacidadeEstadio(jogadoresMandante, divisaoMandante);
+  const publico = calcularPublicoJogo(capacidade, faixaPreco, moralTorcida, aproveitamentoMandante);
+  const renda = calcularReceitaBilheteria(publico, faixaPreco);
+  return { publico: publico, renda: renda };
+}
+
 /** Sorteia um adversário da mesma divisão e começa uma partida amistosa (não conta pra tabela). */
 async function iniciarAmistoso() {
   // Trava de segurança: nunca inicia uma partida nova por cima de uma já em andamento.
@@ -972,6 +998,12 @@ async function iniciarAmistoso() {
   timeForaSimulado = criarTimeSimuladoAutomatico(oponente, "fora");
 
   partidaAtual = novaPartida();
+  // Amistoso: o usuário sempre manda o jogo — bilheteria com os dados reais do meu clube.
+  partidaAtual.bilheteria = calcularBilheteriaExibicao(
+    estado.timeAtual.jogadores, estado.timeAtual.divisaoChave,
+    estado.financas ? estado.financas.moralTorcida : 60,
+    calcularAproveitamentoAtual(), estado.precoIngresso
+  );
   partidasRodada = montarRodadaParalela(divisao, estado.timeAtual.nome, oponente.nome);
 
   abrirTelaPartida();
@@ -1131,6 +1163,23 @@ function abrirTelaPartida() {
   montarLinhasEstatisticasPartida();
   renderizarPartida();
   renderizarRodadaParalela();
+  atualizarBilheteriaPartida();
+}
+
+/** Mostra "👥 Público: ... | 💰 Renda: ..." acima do placar (Task 3) — calculado 1x no início da partida. */
+function atualizarBilheteriaPartida() {
+  const el = document.getElementById("info-bilheteria-partida");
+  if (!el) return;
+  if (!partidaAtual || !partidaAtual.bilheteria) {
+    el.hidden = true;
+    return;
+  }
+  el.hidden = false;
+  // Renda vem em R$ milhões (mesma unidade de calcularReceitaBilheteria) — aqui exibida em reais cheios,
+  // igual ao formato pedido ("R$ 420.000"), não com o sufixo "mi" usado nas telas de Finanças.
+  const rendaEmReais = Math.round(partidaAtual.bilheteria.renda * 1000000);
+  el.textContent = "👥 Público: " + partidaAtual.bilheteria.publico.toLocaleString("pt-BR") + " pagantes · " +
+    "💰 Renda: R$ " + rendaEmReais.toLocaleString("pt-BR");
 }
 
 function montarLinhasEstatisticasPartida() {
@@ -1338,6 +1387,9 @@ function renderizarEventosPartida() {
       "<span class=\"texto-evento\">" + escaparHtml(evento.texto) + "</span>";
     listaEl.appendChild(li);
   });
+
+  // O evento mais novo entra no topo — sempre volta o quadro pro topo pra mostrar o lance mais recente.
+  listaEl.scrollTop = 0;
 }
 
 function renderizarControlesPartida() {
@@ -1813,6 +1865,22 @@ async function iniciarRodadaOficial() {
   partidaAtual = novaPartida();
   partidaAtual.ehRodadaOficial = true;
   partidaAtual.numeroRodadaOficial = numeroRodada;
+
+  // Bilheteria (Task 3): sempre com os dados de quem MANDA esse jogo — se for o usuário, usa os
+  // dados reais do clube; se for o adversário, usa o elenco dele com moral/preço/aproveitamento
+  // neutros (não simulamos a economia interna dos outros ~39 times do jogo).
+  if (meuLadoNaPartida === "casa") {
+    partidaAtual.bilheteria = calcularBilheteriaExibicao(
+      estado.timeAtual.jogadores, divisaoChave,
+      estado.financas ? estado.financas.moralTorcida : 60,
+      calcularAproveitamentoAtual(), estado.precoIngresso
+    );
+  } else {
+    partidaAtual.bilheteria = calcularBilheteriaExibicao(
+      oponenteInfo.jogadores, buscarDivisaoFisicaDoTime(dados, nomeAdversario),
+      60, 0.5, "normal"
+    );
+  }
 
   // As outras 9 partidas dessa MESMA rodada, já pareadas pelo calendário oficial.
   const outrosJogos = rodada.filter(function (j) { return j !== meuJogo; });
