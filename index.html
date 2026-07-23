@@ -353,6 +353,31 @@
     </div>
   </div>
 
+  <!-- Proposta de empréstimo (Fase 17) -->
+  <div class="sobreposicao" id="sobreposicao-emprestimo" hidden>
+    <div class="folha-seletor">
+      <header class="cabecalho-seletor">
+        <h3 id="emprestimo-titulo">Empréstimo</h3>
+        <button class="btn-fechar" id="btn-fechar-emprestimo" type="button" aria-label="Fechar">✕</button>
+      </header>
+      <p class="proposta-info-jogador" id="emprestimo-info-jogador"></p>
+
+      <label class="proposta-label-valor" for="select-percentual-folha-emprestimo">% da folha que o clube de origem banca</label>
+      <select id="select-percentual-folha-emprestimo" class="proposta-input-valor">
+        <option value="0">0% (você paga tudo)</option>
+        <option value="30" selected>30%</option>
+        <option value="50">50%</option>
+        <option value="70">70%</option>
+      </select>
+
+      <label class="proposta-label-valor" for="input-opcao-compra-emprestimo">Opção de compra ao fim do empréstimo (R$ milhões, 0 = sem opção)</label>
+      <input type="number" id="input-opcao-compra-emprestimo" class="proposta-input-valor" min="0" step="0.5" />
+
+      <button class="btn btn-primario" id="btn-enviar-emprestimo" type="button">Propor empréstimo</button>
+      <p class="proposta-resultado" id="emprestimo-resultado"></p>
+    </div>
+  </div>
+
   <!-- Tela: partida ao vivo -->
   <main class="tela tela-partida" id="tela-partida" hidden>
 

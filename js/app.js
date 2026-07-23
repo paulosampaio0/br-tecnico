@@ -106,6 +106,7 @@ const estado = {
 // Filtros e resultado da busca no Mercado, e proposta em andamento (Fase 12).
 let filtrosMercado = { posicao: "", forcaMinima: "", idadeMaxima: "", precoMaximo: "", busca: "" };
 let propostaMercadoAberta = null; // { jogador, nomeTime, divisaoChave, precoPedido, contraproposta } ou null
+let propostaEmprestimoAberta = null; // { jogador, nomeTime, divisaoChave } ou null — Fase 17
 
 /* ---------- Salvamento local ---------- */
 
@@ -1567,6 +1568,7 @@ async function concluirRodadaOficial() {
   }
 
   await gerarPropostasEspontaneas(divisaoChave, numeroRodada, temporadaDivisao.calendario.length);
+  processarEmprestimosNaRodada();
 
   const resultados = [
     { casa: timeCasaSimulado.nome, fora: timeForaSimulado.nome, golsCasa: partidaAtual.placarCasa, golsFora: partidaAtual.placarFora },
@@ -1886,10 +1888,36 @@ function renderizarContratos() {
   ordenarElenco(estado.timeAtual.jogadores).forEach(function (jogador) {
     const contrato = estado.contratos[jogador._id] || criarContratoInicial(jogador);
     const salarioMensalReais = converterEuroParaReal(calcularSalarioEfetivoMensal(jogador, contrato));
-    const vencendo = contrato.anosRestantes <= CONFIG_FINANCEIRO.anosParaAlertaVencimento;
+    const vencendo = !contrato.emprestimo && contrato.anosRestantes <= CONFIG_FINANCEIRO.anosParaAlertaVencimento;
 
     const li = document.createElement("li");
     li.className = "item-contrato" + (vencendo ? " item-contrato-vencendo" : "");
+
+    if (contrato.emprestimo) {
+      // Jogador emprestado (Fase 17): não é seu de verdade — sem renovar/dispensar, só devolver ou exercer a opção de compra.
+      const emp = contrato.emprestimo;
+      li.innerHTML =
+        "<span class=\"pos\">" + escaparHtml(jogador.pos) + "</span>" +
+        "<span class=\"info-contrato\">" +
+          "<span class=\"nome-contrato\">" + escaparHtml(jogador.nome) + "</span>" +
+          "<span class=\"detalhes-contrato\">🔄 Emprestado de " + escaparHtml(emp.timeOrigem) + " · " +
+            emp.rodadasRestantes + (emp.rodadasRestantes === 1 ? " rodada restante" : " rodadas restantes") +
+            (emp.valorOpcaoCompra > 0 ? " · Opção: " + formatarReais(emp.valorOpcaoCompra) : "") +
+          "</span>" +
+        "</span>" +
+        (emp.valorOpcaoCompra > 0
+          ? "<button class=\"btn-renovar-contrato btn-comprar-emprestimo\" type=\"button\">Comprar</button>" : "") +
+        "<button class=\"btn-renovar-contrato btn-dispensar-contrato\" type=\"button\">Devolver</button>";
+
+      const btnComprar = li.querySelector(".btn-comprar-emprestimo");
+      if (btnComprar) btnComprar.addEventListener("click", function () { comprarJogadorEmprestado(jogador._id); });
+      li.querySelector(".btn-dispensar-contrato").addEventListener("click", function () {
+        devolverJogadorEmprestado(jogador._id);
+      });
+      listaEl.appendChild(li);
+      return;
+    }
+
     li.innerHTML =
       "<span class=\"pos\">" + escaparHtml(jogador.pos) + "</span>" +
       "<span class=\"info-contrato\">" +
@@ -2042,11 +2070,15 @@ function renderizarMercado() {
           " · " + formatarReais(item.preco) +
         "</span>" +
       "</span>" +
-      "<button class=\"btn-renovar-contrato\" type=\"button\">Propor</button>";
+      "<button class=\"btn-renovar-contrato\" type=\"button\">Propor</button>" +
+      (jogador.idade <= CONFIG_FINANCEIRO.emprestimoIdadeMaxima
+        ? "<button class=\"btn-renovar-contrato btn-emprestar-mercado\" type=\"button\">Emprestar</button>" : "");
 
     li.querySelector(".btn-renovar-contrato").addEventListener("click", function () {
       abrirPropostaMercado(item);
     });
+    const btnEmprestar = li.querySelector(".btn-emprestar-mercado");
+    if (btnEmprestar) btnEmprestar.addEventListener("click", function () { abrirPropostaEmprestimo(item); });
     listaEl.appendChild(li);
   });
 }
@@ -2268,6 +2300,162 @@ function fecharContratacaoCompleta(jogadorOriginal, nomeTimeVendedor, divisaoVen
   salvarProgresso();
 }
 
+/* ---------- Empréstimos (Fase 17) ---------- */
+
+/** Abre a proposta de empréstimo (só jovens — ver CONFIG_FINANCEIRO.emprestimoIdadeMaxima). */
+function abrirPropostaEmprestimo(item) {
+  propostaEmprestimoAberta = { jogador: item.jogador, nomeTime: item.nomeTime, divisaoChave: item.divisaoChave };
+
+  document.getElementById("emprestimo-titulo").textContent = item.jogador.nome;
+  document.getElementById("emprestimo-info-jogador").textContent =
+    item.nomeTime + " · " + item.jogador.pos + " · " + item.jogador.idade + " anos · força " + item.jogador.forca;
+
+  const valorSugerido = Math.round(
+    calcularPrecoTransferencia(item.jogador, 2, item.divisaoChave) * CONFIG_FINANCEIRO.emprestimoFatorValorOpcaoCompra * 100
+  ) / 100;
+  document.getElementById("input-opcao-compra-emprestimo").value = valorSugerido;
+  document.getElementById("select-percentual-folha-emprestimo").value = "30";
+
+  const resultadoEl = document.getElementById("emprestimo-resultado");
+  resultadoEl.textContent = "";
+  resultadoEl.className = "proposta-resultado";
+  document.getElementById("sobreposicao-emprestimo").hidden = false;
+}
+
+function fecharPropostaEmprestimo() {
+  document.getElementById("sobreposicao-emprestimo").hidden = true;
+  propostaEmprestimoAberta = null;
+}
+
+function enviarPropostaEmprestimo() {
+  if (!propostaEmprestimoAberta) return;
+  const resultadoEl = document.getElementById("emprestimo-resultado");
+
+  if (estado.diretoria && estado.diretoria.contratacoesBloqueadas) {
+    resultadoEl.textContent = "A diretoria bloqueou novas contratações — nem empréstimos, enquanto o caixa estiver negativo há tempo demais.";
+    resultadoEl.className = "proposta-resultado proposta-resultado-negativo";
+    return;
+  }
+
+  const percentualFolhaOrigem = Number(document.getElementById("select-percentual-folha-emprestimo").value);
+  const valorOpcaoCompra = Number(document.getElementById("input-opcao-compra-emprestimo").value) || 0;
+  const jogador = propostaEmprestimoAberta.jogador;
+  const chance = calcularChanceAceiteEmprestimo(jogador, percentualFolhaOrigem);
+
+  if (Math.random() > chance) {
+    resultadoEl.textContent = propostaEmprestimoAberta.nomeTime + " recusou o empréstimo — não toparam essas condições.";
+    resultadoEl.className = "proposta-resultado proposta-resultado-negativo";
+    propostaEmprestimoAberta = null;
+    return;
+  }
+
+  concluirEmprestimo(jogador, propostaEmprestimoAberta.nomeTime, propostaEmprestimoAberta.divisaoChave, percentualFolhaOrigem, valorOpcaoCompra);
+  resultadoEl.textContent = "Empréstimo fechado! " + jogador.nome + " joga no seu time até o fim da temporada.";
+  resultadoEl.className = "proposta-resultado proposta-resultado-positivo";
+  setTimeout(function () {
+    fecharPropostaEmprestimo();
+    renderizarMercado();
+  }, 1400);
+}
+
+/** Traz o jogador emprestado pro elenco, com o contrato marcado como empréstimo (não é dono de verdade). */
+function concluirEmprestimo(jogadorOriginal, nomeTimeOrigem, divisaoOrigem, percentualFolhaOrigem, valorOpcaoCompra) {
+  const timeOrigem = buscarTime(dadosParaMercado, divisaoOrigem, nomeTimeOrigem);
+  if (timeOrigem) {
+    timeOrigem.jogadores = timeOrigem.jogadores.filter(function (j) { return j._id !== jogadorOriginal._id; });
+  }
+
+  const novoId = estado.proximoIdMercado++;
+  const jogadorEmprestado = Object.assign({}, jogadorOriginal, { _id: novoId });
+
+  const temporadaDivisao = estado.temporada[estado.timeAtual.divisaoChave];
+  const rodadasRestantes = Math.max(1, temporadaDivisao.calendario.length - estado.temporada.rodadaAtual + 1);
+  const fatorVitrine = CONFIG_FINANCEIRO.emprestimoFatorClausulaVitrineMinima +
+    Math.random() * (CONFIG_FINANCEIRO.emprestimoFatorClausulaVitrineMaxima - CONFIG_FINANCEIRO.emprestimoFatorClausulaVitrineMinima);
+
+  estado.timeAtual.jogadores.push(jogadorEmprestado);
+  estado.jogadoresComprados.push(jogadorEmprestado);
+  estado.contratos[novoId] = {
+    anosRestantes: 1, multiplicadorSalario: 1,
+    emprestimo: {
+      timeOrigem: nomeTimeOrigem, divisaoOrigem: divisaoOrigem, rodadasRestantes: rodadasRestantes,
+      percentualFolhaOrigem: percentualFolhaOrigem, valorOpcaoCompra: valorOpcaoCompra,
+      fatorClausulaVitrine: Math.round(fatorVitrine * 1000) / 1000,
+    },
+  };
+  estado.energiaPorJogador[novoId] = 100;
+
+  salvarProgresso();
+}
+
+/** Exerce a opção de compra antes da hora: o empréstimo vira contrato normal. */
+function comprarJogadorEmprestado(idJogador) {
+  const contrato = estado.contratos[idJogador];
+  if (!contrato || !contrato.emprestimo) return;
+  const jogador = encontrarJogadorPorId(estado.timeAtual.jogadores, idJogador);
+  if (!jogador) return;
+
+  const valor = contrato.emprestimo.valorOpcaoCompra;
+  if (!(valor > 0)) {
+    alert("Esse empréstimo não tem opção de compra definida.");
+    return;
+  }
+  if (valor > estado.financas.caixa) {
+    alert("Caixa insuficiente pra exercer a opção de compra (" + formatarReais(valor) + ").");
+    return;
+  }
+  if (!window.confirm("Comprar " + jogador.nome + " em definitivo por " + formatarReais(valor) + "?")) return;
+
+  estado.financas.caixa = Math.round((estado.financas.caixa - valor) * 100) / 100;
+  if (estado.diretoria) {
+    estado.diretoria.orcamentoGasto = Math.round(((estado.diretoria.orcamentoGasto || 0) + valor) * 100) / 100;
+  }
+  estado.contratos[idJogador] = criarContratoInicial(jogador); // vira contrato normal — o empréstimo acabou aqui
+  salvarProgresso();
+  renderizarContratos();
+}
+
+/** Devolve antecipadamente um jogador emprestado, sem custo (Fase 17). */
+function devolverJogadorEmprestado(idJogador) {
+  const jogador = encontrarJogadorPorId(estado.timeAtual.jogadores, idJogador);
+  if (!jogador) return;
+  if (!window.confirm("Devolver " + jogador.nome + " ao clube de origem agora?")) return;
+  removerJogadorDoElenco(idJogador);
+  salvarProgresso();
+  renderizarContratos();
+}
+
+/** A cada rodada oficial: decrementa o prazo dos empréstimos, resolve cláusula de vitrine e devoluções. */
+function processarEmprestimosNaRodada() {
+  if (!estado.timeAtual) return;
+  const idsQueVoltam = [];
+
+  estado.timeAtual.jogadores.forEach(function (jogador) {
+    const contrato = estado.contratos[jogador._id];
+    if (!contrato || !contrato.emprestimo) return;
+    const emp = contrato.emprestimo;
+
+    // Cláusula de vitrine: de vez em quando o clube de origem vende o jogador emprestado, e você fatura por isso.
+    if (Math.random() < CONFIG_FINANCEIRO.emprestimoChanceEventoVitrinePorRodada) {
+      const precoVenda = calcularPrecoTransferencia(jogador, 2, emp.divisaoOrigem);
+      const valorVitrine = Math.round(precoVenda * emp.fatorClausulaVitrine * 100) / 100;
+      estado.financas.caixa = Math.round((estado.financas.caixa + valorVitrine) * 100) / 100;
+      alert(emp.timeOrigem + " vendeu " + jogador.nome + " (estava emprestado com você) — cláusula de vitrine: +" +
+        formatarReais(valorVitrine) + ". O empréstimo termina aqui.");
+      idsQueVoltam.push(jogador._id);
+      return;
+    }
+
+    emp.rodadasRestantes--;
+    if (emp.rodadasRestantes <= 0) {
+      alert("O empréstimo de " + jogador.nome + " acabou — ele voltou pro " + emp.timeOrigem + ".");
+      idsQueVoltam.push(jogador._id);
+    }
+  });
+
+  idsQueVoltam.forEach(function (id) { removerJogadorDoElenco(id); });
+}
+
 /* ---------- Tela: mercado, vender — propostas espontâneas e dispensa (Fase 13) ---------- */
 
 /** Tira um jogador do elenco de vez (dispensa, venda aceita) — limpa titular/setas/energia/contrato junto. */
@@ -2289,7 +2477,11 @@ async function gerarPropostasEspontaneas(divisaoChave, numeroRodada, totalRodada
   if (estado.propostasRecebidas.length >= CONFIG_FINANCEIRO.qtdMaximaPropostasPendentes) return;
 
   const idsComPropostaPendente = new Set(estado.propostasRecebidas.map(function (p) { return p.idJogador; }));
-  const candidatos = estado.timeAtual.jogadores.filter(function (j) { return !idsComPropostaPendente.has(j._id); });
+  const candidatos = estado.timeAtual.jogadores.filter(function (j) {
+    // Jogador emprestado (Fase 17) não é seu de verdade — a IA não pode "comprá-lo" de você.
+    const contratoInfo = estado.contratos[j._id];
+    return !idsComPropostaPendente.has(j._id) && !(contratoInfo && contratoInfo.emprestimo);
+  });
   if (candidatos.length === 0) return;
 
   // Só UM jogador por rodada, sorteado entre os elegíveis, pra não virar spam de propostas.
@@ -3091,6 +3283,19 @@ function ligarBotoes() {
 
   const btnProporTermosEmpresario = document.getElementById("btn-propor-termos-empresario");
   if (btnProporTermosEmpresario) btnProporTermosEmpresario.addEventListener("click", enviarTermosEmpresario);
+
+  const btnFecharEmprestimo = document.getElementById("btn-fechar-emprestimo");
+  if (btnFecharEmprestimo) btnFecharEmprestimo.addEventListener("click", fecharPropostaEmprestimo);
+
+  const btnEnviarEmprestimo = document.getElementById("btn-enviar-emprestimo");
+  if (btnEnviarEmprestimo) btnEnviarEmprestimo.addEventListener("click", enviarPropostaEmprestimo);
+
+  const sobreposicaoEmprestimo = document.getElementById("sobreposicao-emprestimo");
+  if (sobreposicaoEmprestimo) {
+    sobreposicaoEmprestimo.addEventListener("click", function (evento) {
+      if (evento.target === sobreposicaoEmprestimo) fecharPropostaEmprestimo();
+    });
+  }
 
   const sobreposicaoProposta = document.getElementById("sobreposicao-proposta");
   if (sobreposicaoProposta) {

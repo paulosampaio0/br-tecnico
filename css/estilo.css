@@ -2117,6 +2117,16 @@ body::before {
   margin: 4px 0;
 }
 
+/* ============================================================
+   Empréstimos — Fase 17
+   ============================================================ */
+
+.btn-comprar-emprestimo {
+  border-color: #3ddc7a;
+  background: rgba(61, 220, 122, 0.1);
+  color: #3ddc7a;
+}
+
 .proposta-resultado-positivo { color: #3ddc7a; }
 .proposta-resultado-negativo { color: #ff8f8f; }
 .proposta-resultado-neutro { color: var(--amarelo); }

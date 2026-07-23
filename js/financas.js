@@ -151,6 +151,17 @@ const CONFIG_FINANCEIRO = {
   empresarioFatorClausulaMinimaSobrePreco: 1.3, // cláusula de rescisão mínima aceitável
   duracaoContratoMinimaNegociavel: 1,
   duracaoContratoMaximaNegociavel: 5,
+
+  // --- Empréstimos (Fase 17) ---
+
+  emprestimoIdadeMaxima: 23, // só jovens vão por empréstimo — reflete o mercado nacional
+  emprestimoChanceBase: 0.85,
+  emprestimoPenalidadePorPercentualOrigem: 0.006, // cada ponto % que o clube de origem banca reduz a chance de aceitar
+  emprestimoPenalidadePorForca: 0.02, // por ponto de força acima de 30, reduz a chance (jogador mais cobiçado)
+  emprestimoFatorClausulaVitrineMinima: 0.10,
+  emprestimoFatorClausulaVitrineMaxima: 0.20,
+  emprestimoChanceEventoVitrinePorRodada: 0.03,
+  emprestimoFatorValorOpcaoCompra: 1.05, // sugestão de opção de compra sobre o preço de transferência normal
 };
 
 function converterEuroParaReal(valorEmMilhoesEuro) {
@@ -209,7 +220,11 @@ function calcularSalarioEfetivoMensal(jogador, contratoInfo) {
 function calcularFolhaSalarialPorRodada(jogadores, contratos) {
   const totalMensal = jogadores.reduce(function (soma, jogador) {
     const contratoInfo = contratos ? contratos[jogador._id] : null;
-    return soma + converterEuroParaReal(calcularSalarioEfetivoMensal(jogador, contratoInfo));
+    const salarioEfetivo = converterEuroParaReal(calcularSalarioEfetivoMensal(jogador, contratoInfo));
+    // Jogador emprestado (Fase 17): o clube de origem banca uma % do salário, combinada na negociação do empréstimo.
+    const fatorEmprestimo = contratoInfo && contratoInfo.emprestimo
+      ? 1 - (contratoInfo.emprestimo.percentualFolhaOrigem / 100) : 1;
+    return soma + salarioEfetivo * fatorEmprestimo;
   }, 0);
   return Math.round((totalMensal / CONFIG_FINANCEIRO.rodadasPorMes) * 100) / 100;
 }
@@ -459,6 +474,18 @@ function calcularLuvasPedidas(valorTransferencia) {
 /** Cláusula de rescisão mínima aceitável — sempre acima do que o clube acabou de pagar, senão o jogador sairia barato demais depois. */
 function calcularClausulaMinima(valorTransferencia) {
   return Math.round(valorTransferencia * CONFIG_FINANCEIRO.empresarioFatorClausulaMinimaSobrePreco * 100) / 100;
+}
+
+/* ============================================================
+   Empréstimos (Fase 17)
+   ============================================================ */
+
+/** Chance (0-1) do clube de origem topar emprestar o jogador nessas condições. */
+function calcularChanceAceiteEmprestimo(jogador, percentualFolhaOrigem) {
+  const chance = CONFIG_FINANCEIRO.emprestimoChanceBase
+    - percentualFolhaOrigem * CONFIG_FINANCEIRO.emprestimoPenalidadePorPercentualOrigem
+    - Math.max(0, jogador.forca - 30) * CONFIG_FINANCEIRO.emprestimoPenalidadePorForca;
+  return clampFrac(chance, 0.05, 0.95);
 }
 
 /* ============================================================
