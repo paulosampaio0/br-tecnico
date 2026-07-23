@@ -250,6 +250,7 @@ body::before {
 
 .btn-voltar-partida {
   flex-shrink: 0;
+  width: 100%;
   min-height: 36px;
   padding: 0 12px;
   border-radius: 18px;
@@ -460,6 +461,179 @@ body::before {
   padding: calc(env(safe-area-inset-top) + 16px) 16px
            calc(env(safe-area-inset-bottom) + 16px);
   gap: 16px;
+}
+
+/* ---------- Hub (topo fixo + menu horizontal + card de jogo) — refactor da Home ---------- */
+
+/* Barra fixa no topo: escudo/nome do clube + estatísticas rápidas.
+   A margem negativa "puxa" o elemento por cima do padding da tela e a
+   posição sticky faz ele grudar no topo (por cima do safe-area do iPhone). */
+.topo-hub {
+  position: sticky;
+  top: calc(-1 * (env(safe-area-inset-top) + 16px));
+  margin: calc(-1 * (env(safe-area-inset-top) + 16px)) -16px 0;
+  padding: calc(env(safe-area-inset-top) + 10px) 16px 10px;
+  z-index: 6;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  background: var(--verde-escuro);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35);
+}
+
+.topo-hub-clube {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.topo-hub-escudo {
+  font-size: 22px;
+  flex-shrink: 0;
+  filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.4));
+}
+
+.topo-hub-nome {
+  font-size: 16px;
+  font-weight: 800;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.topo-hub-stats {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.topo-hub-stat {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  white-space: nowrap;
+}
+
+/* Menu principal horizontal, com rolagem suave e sem barra de rolagem visível */
+.hub-nav {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  padding-bottom: 2px;
+  margin: 0 -16px;
+  padding-left: 16px;
+  padding-right: 16px;
+}
+
+.hub-nav::-webkit-scrollbar {
+  display: none;
+}
+
+.hub-nav-item {
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  min-width: 64px;
+  padding: 8px 10px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--cinza-texto);
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease, transform 0.08s ease;
+}
+
+.hub-nav-item:active {
+  transform: scale(0.95);
+}
+
+.hub-nav-item .hub-nav-icone {
+  font-size: 18px;
+  line-height: 1;
+}
+
+.hub-nav-item.ativo {
+  background: var(--amarelo);
+  border-color: var(--amarelo);
+  color: #3a2b00;
+}
+
+/* Card do próximo jogo (matchday) */
+.cartao-proximo-jogo {
+  padding: 16px;
+  border-radius: var(--raio);
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  backdrop-filter: blur(6px);
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.cartao-proximo-jogo-mando {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--amarelo);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.cartao-proximo-jogo-confronto {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  font-size: 18px;
+  font-weight: 800;
+}
+
+.cartao-proximo-jogo-time {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cartao-proximo-jogo-vs {
+  flex-shrink: 0;
+  color: var(--cinza-texto);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.cartao-proximo-jogo-info {
+  font-size: 13px;
+  color: var(--cinza-texto);
+}
+
+/* CTA principal: reaproveita .btn-primario, só reforça o destaque */
+.btn-jogar-rodada-cta {
+  font-size: 17px;
+  letter-spacing: 0.5px;
+  box-shadow: 0 8px 22px rgba(255, 210, 63, 0.35), 0 6px 16px rgba(0, 0, 0, 0.35);
+}
+
+.titulo-secao-escalacao {
+  font-size: 15px;
+  font-weight: 800;
+  color: var(--cinza-texto);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-top: 4px;
+  scroll-margin-top: calc(env(safe-area-inset-top) + 90px);
 }
 
 /* Seletor de formação */

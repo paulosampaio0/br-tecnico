@@ -78,11 +78,64 @@
   <!-- Tela: escalação e tática -->
   <main class="tela tela-escalacao" id="tela-escalacao" hidden>
 
-    <header class="cabecalho cabecalho-lista">
-      <button class="btn-voltar" id="btn-voltar-elenco-escalacao" type="button" aria-label="Voltar">←</button>
-      <h2 class="titulo-lista" id="titulo-escalacao">Escalação</h2>
-      <button class="btn-voltar-partida" id="btn-voltar-partida" type="button" hidden>Voltar pro jogo ▶</button>
+    <header class="topo-hub" id="topo-hub">
+      <div class="topo-hub-clube">
+        <span class="topo-hub-escudo" aria-hidden="true">🛡️</span>
+        <h2 class="topo-hub-nome" id="titulo-escalacao">Escalação</h2>
+      </div>
+      <div class="topo-hub-stats">
+        <span class="topo-hub-stat" title="Caixa do clube">💰 <span id="hub-stat-caixa">—</span></span>
+        <span class="topo-hub-stat" title="Posição no campeonato">🏆 <span id="hub-stat-posicao">—</span></span>
+        <span class="topo-hub-stat" title="Reputação do clube">⭐ <span id="hub-stat-reputacao">—</span></span>
+      </div>
     </header>
+
+    <button class="btn-voltar-partida" id="btn-voltar-partida" type="button" hidden>Voltar pro jogo ▶</button>
+
+    <nav class="hub-nav" id="hub-nav" aria-label="Navegação principal">
+      <button class="hub-nav-item ativo" id="hub-nav-rodada" type="button">
+        <span class="hub-nav-icone" aria-hidden="true">⚽</span><span>Rodada</span>
+      </button>
+      <button class="hub-nav-item" id="btn-voltar-elenco-escalacao" type="button">
+        <span class="hub-nav-icone" aria-hidden="true">👥</span><span>Elenco</span>
+      </button>
+      <button class="hub-nav-item" id="btn-ver-tabela" type="button">
+        <span class="hub-nav-icone" aria-hidden="true">📊</span><span>Tabela</span>
+      </button>
+      <button class="hub-nav-item" id="btn-ver-mercado" type="button">
+        <span class="hub-nav-icone" aria-hidden="true">🛒</span><span>Mercado</span>
+      </button>
+      <button class="hub-nav-item" id="btn-ver-contratos" type="button">
+        <span class="hub-nav-icone" aria-hidden="true">📄</span><span>Contratos</span>
+      </button>
+      <button class="hub-nav-item" id="btn-ver-infraestrutura" type="button">
+        <span class="hub-nav-icone" aria-hidden="true">🏟️</span><span>Infra</span>
+      </button>
+      <button class="hub-nav-item" id="btn-ver-dashboard" type="button">
+        <span class="hub-nav-icone" aria-hidden="true">📈</span><span>Dashboard</span>
+      </button>
+      <button class="hub-nav-item" id="btn-ver-financas" type="button">
+        <span class="hub-nav-icone" aria-hidden="true">💰</span><span>Finanças</span>
+      </button>
+    </nav>
+
+    <section class="cartao-proximo-jogo" id="cartao-proximo-jogo">
+      <p class="cartao-proximo-jogo-mando" id="proximo-jogo-mando">Próximo jogo</p>
+      <div class="cartao-proximo-jogo-confronto">
+        <span class="cartao-proximo-jogo-time" id="proximo-jogo-meu-time">—</span>
+        <span class="cartao-proximo-jogo-vs">×</span>
+        <span class="cartao-proximo-jogo-time" id="proximo-jogo-adversario">—</span>
+      </div>
+      <p class="cartao-proximo-jogo-info" id="proximo-jogo-info"></p>
+    </section>
+
+    <button class="btn btn-primario btn-jogar-rodada-cta" id="btn-jogar-rodada" type="button">
+      🏆 JOGAR RODADA
+    </button>
+
+    <p class="proxima-rodada" id="texto-proxima-rodada" hidden></p>
+
+    <h3 class="titulo-secao-escalacao" id="ancora-rodada">Escalação e tática</h3>
 
     <div class="controle-formacao">
       <label for="select-formacao">Formação</label>
@@ -120,31 +173,6 @@
     </section>
 
     <p class="aviso-salvo" id="aviso-salvo">✓ Progresso salvo automaticamente neste celular.</p>
-
-    <section class="secao-temporada">
-      <p class="proxima-rodada" id="texto-proxima-rodada"></p>
-      <button class="btn btn-primario" id="btn-jogar-rodada" type="button">
-        🏆 Jogar rodada
-      </button>
-      <button class="btn btn-secundario" id="btn-ver-tabela" type="button">
-        📊 Ver tabela
-      </button>
-      <button class="btn btn-secundario" id="btn-ver-financas" type="button">
-        💰 Finanças
-      </button>
-      <button class="btn btn-secundario" id="btn-ver-contratos" type="button">
-        📋 Contratos
-      </button>
-      <button class="btn btn-secundario" id="btn-ver-mercado" type="button">
-        🛒 Mercado
-      </button>
-      <button class="btn btn-secundario" id="btn-ver-infraestrutura" type="button">
-        🏗 Infraestrutura
-      </button>
-      <button class="btn btn-secundario" id="btn-ver-dashboard" type="button">
-        📈 Dashboard
-      </button>
-    </section>
 
     <button class="btn btn-secundario btn-jogar-amistoso" id="btn-jogar-amistoso" type="button">
       ⚽ Jogar amistoso (sem afetar a tabela)

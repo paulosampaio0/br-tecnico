@@ -413,6 +413,7 @@ function abrirTelaEscalacao() {
   renderizarTatica();
   renderizarBanco();
   atualizarInfoRodada();
+  atualizarTopoHub();
 }
 
 /** Mostra quantas substituições ainda restam, só quando há uma partida em andamento. */
@@ -1525,13 +1526,23 @@ function montarDivisaoTemporada(nomesTimes) {
 }
 
 /** Atualiza o texto e o botão "Jogar rodada" na tela de escalação. */
+const ROTULO_DIVISAO_CAMPEONATO = { serie_a: "Brasileirão Série A", serie_b: "Brasileirão Série B" };
+
 function atualizarInfoRodada() {
   const textoEl = document.getElementById("texto-proxima-rodada");
   const btnRodada = document.getElementById("btn-jogar-rodada");
+  const elMando = document.getElementById("proximo-jogo-mando");
+  const elMeuTime = document.getElementById("proximo-jogo-meu-time");
+  const elAdversario = document.getElementById("proximo-jogo-adversario");
+  const elInfo = document.getElementById("proximo-jogo-info");
   if (!textoEl || !btnRodada) return;
 
   if (!estado.temporada) {
     textoEl.textContent = "Carregando temporada…";
+    if (elMando) elMando.textContent = "Carregando…";
+    if (elMeuTime) elMeuTime.textContent = "—";
+    if (elAdversario) elAdversario.textContent = "—";
+    if (elInfo) elInfo.textContent = "";
     btnRodada.disabled = true;
     return;
   }
@@ -1541,7 +1552,12 @@ function atualizarInfoRodada() {
   const totalRodadas = temporadaDivisao.calendario.length;
 
   if (numeroRodada > totalRodadas) {
-    textoEl.textContent = "Temporada " + estado.temporada.ano + " encerrada — aguardando a próxima.";
+    const textoFim = "Temporada " + estado.temporada.ano + " encerrada — aguardando a próxima.";
+    textoEl.textContent = textoFim;
+    if (elMando) elMando.textContent = "Temporada encerrada";
+    if (elMeuTime) elMeuTime.textContent = estado.timeAtual.nome;
+    if (elAdversario) elAdversario.textContent = "—";
+    if (elInfo) elInfo.textContent = "Aguardando a próxima temporada";
     btnRodada.disabled = true;
     return;
   }
@@ -1553,7 +1569,41 @@ function atualizarInfoRodada() {
 
   textoEl.textContent = "Rodada " + numeroRodada + "/" + totalRodadas + " — " +
     (souCasa ? "em casa contra " : "fora contra ") + adversario;
+
+  if (elMando) elMando.textContent = souCasa ? "🏠 Em casa" : "✈️ Fora";
+  if (elMeuTime) elMeuTime.textContent = estado.timeAtual.nome;
+  if (elAdversario) elAdversario.textContent = adversario;
+  if (elInfo) {
+    elInfo.textContent = "Rodada " + numeroRodada + "/" + totalRodadas + " — " +
+      (ROTULO_DIVISAO_CAMPEONATO[estado.timeAtual.divisaoChave] || "Campeonato");
+  }
+
   btnRodada.disabled = false;
+}
+
+/** Atualiza caixa/posição/reputação no topo fixo do hub (escalação). */
+function atualizarTopoHub() {
+  const elCaixa = document.getElementById("hub-stat-caixa");
+  const elPosicao = document.getElementById("hub-stat-posicao");
+  const elReputacao = document.getElementById("hub-stat-reputacao");
+  if (!elCaixa || !elPosicao || !elReputacao) return;
+
+  elCaixa.textContent = estado.financas ? formatarReais(estado.financas.caixa) : "—";
+
+  if (estado.temporada && estado.timeAtual) {
+    const temporadaDivisao = estado.temporada[estado.timeAtual.divisaoChave];
+    const ordenada = ordenarTabela(temporadaDivisao.tabela);
+    const indice = ordenada.findIndex(function (t) { return t.nome === estado.timeAtual.nome; });
+    elPosicao.textContent = indice === -1 ? "—" : (indice + 1) + "º";
+  } else {
+    elPosicao.textContent = "—";
+  }
+
+  if (estado.reputacao && estado.reputacao.pontos !== null) {
+    elReputacao.textContent = obterEstrelasReputacao(estado.reputacao.pontos) + "/5";
+  } else {
+    elReputacao.textContent = "—";
+  }
 }
 
 /** Começa a partida OFICIAL da temporada (conta pra tabela), seguindo o calendário. */
@@ -3798,6 +3848,15 @@ function ligarBotoes() {
   if (btnVoltarElencoEscalacao) {
     btnVoltarElencoEscalacao.addEventListener("click", function () {
       abrirTelaElenco(estado.timeAtual);
+    });
+  }
+
+  // Item "Rodada" do menu do hub: já é a própria tela de escalação, então só rola até a área de escalar/tática.
+  const hubNavRodada = document.getElementById("hub-nav-rodada");
+  if (hubNavRodada) {
+    hubNavRodada.addEventListener("click", function () {
+      const ancora = document.getElementById("ancora-rodada");
+      if (ancora) ancora.scrollIntoView({ behavior: "smooth", block: "start" });
     });
   }
 
