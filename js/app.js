@@ -104,6 +104,7 @@ const estado = {
   infraestrutura: null, // { ct, dm, analise, base, olheiros } — cada 1 a 5 (Fase 18)
   olheirosContratados: [], // [{ id, tipo, posicaoEspecialidade }] — Fase 19
   proximoIdOlheiro: 1,
+  torcida: null, // { confianca: 0-100 } — os outros 4 indicadores são derivados, não guardados (Fase 20)
 };
 
 // Filtros e resultado da busca no Mercado, e proposta em andamento (Fase 12).
@@ -173,6 +174,7 @@ function salvarProgresso() {
     infraestrutura: estado.infraestrutura,
     olheirosContratados: estado.olheirosContratados,
     proximoIdOlheiro: estado.proximoIdOlheiro,
+    torcida: estado.torcida,
     atualizadoEm: new Date().toISOString(),
   };
   try {
@@ -377,6 +379,7 @@ async function escalarEsteTime(time) {
   estado.infraestrutura = { ct: 1, dm: 1, analise: 1, base: 1, olheiros: 1 };
   estado.olheirosContratados = [];
   estado.proximoIdOlheiro = 1;
+  estado.torcida = { confianca: CONFIG_FINANCEIRO.torcidaConfiancaInicial };
 
   await garantirTemporada();
   salvarProgresso();
@@ -1573,6 +1576,15 @@ async function concluirRodadaOficial() {
       contratos: estado.contratos,
       investimentoBaseAtivo: estado.investimentoBase,
     });
+
+    // Confiança da torcida no técnico (Fase 20) reage ao resultado, igual à felicidade — mas de forma mais lenta.
+    if (estado.torcida) {
+      const deltaConfianca = resultadoNumerico === 1 ? CONFIG_FINANCEIRO.torcidaAjusteConfiancaVitoria
+        : resultadoNumerico === -1 ? CONFIG_FINANCEIRO.torcidaAjusteConfiancaDerrota : 0;
+      estado.torcida.confianca = ajustarConfiancaTorcida(estado.torcida.confianca, deltaConfianca);
+    }
+
+    verificarEventosTorcida(estado.financas);
   }
 
   gerarRevelacaoDaBaseSeAplicavel();
@@ -1680,6 +1692,13 @@ async function processarFimDeTemporada() {
     estado.reputacao.pontos = ajustarReputacao(estado.reputacao.pontos, deltaReputacao);
   }
 
+  // Confiança da torcida (Fase 20) também reage ao veredito da meta no fim da temporada.
+  if (estado.torcida && relatorioMeta) {
+    const deltaConfiancaMeta = metaCumprida
+      ? CONFIG_FINANCEIRO.torcidaAjusteConfiancaMetaCumprida : CONFIG_FINANCEIRO.torcidaAjusteConfiancaMetaFalhada;
+    estado.torcida.confianca = ajustarConfiancaTorcida(estado.torcida.confianca, deltaConfiancaMeta);
+  }
+
   // Evolução do MEU elenco: todo mundo fica 1 ano mais velho, a força sobe ou cai.
   // Nível do Centro de Treinamento (Fase 18) amplia o ganho — ou reduz a perda dos veteranos.
   const fatorEvolucaoCT = estado.infraestrutura ? calcularFatorEvolucaoCT(estado.infraestrutura.ct) : 1;
@@ -1771,6 +1790,19 @@ function formatarReais(valor) {
 
 const ROTULO_FAIXA_INGRESSO = { barato: "Barato", normal: "Normal", caro: "Caro" };
 
+/** Dispara um aviso quando a Felicidade da torcida CRUZA um limiar (muito feliz / muito irritada) — Fase 20. */
+function verificarEventosTorcida(financas) {
+  if (financas.historico.length < 2) return;
+  const atual = financas.historico[financas.historico.length - 1].moralTorcida;
+  const anterior = financas.historico[financas.historico.length - 2].moralTorcida;
+
+  if (atual >= CONFIG_FINANCEIRO.torcidaLimiarMuitoFeliz && anterior < CONFIG_FINANCEIRO.torcidaLimiarMuitoFeliz) {
+    alert("🎉 A torcida está eufórica! Festa no estádio a cada jogo em casa — recorde de público.");
+  } else if (atual <= CONFIG_FINANCEIRO.torcidaLimiarMuitoIrritada && anterior > CONFIG_FINANCEIRO.torcidaLimiarMuitoIrritada) {
+    alert("😡 A torcida está revoltada! Protestos no CT e pressão sobre a diretoria.");
+  }
+}
+
 function abrirTelaFinancas() {
   mostrarTela("tela-financas");
   renderizarFinancas();
@@ -1822,6 +1854,7 @@ function renderizarFinancas() {
   renderizarDiretoria();
   renderizarBaseFinancas();
   renderizarReputacao();
+  renderizarIndicadoresTorcida();
 
   const moralEl = document.getElementById("financas-moral-torcida");
   if (moralEl) {
@@ -2681,6 +2714,42 @@ function renderizarReputacao() {
   el.title = estado.reputacao.pontos + "/100";
 }
 
+/** Os outros 4 indicadores da torcida (Felicidade já é renderizada à parte, ver financas-moral-torcida) — Fase 20. */
+function renderizarIndicadoresTorcida() {
+  if (!estado.financas) return;
+
+  const exigenciaEl = document.getElementById("torcida-exigencia");
+  if (exigenciaEl) {
+    const estrelas = estado.reputacao && estado.reputacao.pontos !== null ? obterEstrelasReputacao(estado.reputacao.pontos) : 3;
+    exigenciaEl.textContent = calcularExigenciaTorcida(estrelas) + "%";
+  }
+
+  const confiancaEl = document.getElementById("torcida-confianca");
+  if (confiancaEl && estado.torcida) {
+    const confianca = estado.torcida.confianca;
+    confiancaEl.textContent = confianca + "%";
+    confiancaEl.className = "valor-moral-torcida " +
+      (confianca >= 60 ? "valor-positivo-financas" : confianca >= 35 ? "" : "valor-negativo-financas");
+  }
+
+  const comparecimentoEl = document.getElementById("torcida-comparecimento");
+  if (comparecimentoEl) {
+    const ultimoJogoCasa = estado.financas.historico.slice().reverse().find(function (r) { return r.souCasa; });
+    comparecimentoEl.textContent = ultimoJogoCasa
+      ? Math.round((ultimoJogoCasa.publico / estado.financas.capacidadeEstadio) * 100) + "%" : "—";
+  }
+
+  const organizacaoEl = document.getElementById("torcida-organizacao");
+  if (organizacaoEl) {
+    const falhas = estado.diretoria ? (estado.diretoria.falhasConsecutivas || 0) : 0;
+    const bloqueado = !!(estado.diretoria && estado.diretoria.contratacoesBloqueadas);
+    const organizacao = calcularOrganizacaoTorcida(falhas, bloqueado);
+    organizacaoEl.textContent = organizacao + "%";
+    organizacaoEl.className = "valor-moral-torcida " +
+      (organizacao >= 60 ? "valor-positivo-financas" : organizacao >= 35 ? "" : "valor-negativo-financas");
+  }
+}
+
 function renderizarDiretoria() {
   const secaoEl = document.getElementById("secao-diretoria-financas");
   if (!secaoEl || !estado.diretoria || !estado.diretoria.meta) { if (secaoEl) secaoEl.hidden = true; return; }
@@ -3347,6 +3416,9 @@ async function continuarJogoSalvo() {
     // Saves de antes da Fase 19 não têm olheiros contratados.
     estado.olheirosContratados = registro.olheirosContratados || [];
     estado.proximoIdOlheiro = registro.proximoIdOlheiro || 1;
+
+    // Saves de antes da Fase 20 não têm confiança da torcida — começa no valor inicial padrão.
+    estado.torcida = registro.torcida || { confianca: CONFIG_FINANCEIRO.torcidaConfiancaInicial };
 
     // Saves de antes da Fase 11 não têm contratos — cria um pra cada jogador que ainda não tiver.
     estado.contratos = registro.contratos || {};

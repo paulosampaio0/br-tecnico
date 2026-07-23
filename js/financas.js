@@ -184,6 +184,25 @@ const CONFIG_FINANCEIRO = {
   olheiroCusto: { regional: 15, nacional: 40, internacional: 35, jovens: 25, posicao: 20 },
   // Sem cobertura de olheiro, a força mostrada no Mercado vira uma faixa (real ± isto).
   olheiroFaixaEstimativaForca: 5,
+
+  // --- Torcida — 5 indicadores (Fase 20) ---
+  // Felicidade já existe como financas.moralTorcida (Fases 9-10, reage a resultado e preço do ingresso).
+
+  torcidaConfiancaInicial: 65,
+  torcidaAjusteConfiancaVitoria: 2,
+  torcidaAjusteConfiancaDerrota: -3,
+  torcidaAjusteConfiancaMetaCumprida: 10,
+  torcidaAjusteConfiancaMetaFalhada: -15,
+  // Exigência: quanto maior a reputação, mais a torcida cobra — derivada, não guardada.
+  torcidaExigenciaBase: 20,
+  torcidaExigenciaPorEstrelaReputacao: 16,
+  // Organização: cai com a diretoria impaciente ou contratações bloqueadas — derivada, não guardada.
+  torcidaOrganizacaoBase: 90,
+  torcidaOrganizacaoPenalidadePorFalhaConsecutiva: 20,
+  torcidaOrganizacaoPenalidadeBloqueio: 15,
+  // Limiares dos eventos dinâmicos (torcida muito feliz / muito irritada).
+  torcidaLimiarMuitoFeliz: 85,
+  torcidaLimiarMuitoIrritada: 20,
 };
 
 function converterEuroParaReal(valorEmMilhoesEuro) {
@@ -496,6 +515,30 @@ function calcularLuvasPedidas(valorTransferencia) {
 /** Cláusula de rescisão mínima aceitável — sempre acima do que o clube acabou de pagar, senão o jogador sairia barato demais depois. */
 function calcularClausulaMinima(valorTransferencia) {
   return Math.round(valorTransferencia * CONFIG_FINANCEIRO.empresarioFatorClausulaMinimaSobrePreco * 100) / 100;
+}
+
+/* ============================================================
+   Torcida — 5 indicadores (Fase 20)
+   ============================================================ */
+
+/** Exigência: o quanto a torcida cobra resultado, derivada direto da reputação (não precisa guardar estado). */
+function calcularExigenciaTorcida(estrelasReputacao) {
+  return Math.round(clampFrac(
+    CONFIG_FINANCEIRO.torcidaExigenciaBase + estrelasReputacao * CONFIG_FINANCEIRO.torcidaExigenciaPorEstrelaReputacao, 0, 100
+  ));
+}
+
+/** Organização (bastidores/arquibancada): cai com a diretoria impaciente ou contratações bloqueadas. */
+function calcularOrganizacaoTorcida(falhasConsecutivas, contratacoesBloqueadas) {
+  const valor = CONFIG_FINANCEIRO.torcidaOrganizacaoBase
+    - falhasConsecutivas * CONFIG_FINANCEIRO.torcidaOrganizacaoPenalidadePorFalhaConsecutiva
+    - (contratacoesBloqueadas ? CONFIG_FINANCEIRO.torcidaOrganizacaoPenalidadeBloqueio : 0);
+  return Math.round(clampFrac(valor, 0, 100));
+}
+
+/** Confiança: como a torcida avalia o técnico — sobe/desce com resultado e o veredito da meta no fim da temporada. */
+function ajustarConfiancaTorcida(atual, delta) {
+  return Math.round(clampFrac(atual + delta, 0, 100));
 }
 
 /* ============================================================

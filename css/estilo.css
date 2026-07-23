@@ -1860,6 +1860,19 @@ body::before {
   justify-content: space-between;
 }
 
+.grade-indicadores-torcida {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px 16px;
+  margin-bottom: 10px;
+}
+
+.indicador-torcida {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
 .valor-moral-torcida {
   font-size: 17px;
   font-weight: 800;
