@@ -212,6 +212,12 @@ const CONFIG_FINANCEIRO = {
   camisaFatorVendaRevelacaoBasePorEstrela: 1.2, // R$ milhões por estrela de potencial, na revelação
   camisaValorBonusTitulo: 25, // R$ milhões — bônus de vendas ao ser campeão da divisão
   camisaValorBonusAcesso: 12, // R$ milhões — bônus de vendas ao conquistar o acesso
+
+  // --- Dashboard financeiro premium (Fase 22) ---
+
+  // Patrimônio total = caixa + valor do elenco + isto × soma dos níveis de infraestrutura.
+  fatorValorPorNivelInfra: 8,
+  qtdMaximaTemporadasHistorico: 10,
 };
 
 function converterEuroParaReal(valorEmMilhoesEuro) {
@@ -524,6 +530,19 @@ function calcularLuvasPedidas(valorTransferencia) {
 /** Cláusula de rescisão mínima aceitável — sempre acima do que o clube acabou de pagar, senão o jogador sairia barato demais depois. */
 function calcularClausulaMinima(valorTransferencia) {
   return Math.round(valorTransferencia * CONFIG_FINANCEIRO.empresarioFatorClausulaMinimaSobrePreco * 100) / 100;
+}
+
+/* ============================================================
+   Dashboard financeiro premium (Fase 22)
+   ============================================================ */
+
+/** Patrimônio total do clube: caixa + valor de mercado do elenco + valor das instalações. */
+function calcularPatrimonioTotal(caixa, valorElencoReais, infraestrutura) {
+  const somaNiveisInfra = infraestrutura
+    ? infraestrutura.ct + infraestrutura.dm + infraestrutura.analise + infraestrutura.base + infraestrutura.olheiros
+    : 0;
+  const valorInfra = somaNiveisInfra * CONFIG_FINANCEIRO.fatorValorPorNivelInfra;
+  return Math.round((caixa + valorElencoReais + valorInfra) * 100) / 100;
 }
 
 /* ============================================================

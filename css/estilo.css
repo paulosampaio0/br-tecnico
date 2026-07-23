@@ -2236,6 +2236,69 @@ body::before {
   margin: 0;
 }
 
+/* ============================================================
+   Dashboard financeiro premium — Fase 22
+   ============================================================ */
+
+.tela-dashboard {
+  justify-content: flex-start;
+  align-items: stretch;
+  text-align: left;
+  padding: calc(env(safe-area-inset-top) + 16px) 16px
+           calc(env(safe-area-inset-bottom) + 16px);
+  gap: 14px;
+}
+
+.dashboard-patrimonio-detalhe {
+  display: block;
+  font-size: 11px;
+  color: var(--cinza-texto);
+  margin-top: 4px;
+}
+
+.secao-dashboard h3 {
+  font-size: 13px;
+  margin: 0 0 8px;
+  color: var(--cinza-texto);
+}
+
+.grafico-linha-dashboard {
+  width: 100%;
+  height: 60px;
+  display: block;
+}
+
+.lista-raiox-dashboard {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.item-raiox-dashboard {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.linha-raiox-dashboard {
+  display: flex;
+  justify-content: space-between;
+  font-size: 12px;
+}
+
+.barra-raiox-dashboard {
+  height: 6px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.08);
+  overflow: hidden;
+}
+
+.barra-raiox-preenchida {
+  height: 100%;
+  background: var(--amarelo);
+  border-radius: 4px;
+}
+
 .proposta-resultado-positivo { color: #3ddc7a; }
 .proposta-resultado-negativo { color: #ff8f8f; }
 .proposta-resultado-neutro { color: var(--amarelo); }

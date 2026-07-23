@@ -106,6 +106,8 @@ const estado = {
   proximoIdOlheiro: 1,
   torcida: null, // { confianca: 0-100 } — os outros 4 indicadores são derivados, não guardados (Fase 20)
   vendasCamisasPorJogador: {}, // { _id: total em R$mi vendido } — só de quem está no elenco atual (Fase 21)
+  dashboard: { vendaAtletasTemporada: 0, vendaCamisasTemporada: 0, comprasTemporada: 0 }, // zera a cada temporada (Fase 22)
+  historicoTemporadas: [], // [{ ano, posicaoFinal, caixa, valorElenco, patrimonio }] — Fase 22
 };
 
 // Filtros e resultado da busca no Mercado, e proposta em andamento (Fase 12).
@@ -177,6 +179,8 @@ function salvarProgresso() {
     proximoIdOlheiro: estado.proximoIdOlheiro,
     torcida: estado.torcida,
     vendasCamisasPorJogador: estado.vendasCamisasPorJogador,
+    dashboard: estado.dashboard,
+    historicoTemporadas: estado.historicoTemporadas,
     atualizadoEm: new Date().toISOString(),
   };
   try {
@@ -383,6 +387,8 @@ async function escalarEsteTime(time) {
   estado.proximoIdOlheiro = 1;
   estado.torcida = { confianca: CONFIG_FINANCEIRO.torcidaConfiancaInicial };
   estado.vendasCamisasPorJogador = {};
+  estado.dashboard = { vendaAtletasTemporada: 0, vendaCamisasTemporada: 0, comprasTemporada: 0 };
+  estado.historicoTemporadas = [];
 
   await garantirTemporada();
   salvarProgresso();
@@ -1706,6 +1712,20 @@ async function processarFimDeTemporada() {
     }
   }
 
+  // Snapshot da temporada que está terminando pro comparativo do Dashboard (Fase 22), antes de zerar os acumuladores.
+  if (estado.financas && estado.dashboard) {
+    const valorElencoAtual = calcularValorElencoEmReais(estado.timeAtual.jogadores);
+    estado.historicoTemporadas.push({
+      ano: estado.temporada.ano, posicaoFinal: contextoTemporada.posicaoFinal,
+      caixa: estado.financas.caixa, valorElenco: valorElencoAtual,
+      patrimonio: calcularPatrimonioTotal(estado.financas.caixa, valorElencoAtual, estado.infraestrutura),
+      vendaAtletas: estado.dashboard.vendaAtletasTemporada, vendaCamisas: estado.dashboard.vendaCamisasTemporada,
+      compras: estado.dashboard.comprasTemporada,
+    });
+    if (estado.historicoTemporadas.length > CONFIG_FINANCEIRO.qtdMaximaTemporadasHistorico) estado.historicoTemporadas.shift();
+    estado.dashboard = { vendaAtletasTemporada: 0, vendaCamisasTemporada: 0, comprasTemporada: 0 };
+  }
+
   // Confiança da torcida (Fase 20) também reage ao veredito da meta no fim da temporada.
   if (estado.torcida && relatorioMeta) {
     const deltaConfiancaMeta = metaCumprida
@@ -2354,6 +2374,9 @@ function fecharContratacaoCompleta(jogadorOriginal, nomeTimeVendedor, divisaoVen
   if (estado.diretoria) {
     estado.diretoria.orcamentoGasto = Math.round(((estado.diretoria.orcamentoGasto || 0) + custoTotal) * 100) / 100;
   }
+  if (estado.dashboard) {
+    estado.dashboard.comprasTemporada = Math.round((estado.dashboard.comprasTemporada + custoTotal) * 100) / 100;
+  }
 
   const timeVendedor = buscarTime(dadosParaMercado, divisaoVendedora, nomeTimeVendedor);
   if (timeVendedor) {
@@ -2492,6 +2515,9 @@ function comprarJogadorEmprestado(idJogador) {
   if (estado.diretoria) {
     estado.diretoria.orcamentoGasto = Math.round(((estado.diretoria.orcamentoGasto || 0) + valor) * 100) / 100;
   }
+  if (estado.dashboard) {
+    estado.dashboard.comprasTemporada = Math.round((estado.dashboard.comprasTemporada + valor) * 100) / 100;
+  }
   estado.contratos[idJogador] = criarContratoInicial(jogador); // vira contrato normal — o empréstimo acabou aqui
   salvarProgresso();
   renderizarContratos();
@@ -2545,6 +2571,120 @@ function creditarVendaCamisas(idJogador, valor) {
   if (!(valor > 0)) return;
   estado.financas.caixa = Math.round((estado.financas.caixa + valor) * 100) / 100;
   estado.vendasCamisasPorJogador[idJogador] = Math.round(((estado.vendasCamisasPorJogador[idJogador] || 0) + valor) * 100) / 100;
+  if (estado.dashboard) {
+    estado.dashboard.vendaCamisasTemporada = Math.round((estado.dashboard.vendaCamisasTemporada + valor) * 100) / 100;
+  }
+}
+
+/* ---------- Tela: dashboard financeiro premium (Fase 22) ---------- */
+
+function abrirTelaDashboard() {
+  mostrarTela("tela-dashboard");
+  renderizarDashboard();
+}
+
+/** SVG de linha simples (sem lib), a partir de uma lista de números — usado nos mini-gráficos do dashboard. */
+function gerarSvgLinha(valores, corLinha) {
+  if (valores.length === 0) return "<p class=\"mensagem-vazia-mercado\">Ainda sem dados nessa temporada.</p>";
+  const largura = 280, altura = 60, padding = 4;
+  const minimo = Math.min.apply(null, valores);
+  const maximo = Math.max.apply(null, valores);
+  const amplitude = maximo - minimo || 1;
+  const passoX = valores.length > 1 ? (largura - padding * 2) / (valores.length - 1) : 0;
+  const pontos = valores.map(function (v, i) {
+    const x = padding + i * passoX;
+    const y = altura - padding - ((v - minimo) / amplitude) * (altura - padding * 2);
+    return x.toFixed(1) + "," + y.toFixed(1);
+  }).join(" ");
+  return "<svg viewBox=\"0 0 " + largura + " " + altura + "\" class=\"grafico-linha-dashboard\">" +
+    "<polyline points=\"" + pontos + "\" fill=\"none\" stroke=\"" + corLinha + "\" stroke-width=\"2\" />" +
+    "</svg>";
+}
+
+/** Lista de barras com % do total — usada no raio-X de receitas/despesas. */
+function renderizarRaioX(idLista, itens) {
+  const listaEl = document.getElementById(idLista);
+  if (!listaEl) return;
+  listaEl.innerHTML = "";
+  const total = itens.reduce(function (soma, item) { return soma + Math.max(0, item[1]); }, 0);
+
+  itens.forEach(function (item) {
+    const valor = Math.max(0, item[1]);
+    const pct = total > 0 ? Math.round((valor / total) * 100) : 0;
+    const li = document.createElement("li");
+    li.className = "item-raiox-dashboard";
+    li.innerHTML =
+      "<div class=\"linha-raiox-dashboard\"><span>" + item[0] + "</span><span>" + formatarReais(valor) + " · " + pct + "%</span></div>" +
+      "<div class=\"barra-raiox-dashboard\"><div class=\"barra-raiox-preenchida\" style=\"width:" + pct + "%\"></div></div>";
+    listaEl.appendChild(li);
+  });
+}
+
+function renderizarComparativoTemporadas() {
+  const listaEl = document.getElementById("dashboard-comparativo");
+  if (!listaEl) return;
+  listaEl.innerHTML = "";
+
+  if (estado.historicoTemporadas.length === 0) {
+    listaEl.innerHTML = "<li class=\"mensagem-vazia-mercado\">Ainda não tem temporada anterior pra comparar.</li>";
+    return;
+  }
+
+  estado.historicoTemporadas.slice().reverse().forEach(function (temp) {
+    const li = document.createElement("li");
+    li.className = "item-contrato";
+    li.innerHTML =
+      "<span class=\"info-contrato\">" +
+        "<span class=\"nome-contrato\">Temporada " + temp.ano + "</span>" +
+        "<span class=\"detalhes-contrato\">" + temp.posicaoFinal + "º lugar · Patrimônio " + formatarReais(temp.patrimonio) + "</span>" +
+      "</span>";
+    listaEl.appendChild(li);
+  });
+}
+
+function renderizarDashboard() {
+  if (!estado.financas || !estado.timeAtual) return;
+  const historico = estado.financas.historico;
+
+  const valorElenco = calcularValorElencoEmReais(estado.timeAtual.jogadores);
+  const patrimonio = calcularPatrimonioTotal(estado.financas.caixa, valorElenco, estado.infraestrutura);
+  const valorInfra = Math.round((patrimonio - estado.financas.caixa - valorElenco) * 100) / 100;
+
+  document.getElementById("dashboard-patrimonio").textContent = formatarReais(patrimonio);
+  document.getElementById("dashboard-patrimonio-detalhe").textContent =
+    "Caixa " + formatarReais(estado.financas.caixa) + " + Elenco " + formatarReais(valorElenco) + " + Instalações " + formatarReais(valorInfra);
+
+  const graficoCaixaEl = document.getElementById("dashboard-grafico-caixa");
+  if (graficoCaixaEl) graficoCaixaEl.innerHTML = gerarSvgLinha(historico.map(function (r) { return r.caixaDepois; }), "#ffd23f");
+
+  const graficoFolhaEl = document.getElementById("dashboard-grafico-folha");
+  if (graficoFolhaEl) graficoFolhaEl.innerHTML = gerarSvgLinha(historico.map(function (r) { return r.folha; }), "#ff8f8f");
+
+  const somaReceitas = historico.reduce(function (acc, r) {
+    acc.bilheteria += r.bilheteria; acc.cotaTv += r.cotaTv; acc.patrocinio += r.patrocinio;
+    return acc;
+  }, { bilheteria: 0, cotaTv: 0, patrocinio: 0 });
+
+  renderizarRaioX("dashboard-raiox-receitas", [
+    ["🎟 Bilheteria", somaReceitas.bilheteria],
+    ["🏆 Cota de TV", somaReceitas.cotaTv],
+    ["🤝 Patrocínio", somaReceitas.patrocinio],
+    ["💰 Venda de atletas", estado.dashboard.vendaAtletasTemporada],
+    ["🎽 Venda de camisas", estado.dashboard.vendaCamisasTemporada],
+  ]);
+
+  const somaDespesas = historico.reduce(function (acc, r) {
+    acc.folha += r.folha; acc.estrutura += r.custosFixos + (r.custoBase || 0);
+    return acc;
+  }, { folha: 0, estrutura: 0 });
+
+  renderizarRaioX("dashboard-raiox-despesas", [
+    ["👕 Folha salarial", somaDespesas.folha],
+    ["🏟 Estádio, CT e base", somaDespesas.estrutura],
+    ["🛒 Contratações", estado.dashboard.comprasTemporada],
+  ]);
+
+  renderizarComparativoTemporadas();
 }
 
 function renderizarRankingCamisas() {
@@ -2665,6 +2805,9 @@ function aceitarPropostaEspontanea(idProposta) {
   if (!window.confirm("Vender " + proposta.nomeJogador + " para " + proposta.nomeTimeComprador + " por " + formatarReais(proposta.valor) + "?")) return;
 
   estado.financas.caixa = Math.round((estado.financas.caixa + proposta.valor) * 100) / 100;
+  if (estado.dashboard) {
+    estado.dashboard.vendaAtletasTemporada = Math.round((estado.dashboard.vendaAtletasTemporada + proposta.valor) * 100) / 100;
+  }
   removerJogadorDoElenco(proposta.idJogador);
   estado.propostasRecebidas = estado.propostasRecebidas.filter(function (p) { return p.id !== idProposta; });
 
@@ -2739,6 +2882,9 @@ function executarVendaForcadaPelaDiretoria() {
   const preco = calcularPrecoTransferencia(maisValioso, contrato.anosRestantes, estado.timeAtual.divisaoChave);
 
   estado.financas.caixa = Math.round((estado.financas.caixa + preco) * 100) / 100;
+  if (estado.dashboard) {
+    estado.dashboard.vendaAtletasTemporada = Math.round((estado.dashboard.vendaAtletasTemporada + preco) * 100) / 100;
+  }
   removerJogadorDoElenco(maisValioso._id);
   alert("A diretoria vendeu " + maisValioso.nome + " por " + formatarReais(preco) + " sem te consultar, pra equilibrar o caixa.");
 }
@@ -3495,6 +3641,10 @@ async function continuarJogoSalvo() {
     // Saves de antes da Fase 21 não têm vendas de camisas registradas.
     estado.vendasCamisasPorJogador = registro.vendasCamisasPorJogador || {};
 
+    // Saves de antes da Fase 22 não têm dashboard/histórico de temporadas.
+    estado.dashboard = registro.dashboard || { vendaAtletasTemporada: 0, vendaCamisasTemporada: 0, comprasTemporada: 0 };
+    estado.historicoTemporadas = registro.historicoTemporadas || [];
+
     // Saves de antes da Fase 11 não têm contratos — cria um pra cada jogador que ainda não tiver.
     estado.contratos = registro.contratos || {};
     estado.timeAtual.jogadores.forEach(function (jogador) {
@@ -3609,6 +3759,12 @@ function ligarBotoes() {
 
   const btnDesativarBase = document.getElementById("btn-desativar-base");
   if (btnDesativarBase) btnDesativarBase.addEventListener("click", function () { definirInvestimentoBase(false); });
+
+  const btnVerDashboard = document.getElementById("btn-ver-dashboard");
+  if (btnVerDashboard) btnVerDashboard.addEventListener("click", abrirTelaDashboard);
+
+  const btnVoltarEscalacaoDashboard = document.getElementById("btn-voltar-escalacao-dashboard");
+  if (btnVoltarEscalacaoDashboard) btnVoltarEscalacaoDashboard.addEventListener("click", abrirTelaEscalacao);
 
   const btnVerInfraestrutura = document.getElementById("btn-ver-infraestrutura");
   if (btnVerInfraestrutura) btnVerInfraestrutura.addEventListener("click", abrirTelaInfraestrutura);

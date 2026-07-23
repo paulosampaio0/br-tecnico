@@ -141,6 +141,9 @@
       <button class="btn btn-secundario" id="btn-ver-infraestrutura" type="button">
         🏗 Infraestrutura
       </button>
+      <button class="btn btn-secundario" id="btn-ver-dashboard" type="button">
+        📈 Dashboard
+      </button>
     </section>
 
     <button class="btn btn-secundario btn-jogar-amistoso" id="btn-jogar-amistoso" type="button">
@@ -374,6 +377,47 @@
         <select id="select-posicao-olheiro" hidden></select>
       </div>
       <button class="btn btn-secundario" id="btn-contratar-olheiro" type="button">Contratar olheiro</button>
+    </section>
+
+  </main>
+
+  <!-- Tela: dashboard financeiro premium -->
+  <main class="tela tela-dashboard" id="tela-dashboard" hidden>
+
+    <header class="cabecalho cabecalho-lista">
+      <button class="btn-voltar" id="btn-voltar-escalacao-dashboard" type="button" aria-label="Voltar">←</button>
+      <h2 class="titulo-lista">Dashboard</h2>
+    </header>
+
+    <div class="cartao-caixa-financas">
+      <span class="rotulo-caixa-financas">Patrimônio total</span>
+      <span class="valor-caixa-financas" id="dashboard-patrimonio">R$ 0mi</span>
+      <span class="dashboard-patrimonio-detalhe" id="dashboard-patrimonio-detalhe"></span>
+    </div>
+
+    <section class="secao-dashboard">
+      <h3>Caixa ao longo da temporada</h3>
+      <div id="dashboard-grafico-caixa"></div>
+    </section>
+
+    <section class="secao-dashboard">
+      <h3>Folha salarial ao longo da temporada</h3>
+      <div id="dashboard-grafico-folha"></div>
+    </section>
+
+    <section class="secao-dashboard">
+      <h3>Raio-X de receitas (temporada atual)</h3>
+      <ul class="lista-raiox-dashboard" id="dashboard-raiox-receitas"></ul>
+    </section>
+
+    <section class="secao-dashboard">
+      <h3>Raio-X de despesas (temporada atual)</h3>
+      <ul class="lista-raiox-dashboard" id="dashboard-raiox-despesas"></ul>
+    </section>
+
+    <section class="secao-dashboard">
+      <h3>Comparativo entre temporadas</h3>
+      <ul class="lista lista-contratos" id="dashboard-comparativo"></ul>
     </section>
 
   </main>
