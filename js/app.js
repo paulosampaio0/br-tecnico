@@ -101,6 +101,7 @@ const estado = {
   diretoria: null, // { meta, orcamentoContratacoes, orcamentoGasto, falhasConsecutivas, contratacoesBloqueadas } — Fase 14
   investimentoBase: false, // decisão do técnico: investir mensalmente na categoria de base (Fase 15)
   reputacao: null, // { pontos: 0-100 } — Fase 16
+  infraestrutura: null, // { ct, dm, analise, base, olheiros } — cada 1 a 5 (Fase 18)
 };
 
 // Filtros e resultado da busca no Mercado, e proposta em andamento (Fase 12).
@@ -167,6 +168,7 @@ function salvarProgresso() {
     diretoria: estado.diretoria,
     investimentoBase: estado.investimentoBase,
     reputacao: estado.reputacao,
+    infraestrutura: estado.infraestrutura,
     atualizadoEm: new Date().toISOString(),
   };
   try {
@@ -368,6 +370,7 @@ async function escalarEsteTime(time) {
   estado.diretoria = { meta: null, orcamentoContratacoes: 0, orcamentoGasto: 0, falhasConsecutivas: 0, contratacoesBloqueadas: false };
   estado.investimentoBase = false;
   estado.reputacao = { pontos: null };
+  estado.infraestrutura = { ct: 1, dm: 1, analise: 1, base: 1, olheiros: 1 };
 
   await garantirTemporada();
   salvarProgresso();
@@ -849,11 +852,12 @@ function calcularFatorFadiga(energia) {
 function calcularTimeSimuladoUsuario() {
   const titulares = resolverTitulares(estado.timeAtual.jogadores, estado.formacaoId, estado.titulares);
 
-  // A energia baixa (cansaço) reduz a força efetiva em campo.
+  // A energia baixa (cansaço) reduz a força efetiva em campo; o Centro de Análise (Fase 18) dá um bônus geral.
+  const fatorAnalise = estado.infraestrutura ? calcularFatorForcaAnalise(estado.infraestrutura.analise) : 1;
   const titularesComFadiga = titulares.map(function (item) {
     const energia = obterEnergiaJogador(item.jogador._id);
     const fatorFadiga = calcularFatorFadiga(energia);
-    const jogadorAjustado = Object.assign({}, item.jogador, { forca: item.jogador.forca * fatorFadiga });
+    const jogadorAjustado = Object.assign({}, item.jogador, { forca: item.jogador.forca * fatorFadiga * fatorAnalise });
     return { vaga: item.vaga, jogador: jogadorAjustado };
   });
 
@@ -1315,6 +1319,9 @@ function aplicarEvolucaoNoElenco(jogadoresBase, overrides) {
 function aplicarDesgastePosPartida() {
   if (!estado.timeAtual) return;
 
+  // Nível do Departamento Médico (Fase 18) reduz o desgaste físico por partida.
+  const fatorDesgasteDM = estado.infraestrutura ? calcularFatorDesgasteDM(estado.infraestrutura.dm) : 1;
+
   const vagaPorJogador = {};
   Object.keys(estado.titulares).forEach(function (vagaId) {
     vagaPorJogador[estado.titulares[vagaId]] = vagaId;
@@ -1356,6 +1363,7 @@ function aplicarDesgastePosPartida() {
       return def && def.ofensiva;
     });
     if (duasOfensivas) perda *= 1.5;
+    perda *= fatorDesgasteDM;
 
     estado.energiaPorJogador[jogador._id] = Math.max(10, Math.round(atual - perda));
   });
@@ -1365,7 +1373,8 @@ function aplicarDesgastePosPartida() {
  * Evolução de fim de temporada: jovens tendem a crescer, veteranos a cair.
  * Devolve { forca, idade } — o novo estado do jogador pro ano seguinte.
  */
-function evoluirJogador(jogador) {
+/** fatorCT (Fase 18, Centro de Treinamento): amplia o delta, positivo OU negativo — nível 1 = fator 1 (neutro). */
+function evoluirJogador(jogador, fatorCT) {
   const idade = jogador.idade;
   let delta;
   if (idade <= 20) delta = 1 + Math.random() * 1.5;
@@ -1373,6 +1382,8 @@ function evoluirJogador(jogador) {
   else if (idade <= 29) delta = (Math.random() - 0.3) * 1;
   else if (idade <= 32) delta = -(0.5 + Math.random() * 1);
   else delta = -(1.5 + Math.random() * 2);
+
+  delta *= fatorCT !== undefined ? fatorCT : 1;
 
   const novaForca = Math.max(28, Math.min(48, Math.round(jogador.forca + delta)));
   return { forca: novaForca, idade: idade + 1 };
@@ -1664,9 +1675,11 @@ async function processarFimDeTemporada() {
   }
 
   // Evolução do MEU elenco: todo mundo fica 1 ano mais velho, a força sobe ou cai.
+  // Nível do Centro de Treinamento (Fase 18) amplia o ganho — ou reduz a perda dos veteranos.
+  const fatorEvolucaoCT = estado.infraestrutura ? calcularFatorEvolucaoCT(estado.infraestrutura.ct) : 1;
   const evolucaoResumo = [];
   estado.timeAtual.jogadores = estado.timeAtual.jogadores.map(function (jogador) {
-    const ajuste = evoluirJogador(jogador);
+    const ajuste = evoluirJogador(jogador, fatorEvolucaoCT);
     estado.evolucao[jogador._id] = ajuste;
     if (ajuste.forca !== jogador.forca) {
       evolucaoResumo.push({ nome: jogador.nome, de: jogador.forca, para: ajuste.forca });
@@ -2704,10 +2717,14 @@ function sortearCaracteristicasJovemBase(pos) {
 
 /** Cria e adiciona ao elenco um jovem "de graça" (sem custo de compra, só salário) revelado pela base. */
 function gerarJovemDaBase() {
+  // Nível das Categorias de Base (Fase 18) eleva o piso e o teto de força dos jovens revelados.
+  const nivelBase = estado.infraestrutura ? estado.infraestrutura.base : 1;
+  const bonusForcaBase = Math.max(0, nivelBase - 1) * CONFIG_FINANCEIRO.infraBaseBonusForcaPorNivel;
+
   const idade = CONFIG_FINANCEIRO.idadeMinimaRevelacaoBase +
     Math.floor(Math.random() * (CONFIG_FINANCEIRO.idadeMaximaRevelacaoBase - CONFIG_FINANCEIRO.idadeMinimaRevelacaoBase + 1));
-  const forca = CONFIG_FINANCEIRO.forcaMinimaRevelacaoBase +
-    Math.floor(Math.random() * (CONFIG_FINANCEIRO.forcaMaximaRevelacaoBase - CONFIG_FINANCEIRO.forcaMinimaRevelacaoBase + 1));
+  const forca = Math.round(CONFIG_FINANCEIRO.forcaMinimaRevelacaoBase + bonusForcaBase +
+    Math.random() * (CONFIG_FINANCEIRO.forcaMaximaRevelacaoBase - CONFIG_FINANCEIRO.forcaMinimaRevelacaoBase));
   const pos = sortearItem(ORDEM_POSICOES);
   const caracteristicas = sortearCaracteristicasJovemBase(pos);
 
@@ -2731,7 +2748,10 @@ function gerarJovemDaBase() {
 /** Só com o investimento ativo: sorteia se a base revela um jovem nesta rodada oficial. */
 function gerarRevelacaoDaBaseSeAplicavel() {
   if (!estado.investimentoBase) return;
-  if (Math.random() < CONFIG_FINANCEIRO.chanceRevelacaoBasePorRodada) gerarJovemDaBase();
+  const nivelBase = estado.infraestrutura ? estado.infraestrutura.base : 1;
+  const chance = CONFIG_FINANCEIRO.chanceRevelacaoBasePorRodada +
+    Math.max(0, nivelBase - 1) * CONFIG_FINANCEIRO.infraBaseBonusChancePorNivel;
+  if (Math.random() < chance) gerarJovemDaBase();
 }
 
 function definirInvestimentoBase(ativo) {
@@ -2751,6 +2771,74 @@ function renderizarBaseFinancas() {
   const btnDesativar = document.getElementById("btn-desativar-base");
   if (btnAtivar) btnAtivar.classList.toggle("ativa", estado.investimentoBase);
   if (btnDesativar) btnDesativar.classList.toggle("ativa", !estado.investimentoBase);
+}
+
+/* ---------- Tela: infraestrutura do clube (Fase 18) ---------- */
+
+const ROTULO_SETOR_INFRA = {
+  ct: "🏋 Centro de Treinamento", dm: "🩺 Departamento Médico", analise: "📊 Centro de Análise de Desempenho",
+  base: "🌱 Categorias de Base", olheiros: "🔭 Centro de Olheiros",
+};
+const DESCRICAO_SETOR_INFRA = {
+  ct: "Evolução de força mais rápida (ou queda mais lenta com a idade) a cada temporada.",
+  dm: "Menos desgaste físico por partida — o elenco chega mais descansado na rodada seguinte.",
+  analise: "Bônus geral de força efetiva do seu time em campo.",
+  base: "Jovens revelados mais fortes e com mais frequência.",
+  olheiros: "Desbloqueia olheiros melhores (efeito chega na próxima fase).",
+};
+
+function abrirTelaInfraestrutura() {
+  mostrarTela("tela-infraestrutura");
+  renderizarInfraestrutura();
+}
+
+function melhorarInfraestrutura(setor) {
+  if (!estado.infraestrutura || !estado.financas) return;
+  const nivelAtual = estado.infraestrutura[setor];
+  if (nivelAtual >= CONFIG_FINANCEIRO.infraNivelMaximo) return;
+
+  const custo = calcularCustoUpgradeInfra(estado.financas.caixaInicialClube, nivelAtual);
+  if (custo > estado.financas.caixa) {
+    alert("Caixa insuficiente pra esse investimento (" + formatarReais(custo) + ").");
+    return;
+  }
+  if (!window.confirm("Investir " + formatarReais(custo) + " pra subir " + ROTULO_SETOR_INFRA[setor] + " pro nível " + (nivelAtual + 1) + "?")) return;
+
+  estado.financas.caixa = Math.round((estado.financas.caixa - custo) * 100) / 100;
+  estado.infraestrutura[setor] = nivelAtual + 1;
+  salvarProgresso();
+  renderizarInfraestrutura();
+}
+
+function renderizarInfraestrutura() {
+  const listaEl = document.getElementById("lista-infraestrutura");
+  if (!listaEl || !estado.infraestrutura || !estado.financas) return;
+  listaEl.innerHTML = "";
+
+  Object.keys(ROTULO_SETOR_INFRA).forEach(function (setor) {
+    const nivelAtual = estado.infraestrutura[setor];
+    const noMaximo = nivelAtual >= CONFIG_FINANCEIRO.infraNivelMaximo;
+    const custo = noMaximo ? null : calcularCustoUpgradeInfra(estado.financas.caixaInicialClube, nivelAtual);
+
+    const li = document.createElement("li");
+    li.className = "item-infraestrutura";
+    li.innerHTML =
+      "<div class=\"info-infraestrutura\">" +
+        "<span class=\"nome-infraestrutura\">" + ROTULO_SETOR_INFRA[setor] + "</span>" +
+        "<span class=\"niveis-infraestrutura\">" +
+          "●".repeat(nivelAtual) + "○".repeat(CONFIG_FINANCEIRO.infraNivelMaximo - nivelAtual) +
+          " · Nível " + nivelAtual + "/" + CONFIG_FINANCEIRO.infraNivelMaximo +
+        "</span>" +
+        "<span class=\"descricao-infraestrutura\">" + DESCRICAO_SETOR_INFRA[setor] + "</span>" +
+      "</div>" +
+      (noMaximo
+        ? "<span class=\"tag-infraestrutura-maxima\">Máximo</span>"
+        : "<button class=\"btn-melhorar-infraestrutura\" type=\"button\">Melhorar<br><small>" + formatarReais(custo) + "</small></button>");
+
+    const btn = li.querySelector(".btn-melhorar-infraestrutura");
+    if (btn) btn.addEventListener("click", function () { melhorarInfraestrutura(setor); });
+    listaEl.appendChild(li);
+  });
 }
 
 function abrirTelaTabela() {
@@ -3148,6 +3236,9 @@ async function continuarJogoSalvo() {
     // Saves de antes da Fase 16 não têm reputação — cria do zero (o valor inicial é definido em garantirTemporada()).
     estado.reputacao = registro.reputacao || { pontos: null };
 
+    // Saves de antes da Fase 18 não têm infraestrutura — todos os setores começam no nível 1.
+    estado.infraestrutura = registro.infraestrutura || { ct: 1, dm: 1, analise: 1, base: 1, olheiros: 1 };
+
     // Saves de antes da Fase 11 não têm contratos — cria um pra cada jogador que ainda não tiver.
     estado.contratos = registro.contratos || {};
     estado.timeAtual.jogadores.forEach(function (jogador) {
@@ -3262,6 +3353,12 @@ function ligarBotoes() {
 
   const btnDesativarBase = document.getElementById("btn-desativar-base");
   if (btnDesativarBase) btnDesativarBase.addEventListener("click", function () { definirInvestimentoBase(false); });
+
+  const btnVerInfraestrutura = document.getElementById("btn-ver-infraestrutura");
+  if (btnVerInfraestrutura) btnVerInfraestrutura.addEventListener("click", abrirTelaInfraestrutura);
+
+  const btnVoltarEscalacaoInfraestrutura = document.getElementById("btn-voltar-escalacao-infraestrutura");
+  if (btnVoltarEscalacaoInfraestrutura) btnVoltarEscalacaoInfraestrutura.addEventListener("click", abrirTelaEscalacao);
 
   const btnVerMercado = document.getElementById("btn-ver-mercado");
   if (btnVerMercado) btnVerMercado.addEventListener("click", abrirTelaMercado);

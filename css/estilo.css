@@ -2127,6 +2127,90 @@ body::before {
   color: #3ddc7a;
 }
 
+/* ============================================================
+   Infraestrutura — Fase 18
+   ============================================================ */
+
+.tela-infraestrutura {
+  justify-content: flex-start;
+  align-items: stretch;
+  text-align: left;
+  padding: calc(env(safe-area-inset-top) + 16px) 16px
+           calc(env(safe-area-inset-bottom) + 16px);
+  gap: 12px;
+}
+
+.lista-infraestrutura {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.item-infraestrutura {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 12px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.info-infraestrutura {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.nome-infraestrutura {
+  font-size: 14px;
+  font-weight: 800;
+}
+
+.niveis-infraestrutura {
+  font-size: 13px;
+  color: var(--amarelo);
+  letter-spacing: 1px;
+}
+
+.descricao-infraestrutura {
+  font-size: 11px;
+  color: var(--cinza-texto);
+  line-height: 1.3;
+}
+
+.btn-melhorar-infraestrutura {
+  flex-shrink: 0;
+  min-height: 44px;
+  padding: 6px 12px;
+  border-radius: 12px;
+  border: 1px solid var(--amarelo);
+  background: rgba(255, 210, 63, 0.12);
+  color: var(--amarelo);
+  font-size: 12px;
+  font-weight: 800;
+  cursor: pointer;
+  text-align: center;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.btn-melhorar-infraestrutura small {
+  font-weight: 700;
+  opacity: 0.85;
+}
+
+.tag-infraestrutura-maxima {
+  flex-shrink: 0;
+  font-size: 11px;
+  font-weight: 800;
+  color: #3ddc7a;
+  padding: 6px 10px;
+  border-radius: 10px;
+  background: rgba(61, 220, 122, 0.1);
+}
+
 .proposta-resultado-positivo { color: #3ddc7a; }
 .proposta-resultado-negativo { color: #ff8f8f; }
 .proposta-resultado-neutro { color: var(--amarelo); }

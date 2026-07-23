@@ -162,6 +162,21 @@ const CONFIG_FINANCEIRO = {
   emprestimoFatorClausulaVitrineMaxima: 0.20,
   emprestimoChanceEventoVitrinePorRodada: 0.03,
   emprestimoFatorValorOpcaoCompra: 1.05, // sugestão de opção de compra sobre o preço de transferência normal
+
+  // --- Infraestrutura do clube, níveis 1 a 5 (Fase 18) ---
+
+  infraNivelMinimo: 1,
+  infraNivelMaximo: 5,
+  infraFatorCustoUpgrade: 0.15, // custo do upgrade = este fator × caixaInicialClube × nível atual
+  // Centro de Treinamento: amplia o efeito da evolução de força de fim de temporada (positiva OU negativa).
+  infraCtBonusEvolucaoPorNivel: 0.15,
+  // Departamento Médico: reduz o desgaste físico por partida (sem sistema de lesão de verdade, isso é a versão simplificada).
+  infraDmReducaoDesgastePorNivel: 0.06,
+  // Centro de Análise de Desempenho: bônus geral de força efetiva do seu time em campo (simplificação — não é "contra time estudado").
+  infraAnaliseBonusForcaPorNivel: 0.015,
+  // Categorias de Base: jovens revelados mais fortes e com mais frequência (mexe nos limites da Fase 15).
+  infraBaseBonusForcaPorNivel: 1,
+  infraBaseBonusChancePorNivel: 0.01,
 };
 
 function converterEuroParaReal(valorEmMilhoesEuro) {
@@ -474,6 +489,30 @@ function calcularLuvasPedidas(valorTransferencia) {
 /** Cláusula de rescisão mínima aceitável — sempre acima do que o clube acabou de pagar, senão o jogador sairia barato demais depois. */
 function calcularClausulaMinima(valorTransferencia) {
   return Math.round(valorTransferencia * CONFIG_FINANCEIRO.empresarioFatorClausulaMinimaSobrePreco * 100) / 100;
+}
+
+/* ============================================================
+   Infraestrutura do clube (Fase 18)
+   ============================================================ */
+
+/** Custo pra subir um setor do nível atual pro próximo. */
+function calcularCustoUpgradeInfra(caixaInicialClube, nivelAtual) {
+  return Math.round(caixaInicialClube * CONFIG_FINANCEIRO.infraFatorCustoUpgrade * nivelAtual * 100) / 100;
+}
+
+/** Fator sobre o delta de evolução de força (Centro de Treinamento) — nível 1 é neutro. */
+function calcularFatorEvolucaoCT(nivelCT) {
+  return 1 + Math.max(0, nivelCT - 1) * CONFIG_FINANCEIRO.infraCtBonusEvolucaoPorNivel;
+}
+
+/** Fator sobre o desgaste físico por partida (Departamento Médico) — nível 1 é neutro. */
+function calcularFatorDesgasteDM(nivelDM) {
+  return clampFrac(1 - Math.max(0, nivelDM - 1) * CONFIG_FINANCEIRO.infraDmReducaoDesgastePorNivel, 0.5, 1);
+}
+
+/** Fator sobre a força efetiva do seu time em campo (Centro de Análise) — nível 1 é neutro. */
+function calcularFatorForcaAnalise(nivelAnalise) {
+  return 1 + Math.max(0, nivelAnalise - 1) * CONFIG_FINANCEIRO.infraAnaliseBonusForcaPorNivel;
 }
 
 /* ============================================================
