@@ -90,6 +90,8 @@ const CONFIG_FINANCEIRO = {
 
   // Chance de UM jogador do elenco receber uma proposta espontânea da IA, por rodada oficial.
   chanceOfertaEspontaneaPorJogador: 0.05,
+  // Jogador marcado como "à venda" pelo técnico (Contratos) tem chance bem maior de aparecer proposta.
+  chanceOfertaEspontaneaJogadorAVenda: 0.35,
   qtdMaximaPropostasPendentes: 3,
   // A oferta da IA varia em torno do preço "de mercado" do próprio jogador (mesma fórmula da Fase 12).
   fatorOfertaEspontaneaMinimo: 0.85,

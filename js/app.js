@@ -106,6 +106,7 @@ const estado = {
   proximoIdOlheiro: 1,
   torcida: null, // { confianca: 0-100 } — os outros 4 indicadores são derivados, não guardados (Fase 20)
   vendasCamisasPorJogador: {}, // { _id: total em R$mi vendido } — só de quem está no elenco atual (Fase 21)
+  jogadoresAVenda: {}, // { _id: true } — marcados pelo técnico como disponíveis pro mercado, aumenta chance de proposta
   dashboard: { vendaAtletasTemporada: 0, vendaCamisasTemporada: 0, comprasTemporada: 0 }, // zera a cada temporada (Fase 22)
   historicoTemporadas: [], // [{ ano, posicaoFinal, caixa, valorElenco, patrimonio }] — Fase 22
 };
@@ -179,6 +180,7 @@ function salvarProgresso() {
     proximoIdOlheiro: estado.proximoIdOlheiro,
     torcida: estado.torcida,
     vendasCamisasPorJogador: estado.vendasCamisasPorJogador,
+    jogadoresAVenda: estado.jogadoresAVenda,
     dashboard: estado.dashboard,
     historicoTemporadas: estado.historicoTemporadas,
     atualizadoEm: new Date().toISOString(),
@@ -387,6 +389,7 @@ async function escalarEsteTime(time) {
   estado.proximoIdOlheiro = 1;
   estado.torcida = { confianca: CONFIG_FINANCEIRO.torcidaConfiancaInicial };
   estado.vendasCamisasPorJogador = {};
+  estado.jogadoresAVenda = {};
   estado.dashboard = { vendaAtletasTemporada: 0, vendaCamisasTemporada: 0, comprasTemporada: 0 };
   estado.historicoTemporadas = [];
 
@@ -405,7 +408,6 @@ function abrirTelaEscalacao() {
   if (!partidaAtual) removerSuspensosDaEscalacao();
   renderizarInfoSubstituicoes();
   montarSelectFormacao();
-  document.getElementById("select-formacao").disabled = estaEmPartidaAtiva();
   renderizarCampo();
   renderizarResumoSetas();
   renderizarTatica();
@@ -444,7 +446,10 @@ function montarSelectFormacao() {
 }
 
 function trocarFormacao(novaFormacaoId) {
-  if (estaEmPartidaAtiva()) return; // não dá pra reescalar o time inteiro com o jogo rolando
+  if (estaEmPartidaAtiva()) {
+    reencaixarFormacaoEmPartida(novaFormacaoId);
+    return;
+  }
   estado.formacaoId = novaFormacaoId;
   estado.titulares = autoEscalarMelhores(estado.timeAtual.jogadores, novaFormacaoId);
   estado.setas = {}; // as vagas mudam de função na nova formação, então as setas recomeçam
@@ -452,6 +457,45 @@ function trocarFormacao(novaFormacaoId) {
   renderizarCampo();
   renderizarResumoSetas();
   renderizarBanco();
+  if (typeof atualizarRadarTaticoSeAberto === "function") atualizarRadarTaticoSeAberto();
+}
+
+/**
+ * Troca de formação com o jogo rolando: NÃO reescala o time do zero (isso
+ * bagunçaria o controle de substituições). Em vez disso, encaixa quem já
+ * está em campo nas vagas da mesma posição na formação nova; quem sobra
+ * (a formação nova tem menos vagas daquela posição) volta pro banco sem
+ * contar substituição; vagas novas que sobram vazias (a formação nova tem
+ * mais vagas daquela posição) ficam pra o técnico preencher pelo seletor,
+ * o que aí sim consome uma substituição normalmente.
+ */
+function reencaixarFormacaoEmPartida(novaFormacaoId) {
+  const vagasAtuais = obterFormacao(estado.formacaoId);
+  const vagasNovas = obterFormacao(novaFormacaoId);
+
+  const porPosicao = {};
+  vagasAtuais.forEach(function (vaga) {
+    const idJogador = estado.titulares[vaga.id];
+    if (idJogador === undefined) return;
+    (porPosicao[vaga.pos] = porPosicao[vaga.pos] || []).push(idJogador);
+  });
+
+  const novosTitulares = {};
+  vagasNovas.forEach(function (vaga) {
+    const lista = porPosicao[vaga.pos];
+    if (lista && lista.length) {
+      novosTitulares[vaga.id] = lista.shift();
+    }
+  });
+
+  estado.formacaoId = novaFormacaoId;
+  estado.titulares = novosTitulares;
+  estado.setas = {}; // as vagas mudam de função, então as setas recomeçam
+  salvarProgresso();
+  renderizarCampo();
+  renderizarResumoSetas();
+  renderizarBanco();
+  renderizarInfoSubstituicoes();
   if (typeof atualizarRadarTaticoSeAberto === "function") atualizarRadarTaticoSeAberto();
 }
 
@@ -513,7 +557,8 @@ function montarBarraEnergiaVaga(jogador) {
   const nivel = energia >= 70 ? "alta" : energia >= 40 ? "media" : "baixa";
   return "<span class=\"barra-energia-vaga\" title=\"Energia: " + energia + "%\">" +
     "<span class=\"preenchimento-energia-vaga energia-vaga-" + nivel + "\" style=\"width:" + energia + "%\"></span>" +
-  "</span>";
+  "</span>" +
+  "<span class=\"numero-energia-vaga energia-vaga-" + nivel + "\">" + energia + "%</span>";
 }
 
 /** Monta o HTML das setinhas já ativas de um jogador, encaixadas na bolinha. */
@@ -932,6 +977,7 @@ function iniciarSimulacao() {
     // Guarda a escalação de saída: trocas feitas durante a partida ("mexer no
     // time") não devem valer permanentemente pra próxima rodada.
     partidaAtual.escalacaoInicial = Object.assign({}, estado.titulares);
+    partidaAtual.formacaoInicial = estado.formacaoId;
     partidaAtual.jogadoresQueJogaram = Object.values(estado.titulares).slice();
   }
   partidaAtual.status = "jogando";
@@ -1260,6 +1306,7 @@ function continuarAposPosJogo() {
   }
   aplicarDesgastePosPartida();
   if (partidaAtual.escalacaoInicial) estado.titulares = partidaAtual.escalacaoInicial;
+  if (partidaAtual.formacaoInicial) estado.formacaoId = partidaAtual.formacaoInicial;
   partidaAtual = null;
   partidasRodada = [];
   salvarProgresso();
@@ -1559,6 +1606,7 @@ async function concluirRodadaOficial() {
   // A escalação titular volta a ser a de saída — trocas feitas "mexendo no
   // time" durante a partida valem só pra essa partida, não pra próxima rodada.
   if (partidaAtual.escalacaoInicial) estado.titulares = partidaAtual.escalacaoInicial;
+  if (partidaAtual.formacaoInicial) estado.formacaoId = partidaAtual.formacaoInicial;
 
   const divisaoChave = estado.timeAtual.divisaoChave;
   const temporadaDivisao = estado.temporada[divisaoChave];
@@ -1967,6 +2015,17 @@ function renovarContrato(idJogador) {
   renderizarContratos();
 }
 
+/** Liga/desliga a marcação "à venda" — jogadores marcados recebem propostas espontâneas com muito mais frequência. */
+function alternarJogadorAVenda(idJogador) {
+  if (estado.jogadoresAVenda[idJogador]) {
+    delete estado.jogadoresAVenda[idJogador];
+  } else {
+    estado.jogadoresAVenda[idJogador] = true;
+  }
+  salvarProgresso();
+  renderizarContratos();
+}
+
 function renderizarContratos() {
   const listaEl = document.getElementById("lista-contratos");
   if (!listaEl || !estado.timeAtual) return;
@@ -2005,20 +2064,27 @@ function renderizarContratos() {
       return;
     }
 
+    const aVenda = !!estado.jogadoresAVenda[jogador._id];
+
     li.innerHTML =
       "<span class=\"pos\">" + escaparHtml(jogador.pos) + "</span>" +
       "<span class=\"info-contrato\">" +
-        "<span class=\"nome-contrato\">" + escaparHtml(jogador.nome) + "</span>" +
+        "<span class=\"nome-contrato\">" + escaparHtml(jogador.nome) + (aVenda ? " 🏷️" : "") + "</span>" +
         "<span class=\"detalhes-contrato\">" + formatarReais(salarioMensalReais) + "/mês · " +
           (vencendo ? "⚠ " : "") + contrato.anosRestantes + (contrato.anosRestantes === 1 ? " ano restante" : " anos restantes") +
           (contrato.clausulaRescisao ? " · Cláusula: " + formatarReais(contrato.clausulaRescisao) : "") +
+          (aVenda ? " · Na lista de vendas" : "") +
         "</span>" +
       "</span>" +
       "<button class=\"btn-renovar-contrato\" type=\"button\">Renovar</button>" +
+      "<button class=\"btn-renovar-contrato btn-venda-contrato\" type=\"button\">" + (aVenda ? "Retirar da venda" : "Colocar à venda") + "</button>" +
       "<button class=\"btn-renovar-contrato btn-dispensar-contrato\" type=\"button\">Dispensar</button>";
 
-    li.querySelector(".btn-renovar-contrato:not(.btn-dispensar-contrato)").addEventListener("click", function () {
+    li.querySelector(".btn-renovar-contrato:not(.btn-dispensar-contrato):not(.btn-venda-contrato)").addEventListener("click", function () {
       renovarContrato(jogador._id);
+    });
+    li.querySelector(".btn-venda-contrato").addEventListener("click", function () {
+      alternarJogadorAVenda(jogador._id);
     });
     li.querySelector(".btn-dispensar-contrato").addEventListener("click", function () {
       dispensarJogador(jogador._id);
@@ -2727,6 +2793,7 @@ function removerJogadorDoElenco(idJogador) {
   delete estado.contratos[idJogador];
   delete estado.energiaPorJogador[idJogador];
   delete estado.vendasCamisasPorJogador[idJogador]; // ranking de camisas é só de quem está no elenco (Fase 21)
+  delete estado.jogadoresAVenda[idJogador];
   Object.keys(estado.titulares).forEach(function (vagaId) {
     if (estado.titulares[vagaId] === idJogador) {
       delete estado.titulares[vagaId];
@@ -2749,8 +2816,14 @@ async function gerarPropostasEspontaneas(divisaoChave, numeroRodada, totalRodada
   if (candidatos.length === 0) return;
 
   // Só UM jogador por rodada, sorteado entre os elegíveis, pra não virar spam de propostas.
+  // Quem está marcado como "à venda" (Contratos) é sorteado com chance bem maior.
   const embaralhados = candidatos.slice().sort(function () { return Math.random() - 0.5; });
-  const alvo = embaralhados.find(function () { return Math.random() < CONFIG_FINANCEIRO.chanceOfertaEspontaneaPorJogador; });
+  const alvo = embaralhados.find(function (j) {
+    const chance = estado.jogadoresAVenda[j._id]
+      ? CONFIG_FINANCEIRO.chanceOfertaEspontaneaJogadorAVenda
+      : CONFIG_FINANCEIRO.chanceOfertaEspontaneaPorJogador;
+    return Math.random() < chance;
+  });
   if (!alvo) return;
 
   const dados = await carregarDados();
@@ -3640,6 +3713,9 @@ async function continuarJogoSalvo() {
 
     // Saves de antes da Fase 21 não têm vendas de camisas registradas.
     estado.vendasCamisasPorJogador = registro.vendasCamisasPorJogador || {};
+
+    // Marcações de "colocar à venda" — introduzidas depois, saves antigos não têm.
+    estado.jogadoresAVenda = registro.jogadoresAVenda || {};
 
     // Saves de antes da Fase 22 não têm dashboard/histórico de temporadas.
     estado.dashboard = registro.dashboard || { vendaAtletasTemporada: 0, vendaCamisasTemporada: 0, comprasTemporada: 0 };

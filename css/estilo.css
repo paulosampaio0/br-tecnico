@@ -621,6 +621,19 @@ body::before {
 .energia-vaga-media { background: #ffb85c; }
 .energia-vaga-baixa { background: #ff8f8f; }
 
+/* Número da energia embaixo da barrinha, pra ver o valor exato sem precisar de tooltip */
+.numero-energia-vaga {
+  display: block;
+  font-size: 9px;
+  font-weight: 700;
+  line-height: 1.3;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.9);
+}
+
+.numero-energia-vaga.energia-vaga-alta { color: #7ee0a5; }
+.numero-energia-vaga.energia-vaga-media { color: #ffb85c; }
+.numero-energia-vaga.energia-vaga-baixa { color: #ff8f8f; }
+
 /* ============================================================
    Setas — Fase 3
    ============================================================ */
