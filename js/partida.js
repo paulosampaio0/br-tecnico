@@ -24,6 +24,22 @@ const AJUSTE_ESTILO_TATICA = {
 };
 const AJUSTE_MARCACAO_TATICA = { leve: -1, normal: 0, pesada: 1.5 };
 
+// Teto pro bônus/prejuízo TOTAL vindo das setas (Fase 3), pra não empilhar sem limite —
+// só o time do usuário usa setas de verdade, então sem teto o time dele destoava demais da IA.
+const LIMITE_SETAS_ATAQUE = 3;
+const LIMITE_SETAS_DEFESA_OFENSIVA = -2; // o quanto o ataque via setas pode "furar" a própria defesa
+const LIMITE_SETAS_DEFESA_RECUO = 3;
+
+// Bônus/penalidade de mando de campo (Rebalanceamento 2026-07-23): antes não existia
+// NENHUM efeito de jogar em casa/fora — a mesma força valia em qualquer estádio.
+// Calibrado por simulação (200 jogos do mesmo time contra si mesmo) pra ficar perto da
+// proporção real de futebol (~45% vitória do mandante, ~28% visitante, ~27% empate).
+const MANDO_BONUS_CASA = { ataque: 0.7, defesa: 0.55 };
+const MANDO_PENALIDADE_FORA = { ataque: -0.3, defesa: -0.25 };
+// Reforço extra só quando quem manda o jogo é a IA e o usuário está visitando —
+// pedido explícito de balanceamento: fora de casa deve ser bem mais difícil.
+const MANDO_BONUS_EXTRA_IA_CASA = { ataque: 0.7, defesa: 0.5 };
+
 /** Monta a lista { vaga, jogador } dos titulares, a partir do mapa da escalação. */
 function resolverTitulares(jogadores, formacaoId, titularesMap) {
   const vagas = obterFormacao(formacaoId);
@@ -70,33 +86,76 @@ function calcularForcaTime(titularesResolvidos, tatica, setasPorVaga) {
 
   // Setas ofensivas reforçam o setor de ataque, mas abrem espaço atrás
   // (tiram um pouco do setor de defesa). Recuar reforça a defesa.
+  // Rebalanceamento: o total vindo de setas é somado à parte e CLAMPADO —
+  // antes empilhava sem limite, e só o time do usuário usa setas de verdade
+  // (a IA sempre entra com setasPorVaga vazio), então virava um buff sem teto
+  // que a IA nunca tinha como igualar.
+  let ataqueDasSetas = 0;
+  let defesaDasSetasOfensivas = 0;
+  let defesaDasSetasRecuo = 0;
   Object.values(setasPorVaga || {}).forEach(function (chaves) {
     (chaves || []).forEach(function (chave) {
       const def = DEFINICAO_SETAS[chave];
       if (!def) return;
       if (def.ofensiva) {
-        setores.ataque += 0.6;
-        setores.defesa -= 0.4;
+        ataqueDasSetas += 0.5;
+        defesaDasSetasOfensivas -= 0.35;
       } else {
-        setores.defesa += 0.6;
+        defesaDasSetasRecuo += 0.5;
       }
     });
   });
+  setores.ataque += clamp(ataqueDasSetas, 0, LIMITE_SETAS_ATAQUE);
+  setores.defesa += clamp(defesaDasSetasOfensivas, LIMITE_SETAS_DEFESA_OFENSIVA, 0);
+  setores.defesa += clamp(defesaDasSetasRecuo, 0, LIMITE_SETAS_DEFESA_RECUO);
 
   return setores;
 }
 
-function criarTimeSimulado(nome, titularesResolvidos, tatica, setasPorVaga) {
+/**
+ * `opcoesMando` (Rebalanceamento 2026-07-23): { mando: "casa"|"fora"|undefined, bonusExtraIA: boolean }.
+ * `mando` aplica o bônus/penalidade normal de jogar em casa/fora; `bonusExtraIA` soma um reforço A MAIS
+ * só quando esse time é a IA jogando em casa contra o usuário visitante (pedido explícito de deixar
+ * jogar fora mais difícil de verdade).
+ */
+function criarTimeSimulado(nome, titularesResolvidos, tatica, setasPorVaga, opcoesMando) {
   const setores = calcularForcaTime(titularesResolvidos, tatica, setasPorVaga);
+
+  if (opcoesMando && opcoesMando.mando === "casa") {
+    setores.ataque += MANDO_BONUS_CASA.ataque;
+    setores.defesa += MANDO_BONUS_CASA.defesa;
+    if (opcoesMando.bonusExtraIA) {
+      setores.ataque += MANDO_BONUS_EXTRA_IA_CASA.ataque;
+      setores.defesa += MANDO_BONUS_EXTRA_IA_CASA.defesa;
+    }
+  } else if (opcoesMando && opcoesMando.mando === "fora") {
+    setores.ataque += MANDO_PENALIDADE_FORA.ataque;
+    setores.defesa += MANDO_PENALIDADE_FORA.defesa;
+  }
+
   return {
     nome: nome,
     titulares: titularesResolvidos, // guardado pra sortear nomes de jogadores nos eventos
-    setores: setores, // { defesa, meio, ataque } — a força de cada setor do campo
+    setores: setores, // { defesa, meio, ataque } — força EFETIVA do setor, pode variar minuto a minuto (reatividade da IA)
+    setoresBase: Object.assign({}, setores), // referência fixa (mando+tática+setas já aplicados), sem a reatividade de placar
   };
 }
 
 function criarEstatisticasVazias() {
   return { finalizacoes: 0, noGol: 0, chutesFora: 0, desarmes: 0, errosPasse: 0 };
+}
+
+/**
+ * Fator "zebra" (Rebalanceamento 2026-07-23): sorteado 1x por time no início da partida,
+ * representa o dia inspirado (ou ruim) do goleiro/defesa daquele time. Multiplica a chance
+ * de o ADVERSÁRIO converter em gol contra esse time — só ele, não muda a força "de verdade"
+ * do time, é a variância que faz o time mais fraco às vezes surpreender.
+ */
+function sortearFatorZebra() {
+  const r = Math.random();
+  if (r < 0.12) return 0.72 + Math.random() * 0.13; // dia inspirado (goleiro/defesa em alta): sofre bem menos
+  if (r < 0.24) return 1.18 + Math.random() * 0.22; // dia ruim: sofre mais
+  return 0.94 + Math.random() * 0.12; // dia normal, com uma leve variação
 }
 
 /** Cria o estado inicial (zerado) de uma partida. */
@@ -114,6 +173,7 @@ function novaPartida() {
       casa: criarEstatisticasVazias(),
       fora: criarEstatisticasVazias(),
     },
+    fatorZebra: { casa: sortearFatorZebra(), fora: sortearFatorZebra() }, // dia do goleiro/defesa de cada lado
     ehRodadaOficial: false, // true quando é uma rodada de verdade da temporada (Fase 6), não amistoso
     numeroRodadaOficial: null,
     pendencia: null, // { lado } quando há um pênalti do usuário esperando o cobrador ser escolhido
@@ -214,7 +274,10 @@ function processarLadoPartida(partida, atacante, defensor, ladoAtacante, permiti
   if (Math.random() < probChance) {
     estatAtacante.finalizacoes++;
     const vantagem = (atacante.setores.ataque - defensor.setores.defesa) / 40;
-    const chanceGol = clamp(0.26 + vantagem, 0.06, 0.55);
+    // Fator zebra do lado que defende (Rebalanceamento 2026-07-23): dia inspirado do
+    // goleiro/defesa reduz a conversão do ataque adversário; dia ruim aumenta — é isso
+    // que permite um time mais fraco "segurar" um favorito de vez em quando.
+    const chanceGol = clamp((0.26 + vantagem) * partida.fatorZebra[ladoDefensor], 0.05, 0.6);
     const rolagem = Math.random();
     const jogador = jogadorDeLinhaAleatorio(atacante); // o goleiro não finaliza a gol
 
@@ -270,6 +333,44 @@ function processarLadoPartida(partida, atacante, defensor, ladoAtacante, permiti
 }
 
 /**
+ * Reatividade tática da IA (Rebalanceamento 2026-07-23): só no 2º tempo, a
+ * postura muda conforme a diferença de placar NA VISÃO desse time — perdendo,
+ * empurra mais gente pra frente (arrisca a defesa); ganhando com folga perto
+ * do fim, recua pra proteger o resultado. Devolve o ajuste a somar em cima
+ * do `setoresBase` (nunca muda a base — por isso dá pra recalcular a cada
+ * minuto sem acumular erro).
+ */
+function calcularAjustePosturaIA(diferencaPlacar, minuto) {
+  if (minuto < 46) return { ataque: 0, defesa: 0 };
+  if (diferencaPlacar <= -2) return { ataque: 3.2, defesa: -2.2 }; // perdendo feio: tudo pra frente
+  if (diferencaPlacar === -1) return { ataque: 1.8, defesa: -1 }; // perdendo: mais ofensivo
+  if (diferencaPlacar >= 2 && minuto >= 70) return { ataque: -2, defesa: 1.6 }; // ganhando com folga: segura o resultado
+  if (diferencaPlacar === 1 && minuto >= 75) return { ataque: -1, defesa: 1 }; // ganhando por pouco perto do fim: retranca leve
+  return { ataque: 0, defesa: 0 };
+}
+
+/**
+ * Recalcula `time.setores` = `time.setoresBase` + reatividade de placar, só para
+ * lados controlados pela IA. `ladoComEscolhaCobranca` undefined (jogos só de CPU)
+ * conta os DOIS lados como IA; quando definido ("casa"/"fora"), só o lado oposto
+ * ao usuário reage — o time do usuário é ajustado pelo próprio jogador (tática/setas/"mexer no time").
+ */
+function aplicarPosturaReativaIA(time, lado, partida, ladoComEscolhaCobranca) {
+  const ehIA = ladoComEscolhaCobranca === undefined || ladoComEscolhaCobranca !== lado;
+  if (!ehIA) return;
+
+  const meusGols = lado === "casa" ? partida.placarCasa : partida.placarFora;
+  const golsSofridos = lado === "casa" ? partida.placarFora : partida.placarCasa;
+  const ajuste = calcularAjustePosturaIA(meusGols - golsSofridos, partida.minuto);
+
+  time.setores = {
+    meio: time.setoresBase.meio,
+    ataque: time.setoresBase.ataque + ajuste.ataque,
+    defesa: time.setoresBase.defesa + ajuste.defesa,
+  };
+}
+
+/**
  * Avança a partida em exatamente 1 minuto.
  * `ladoComEscolhaCobranca` ("casa"/"fora"/undefined) diz de qual lado o
  * usuário está jogando nesta partida — só nesse lado um pênalti pausa a
@@ -278,6 +379,9 @@ function processarLadoPartida(partida, atacante, defensor, ladoAtacante, permiti
  */
 function simularMinuto(partida, timeCasa, timeFora, ladoComEscolhaCobranca) {
   partida.minuto += 1;
+
+  aplicarPosturaReativaIA(timeCasa, "casa", partida, ladoComEscolhaCobranca);
+  aplicarPosturaReativaIA(timeFora, "fora", partida, ladoComEscolhaCobranca);
 
   processarLadoPartida(partida, timeCasa, timeFora, "casa", ladoComEscolhaCobranca === "casa");
   if (partida.pendencia) return partida; // pênalti pausou a simulação — não processa o outro lado neste minuto

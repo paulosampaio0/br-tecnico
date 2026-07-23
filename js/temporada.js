@@ -103,8 +103,8 @@ function ordenarTabela(tabela) {
  * escalação e tática padrão pros dois lados. Devolve só o placar final.
  */
 function simularJogoCompleto(timeCasaInfo, timeForaInfo) {
-  const casa = criarTimeSimuladoAutomaticoPuro(timeCasaInfo);
-  const fora = criarTimeSimuladoAutomaticoPuro(timeForaInfo);
+  const casa = criarTimeSimuladoAutomaticoPuro(timeCasaInfo, "casa");
+  const fora = criarTimeSimuladoAutomaticoPuro(timeForaInfo, "fora");
   const partida = novaPartida();
   for (let m = 0; m < 90; m++) {
     simularMinuto(partida, casa, fora);
@@ -113,10 +113,10 @@ function simularJogoCompleto(timeCasaInfo, timeForaInfo) {
 }
 
 /** Mesma ideia de criarTimeSimuladoAutomatico (app.js), mas sem depender da tela. */
-function criarTimeSimuladoAutomaticoPuro(timeInfo) {
+function criarTimeSimuladoAutomaticoPuro(timeInfo, mando) {
   const titularesMap = autoEscalarMelhores(timeInfo.jogadores, "4-4-2");
   const titulares = resolverTitulares(timeInfo.jogadores, "4-4-2", titularesMap);
-  return criarTimeSimulado(timeInfo.nome, titulares, taticaPadrao(), {});
+  return criarTimeSimulado(timeInfo.nome, titulares, taticaPadrao(), {}, { mando: mando });
 }
 
 /**

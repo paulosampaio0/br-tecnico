@@ -859,7 +859,7 @@ async function iniciarAmistoso() {
 
   meuLadoNaPartida = "casa";
   recalcularForcaUsuario();
-  timeForaSimulado = criarTimeSimuladoAutomatico(oponente);
+  timeForaSimulado = criarTimeSimuladoAutomatico(oponente, "fora");
 
   partidaAtual = novaPartida();
   partidasRodada = montarRodadaParalela(divisao, estado.timeAtual.nome, oponente.nome);
@@ -868,11 +868,15 @@ async function iniciarAmistoso() {
   iniciarSimulacao();
 }
 
-/** Monta um "time simulado" de força automática (escalação e tática padrão), pra CPU. */
-function criarTimeSimuladoAutomatico(time) {
+/**
+ * Monta um "time simulado" de força automática (escalação e tática padrão), pra CPU.
+ * `mando` ("casa"/"fora"/undefined) aplica o bônus/penalidade de jogar em casa/fora (Rebalanceamento
+ * 2026-07-23); `bonusExtraIA` soma o reforço extra só quando essa IA manda o jogo contra o usuário visitante.
+ */
+function criarTimeSimuladoAutomatico(time, mando, bonusExtraIA) {
   const titularesMap = autoEscalarMelhores(time.jogadores, "4-4-2");
   const titulares = resolverTitulares(time.jogadores, "4-4-2", titularesMap);
-  return criarTimeSimulado(time.nome, titulares, taticaPadrao(), {});
+  return criarTimeSimulado(time.nome, titulares, taticaPadrao(), {}, { mando: mando, bonusExtraIA: !!bonusExtraIA });
 }
 
 /**
@@ -894,8 +898,8 @@ function montarRodadaParalela(divisao, nomeMeuTime, nomeOponente) {
   const jogos = [];
   for (let i = 0; i + 1 < resto.length; i += 2) {
     jogos.push({
-      casa: criarTimeSimuladoAutomatico(resto[i]),
-      fora: criarTimeSimuladoAutomatico(resto[i + 1]),
+      casa: criarTimeSimuladoAutomatico(resto[i], "casa"),
+      fora: criarTimeSimuladoAutomatico(resto[i + 1], "fora"),
       partida: novaPartida(),
     });
   }
@@ -927,7 +931,9 @@ function calcularTimeSimuladoUsuario() {
     return { vaga: item.vaga, jogador: jogadorAjustado };
   });
 
-  return criarTimeSimulado(estado.timeAtual.nome, titularesComFadiga, estado.tatica, estado.setas);
+  // Mando de campo (Rebalanceamento 2026-07-23): o time do usuário também sente o efeito de
+  // jogar em casa/fora, só nunca recebe o reforço extra de mando reservado pra IA visitada.
+  return criarTimeSimulado(estado.timeAtual.nome, titularesComFadiga, estado.tatica, estado.setas, { mando: meuLadoNaPartida });
 }
 
 /** Energia atual de um jogador do MEU elenco (100 se ainda não foi registrada). */
@@ -1622,7 +1628,10 @@ async function iniciarRodadaOficial() {
 
   const dados = await carregarDados();
   const oponenteInfo = buscarTimePorNome(dados, nomeAdversario);
-  const oponenteSimulado = criarTimeSimuladoAutomatico(oponenteInfo);
+  // Mando do adversário é sempre o oposto do meu; quando ELE manda o jogo (eu visito),
+  // entra o reforço extra de mando pra IA (Rebalanceamento 2026-07-23).
+  const mandoAdversario = meuLadoNaPartida === "casa" ? "fora" : "casa";
+  const oponenteSimulado = criarTimeSimuladoAutomatico(oponenteInfo, mandoAdversario, mandoAdversario === "casa");
 
   if (meuLadoNaPartida === "casa") {
     timeForaSimulado = oponenteSimulado;
@@ -1641,8 +1650,8 @@ async function iniciarRodadaOficial() {
     const casaInfo = buscarTimePorNome(dados, jogo.casa);
     const foraInfo = buscarTimePorNome(dados, jogo.fora);
     return {
-      casa: criarTimeSimuladoAutomatico(casaInfo),
-      fora: criarTimeSimuladoAutomatico(foraInfo),
+      casa: criarTimeSimuladoAutomatico(casaInfo, "casa"),
+      fora: criarTimeSimuladoAutomatico(foraInfo, "fora"),
       partida: novaPartida(),
     };
   });
