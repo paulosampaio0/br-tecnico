@@ -617,17 +617,21 @@ body::before {
   border-radius: 2px;
 }
 
-.energia-vaga-alta { background: #7ee0a5; }
-.energia-vaga-media { background: #ffb85c; }
-.energia-vaga-baixa { background: #ff8f8f; }
+.preenchimento-energia-vaga.energia-vaga-alta { background: #7ee0a5; }
+.preenchimento-energia-vaga.energia-vaga-media { background: #ffb85c; }
+.preenchimento-energia-vaga.energia-vaga-baixa { background: #ff8f8f; }
 
-/* Número da energia embaixo da barrinha, pra ver o valor exato sem precisar de tooltip */
+/* Número da energia embaixo da barrinha — chip escuro sólido por trás, pra
+   o texto colorido nunca cair em cima de um fundo da mesma cor (sem contraste). */
 .numero-energia-vaga {
-  display: block;
+  display: inline-block;
+  margin-top: 2px;
+  padding: 0 3px;
+  border-radius: 3px;
+  background: rgba(0, 0, 0, 0.72);
   font-size: 9px;
   font-weight: 700;
-  line-height: 1.3;
-  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.9);
+  line-height: 1.4;
 }
 
 .numero-energia-vaga.energia-vaga-alta { color: #7ee0a5; }

@@ -132,7 +132,7 @@ function calcularValorMercado(jogador) {
 /** Salário mensal estimado (em milhões de €), a partir do valor de mercado. */
 function calcularSalarioMensal(jogador) {
   const valor = calcularValorMercado(jogador);
-  return Math.max(0.003, Math.round(valor * 0.018 * 1000) / 1000);
+  return Math.max(0.0015, Math.round(valor * 0.009 * 1000) / 1000);
 }
 
 /**
