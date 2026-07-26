@@ -142,6 +142,11 @@
       <select id="select-formacao"></select>
     </div>
 
+    <div class="controle-formacao">
+      <label for="select-capitao">© Capitão</label>
+      <select id="select-capitao"></select>
+    </div>
+
     <button class="btn-dado" id="btn-escalacao-automatica" type="button" title="Escalação Inteligente: monta os 11 melhores automaticamente">
       🎲 Escalação automática
     </button>
@@ -200,6 +205,13 @@
       <h3 id="titulo-relatorio-temporada">Fim de temporada</h3>
       <p class="linha-relatorio" id="texto-relatorio-acesso"></p>
       <p class="linha-relatorio" id="texto-relatorio-meta" hidden></p>
+      <section class="secao-relatorio-premiacao" id="secao-relatorio-premiacao" hidden>
+        <h4>💰 Premiação de fim de temporada</h4>
+        <p class="linha-relatorio" id="texto-relatorio-premiacao-posicao"></p>
+        <p class="linha-relatorio" id="texto-relatorio-premiacao-valor"></p>
+        <p class="linha-relatorio" id="texto-relatorio-premiacao-acesso" hidden></p>
+        <p class="linha-relatorio linha-relatorio-saldo" id="texto-relatorio-premiacao-saldo"></p>
+      </section>
       <ul class="lista lista-evolucao" id="lista-relatorio-evolucao"></ul>
       <section class="secao-relatorio-saidas-graca" id="secao-relatorio-saidas-graca" hidden>
         <h4>Saíram de graça (contrato venceu)</h4>
@@ -546,9 +558,19 @@
       <button class="btn btn-primario" id="btn-voltar-escalacao-fim" type="button" hidden>Voltar à escalação</button>
     </div>
 
+    <button class="painel-auxiliar auxiliar-neutro" id="painel-auxiliar" type="button" hidden>
+      <span id="texto-auxiliar">🎧 Observando o jogo…</span>
+    </button>
+
     <section class="secao-estatisticas-partida">
       <h3>Estatísticas</h3>
-      <div id="linhas-estatisticas-partida"></div>
+      <div class="cartao-estatisticas-comparativas">
+        <div class="cabecalho-estatisticas-comparativas">
+          <span class="time-estatisticas-comparativas" id="estatisticas-partida-nome-casa">Mandante</span>
+          <span class="time-estatisticas-comparativas time-estatisticas-comparativas-visitante" id="estatisticas-partida-nome-fora">Visitante</span>
+        </div>
+        <div id="linhas-estatisticas-partida"></div>
+      </div>
     </section>
 
     <section class="secao-eventos-partida">
@@ -579,9 +601,15 @@
       <ul class="lista lista-notas-posjogo" id="lista-piores-posjogo"></ul>
     </section>
 
-    <section class="secao-resumo-tatico-posjogo">
-      <h3>📋 Resumo tático</h3>
-      <ul class="lista lista-resumo-tatico" id="lista-resumo-tatico-posjogo"></ul>
+    <section class="secao-estatisticas-posjogo">
+      <h3>📊 Estatísticas</h3>
+      <div class="cartao-estatisticas-comparativas">
+        <div class="cabecalho-estatisticas-comparativas">
+          <span class="time-estatisticas-comparativas" id="estatisticas-nome-casa">Mandante</span>
+          <span class="time-estatisticas-comparativas time-estatisticas-comparativas-visitante" id="estatisticas-nome-fora">Visitante</span>
+        </div>
+        <div id="lista-estatisticas-comparativas"></div>
+      </div>
     </section>
 
     <section class="secao-todas-notas-posjogo">

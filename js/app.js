@@ -15,13 +15,22 @@ const CHAVE_SAVE = "br-tecnico:save:v1";
 const LIMIAR_ARRASTO_PX = 16; // quanto o dedo precisa se mover pra virar "arrasto" e não "toque"
 const MS_POR_MINUTO_PARTIDA = 450; // velocidade da simulação (real x jogo)
 
-const ESTATISTICAS_PARTIDA_DEF = [
-  { chave: "posse", rotulo: "Posse de bola" },
+/**
+ * Métricas do quadro de estatísticas comparativas (Mandante vs Visitante, estilo
+ * Flashscore/Sofascore) — reaproveitado na partida ao vivo E no pós-jogo pelo mesmo
+ * componente (`renderizarQuadroEstatisticasComparativas`). De propósito NÃO inclui
+ * volume/precisão de passes — só "Erros de passe", que é o que a engine calcula.
+ */
+const METRICAS_ESTATISTICAS_COMPARATIVAS = [
+  { chave: "posse", rotulo: "Posse de bola", sufixo: "%" },
   { chave: "finalizacoes", rotulo: "Finalizações" },
-  { chave: "noGol", rotulo: "No gol" },
-  { chave: "chutesFora", rotulo: "Pra fora" },
+  { chave: "noGol", rotulo: "Finalizações no alvo" },
+  { chave: "chutesFora", rotulo: "Finalizações para fora" },
+  { chave: "escanteios", rotulo: "Escanteios" },
   { chave: "desarmes", rotulo: "Desarmes" },
   { chave: "errosPasse", rotulo: "Erros de passe" },
+  { chave: "amarelos", rotulo: "Cartões amarelos" },
+  { chave: "vermelhos", rotulo: "Cartões vermelhos" },
 ];
 
 const ROTULO_STATUS_PARTIDA = {
@@ -76,6 +85,11 @@ let intervaloPartida = null;
 let velocidadePartida = 1; // 1x, 2x ou 3x — acelera o setInterval da simulação
 let partidasRodada = []; // os outros jogos da mesma divisão, simulados em paralelo (Fase 5)
 let meuLadoNaPartida = "casa"; // se o meu time é "casa" ou "fora" na partida atual (Fase 6)
+
+// Auxiliar técnico (dicas táticas em tempo real) — guarda a última dica exibida (com cooldown
+// por chave, pra não repetir a mesma frase toda hora) e se ela tem uma ação associada (ex.:
+// abrir "Mexer no time" ao tocar na dica de cansaço). Resetado a cada partida em abrirTelaPartida.
+let auxiliarEstado = { ultimoMinutoPorChave: {}, textoAtual: "", urgenciaAtual: "neutro", acaoAtual: null };
 
 // Navegação da tela de tabela (Fase 6).
 let divisaoTabelaAtual = "serie_a";
@@ -164,6 +178,9 @@ function salvarProgresso() {
     financas: estado.financas,
     precoIngresso: estado.precoIngresso,
     contratos: estado.contratos,
+    moralPorJogador: estado.moralPorJogador,
+    rodadasSemJogarPorJogador: estado.rodadasSemJogarPorJogador,
+    capitaoId: estado.capitaoId,
     // Quem ainda está no elenco (contratos que venceram sem renovação saem — Fase 11).
     // Sem isso, recarregar o jogo traria de volta jogadores que já foram embora.
     elencoIds: estado.timeAtual.jogadores.map(function (j) { return j._id; }),
@@ -321,6 +338,8 @@ function criarItemJogador(jogador, mostrarEnergia) {
   const prefixoEstrelas = estrelas > 0 ? "<span class=\"estrelas-potencial\" title=\"Potencial de crescimento\">" + "★".repeat(estrelas) + "</span> " : "";
   const prefixoSuspenso = jogadorEstaSuspenso(jogador._id) ? "<span class=\"tag-suspenso\">🚫 Suspenso</span> " : "";
   const prefixoExpulso = jogadorFoiExpulsoNestaPartida(jogador._id) ? "<span class=\"tag-expulso\">🔴 Expulso</span> " : "";
+  const prefixoCapitao = estado.capitaoId === jogador._id
+    ? "<span class=\"tag-capitao\" title=\"Capitão do time\">©</span> " : "";
   const valorMercado = calcularValorMercado(jogador);
 
   let blocoEnergia = "";
@@ -334,12 +353,26 @@ function criarItemJogador(jogador, mostrarEnergia) {
       "</span>";
   }
 
+  // Moral do elenco (Gestão Humana): 🟢 alta [80-100] · 🟡 média [40-79] · 🔴 insatisfeito [<40].
+  let blocoMoral = "";
+  if (estado.moralPorJogador) {
+    const moral = obterMoralJogador(estado.moralPorJogador, jogador._id);
+    const nivelMoral = moral >= CONFIG_FINANCEIRO.moralLimiteAlta ? "alta"
+      : moral >= CONFIG_FINANCEIRO.moralLimiteBaixa ? "media" : "baixa";
+    const iconeMoral = nivelMoral === "alta" ? "🟢" : nivelMoral === "media" ? "🟡" : "🔴";
+    blocoMoral =
+      "<span class=\"moral moral-" + nivelMoral + "\" title=\"Moral do jogador\">" +
+        "<span class=\"valor\">" + iconeMoral + " " + moral + "</span>" +
+        "<span class=\"rotulo\">moral</span>" +
+      "</span>";
+  }
+
   const caracteristicas = [jogador.caracteristica_1, jogador.caracteristica_2].filter(Boolean).join("/");
 
   item.innerHTML =
     "<span class=\"pos\">" + escaparHtml(jogador.pos) + "</span>" +
     "<span class=\"info\">" +
-      "<span class=\"nome\">" + prefixoExpulso + prefixoSuspenso + prefixoEstrelas + escaparHtml(jogador.nome) + "</span>" +
+      "<span class=\"nome\">" + prefixoExpulso + prefixoSuspenso + prefixoCapitao + prefixoEstrelas + escaparHtml(jogador.nome) + "</span>" +
       "<span class=\"detalhes\">" +
         jogador.idade + " anos · " + escaparHtml(jogador.nac) + " · " +
         escaparHtml(caracteristicas) + " · €" + valorMercado + "mi</span>" +
@@ -348,7 +381,8 @@ function criarItemJogador(jogador, mostrarEnergia) {
       "<span class=\"valor\">" + jogador.forca + "</span>" +
       "<span class=\"rotulo\">força</span>" +
     "</span>" +
-    blocoEnergia;
+    blocoEnergia +
+    blocoMoral;
   return item;
 }
 
@@ -376,9 +410,13 @@ async function escalarEsteTime(time) {
   estado.financas = criarFinancasIniciais(time.jogadores, divisaoAtual);
   estado.precoIngresso = "normal";
   estado.contratos = {};
+  estado.moralPorJogador = {};
+  estado.rodadasSemJogarPorJogador = {}; // _id -> rodadas oficiais consecutivas sem entrar em campo
   time.jogadores.forEach(function (jogador) {
     estado.contratos[jogador._id] = criarContratoInicial(jogador);
+    estado.moralPorJogador[jogador._id] = CONFIG_FINANCEIRO.moralInicial;
   });
+  estado.capitaoId = null;
   estado.jogadoresComprados = [];
   estado.proximoIdMercado = 100000;
   estado.propostasRecebidas = [];
@@ -423,11 +461,11 @@ function abrirTelaEscalacao() {
   document.getElementById("btn-sugerir-substituicao").hidden = !emPartidaAtiva;
 
   // Correção de bug: com a partida rolando ("Mexer no time"), a tela de escalação NÃO pode
-  // mostrar elementos de Home (menu horizontal, card do próximo jogo, CTA "Jogar rodada") —
-  // clicar em "Jogar rodada" ali reiniciava a partida em andamento e perdia o progresso.
+  // mostrar elementos de Home (menu horizontal, CTA "Jogar rodada") — clicar em "Jogar rodada"
+  // ali reiniciava a partida em andamento e perdia o progresso. O card do próximo jogo NÃO é
+  // escondido: nesse modo ele vira o "card do confronto" com o placar ao vivo (atualizarInfoRodada).
   document.getElementById("topo-hub").hidden = emPartidaAtiva;
   document.getElementById("hub-nav").hidden = emPartidaAtiva;
-  document.getElementById("cartao-proximo-jogo").hidden = emPartidaAtiva;
   document.getElementById("btn-jogar-rodada").hidden = emPartidaAtiva;
   document.getElementById("btn-jogar-amistoso").hidden = emPartidaAtiva;
 }
@@ -613,6 +651,7 @@ function renderizarCampo() {
   const campoEl = document.getElementById("campo-titular");
   campoEl.innerHTML = "";
 
+  const emPartidaAoVivo = estaEmPartidaAtiva();
   const vagas = obterFormacao(estado.formacaoId);
   vagas.forEach(function (vaga) {
     const idJogador = estado.titulares[vaga.id];
@@ -629,8 +668,13 @@ function renderizarCampo() {
         "<span class=\"bolinha\">" + vaga.rotulo + "</span>" +
         (jogador ? montarIndicadoresSetas(vaga, jogador) : "") +
       "</span>" +
-      "<span class=\"nome-vaga\">" + (jogador ? escaparHtml(sobrenomeCurto(jogador.nome)) : "Vazio") + "</span>" +
-      (jogador ? montarBarraEnergiaVaga(jogador) : "");
+      "<span class=\"nome-vaga\">" +
+        (jogador && estado.capitaoId === jogador._id ? "<span class=\"tag-capitao-campo\" title=\"Capitão\">©</span>" : "") +
+        (jogador ? escaparHtml(sobrenomeCurto(jogador.nome)) : "Vazio") +
+        (jogador && emPartidaAoVivo ? montarBadgeGolsVaga(jogador) : "") +
+      "</span>" +
+      (jogador ? montarBarraEnergiaVaga(jogador) : "") +
+      (jogador && emPartidaAoVivo ? montarNotaAoVivoVaga(jogador) : "");
 
     botao.addEventListener("click", function () {
       // Um arrasto de verdade que acabou de acontecer NESTE botão não deve
@@ -659,6 +703,41 @@ function renderizarCampo() {
   if (typeof radarAberto !== "undefined" && radarAberto && typeof destacarVagaRadar === "function") {
     destacarVagaRadar(radarAberto.vagaId);
   }
+
+  montarSelectCapitao();
+}
+
+/**
+ * Seletor de capitão (Gestão Humana): sempre remontado do zero junto com o campo, porque a
+ * lista de titulares muda (formação, substituição, seletor de jogador). Só lista quem está
+ * escalado agora — se o capitão salvo saiu da escalação titular, o time simplesmente fica
+ * sem capitão em campo (perde o bônus de resiliência) até o técnico escalá-lo de novo.
+ */
+function montarSelectCapitao() {
+  const select = document.getElementById("select-capitao");
+  if (!select) return;
+
+  const titularesAtuais = resolverTitulares(estado.timeAtual.jogadores, estado.formacaoId, estado.titulares);
+
+  select.innerHTML = "<option value=\"\">Sem capitão</option>";
+  titularesAtuais.forEach(function (item) {
+    const opcao = document.createElement("option");
+    opcao.value = item.jogador._id;
+    const fator = calcularFatorLiderancaCapitao(item.jogador);
+    const rotuloLideranca = fator >= 0.7 ? " ★ líder nato" : fator <= 0.15 ? " (pouca liderança)" : "";
+    opcao.textContent = item.jogador.nome + " (" + item.vaga.pos + ")" + rotuloLideranca;
+    select.appendChild(opcao);
+  });
+
+  select.value = estado.capitaoId !== null && titularesAtuais.some(function (i) { return i.jogador._id === estado.capitaoId; })
+    ? estado.capitaoId : "";
+}
+
+/** Chamado pelo <select> de capitão — grava direto em `estado.capitaoId` (ou null pra "Sem capitão"). */
+function definirCapitao(valorSelect) {
+  estado.capitaoId = valorSelect === "" ? null : Number(valorSelect);
+  salvarProgresso();
+  renderizarCampo();
 }
 
 /** Barrinha de energia (blocos coloridos) embaixo da bolinha, pra ver o cansaço direto no campo (ex.: ao "mexer no time"). */
@@ -671,6 +750,45 @@ function montarBarraEnergiaVaga(jogador) {
   const blocos = blocoAceso.repeat(acesos) + "⬜".repeat(TOTAL_BLOCOS - acesos);
   return "<span class=\"barra-energia-vaga\" title=\"Energia: " + energia + "%\">" + blocos + "</span>" +
   "<span class=\"numero-energia-vaga energia-vaga-" + nivel + "\">" + energia + "%</span>";
+}
+
+/**
+ * Nota "ao vivo" do jogador (rendimento na partida em andamento, 1.0–10.0) — mesma lógica
+ * de `calcularNotasPosJogo` (pós-jogo), mas calculada a qualquer momento a partir dos
+ * eventos já ocorridos, pra mostrar no campo tático durante o "Mexer no time".
+ */
+function calcularNotaAoVivoJogador(idJogador) {
+  let nota = 6.0;
+  partidaAtual.eventos.forEach(function (evento) {
+    if (evento.idJogador !== idJogador || evento.lado !== meuLadoNaPartida) return;
+    if (evento.tipo === "gol") nota += 1.4;
+    else if (evento.tipo === "cartao-amarelo") nota -= 0.5;
+    else if (evento.tipo === "cartao-vermelho") nota -= 2.2;
+  });
+  return clamp(nota, 1, 10);
+}
+
+/** Quantos gols o jogador já marcou NESTA partida (pro indicador ⚽ no campo). */
+function contarGolsAoVivoJogador(idJogador) {
+  return partidaAtual.eventos.filter(function (evento) {
+    return evento.idJogador === idJogador && evento.lado === meuLadoNaPartida && evento.tipo === "gol";
+  }).length;
+}
+
+/** Badge de nota ao vivo (1.0–10.0) embaixo da barra de energia, colorida pelo rendimento. */
+function montarNotaAoVivoVaga(jogador) {
+  const nota = calcularNotaAoVivoJogador(jogador._id);
+  const faixa = nota >= 7.5 ? "boa" : nota >= 6.0 ? "media" : "ruim";
+  return "<span class=\"nota-ao-vivo-vaga nota-ao-vivo-" + faixa + "\" title=\"Nota na partida\">" +
+    nota.toFixed(1) + "</span>";
+}
+
+/** ⚽ ao lado do nome pra cada gol marcado na partida (⚽x3 a partir do 3º). */
+function montarBadgeGolsVaga(jogador) {
+  const gols = contarGolsAoVivoJogador(jogador._id);
+  if (gols <= 0) return "";
+  const texto = gols >= 3 ? "⚽×" + gols : "⚽".repeat(gols);
+  return "<span class=\"badge-gols-vaga\" title=\"" + gols + " gol(s) na partida\">" + texto + "</span>";
 }
 
 /** Monta o HTML das setinhas já ativas de um jogador, encaixadas na bolinha. */
@@ -1071,13 +1189,19 @@ function calcularTimeSimuladoUsuario() {
   const titularesComFadiga = titulares.map(function (item) {
     const energia = obterEnergiaJogador(item.jogador._id);
     const fatorFadiga = calcularFatorFadiga(energia);
-    const jogadorAjustado = Object.assign({}, item.jogador, { forca: item.jogador.forca * fatorFadiga * fatorAnalise });
+    // Moral crítica (Gestão Humana): jogador insatisfeito rende um pouco menos em campo.
+    const moral = estado.moralPorJogador ? obterMoralJogador(estado.moralPorJogador, item.jogador._id) : 100;
+    const fatorMoral = moral < CONFIG_FINANCEIRO.moralLimiteRendimentoReduzido ? CONFIG_FINANCEIRO.fatorRendimentoMoralBaixa : 1;
+    const jogadorAjustado = Object.assign({}, item.jogador, { forca: item.jogador.forca * fatorFadiga * fatorAnalise * fatorMoral });
     return { vaga: item.vaga, jogador: jogadorAjustado };
   });
 
   // Mando de campo (Rebalanceamento 2026-07-23): o time do usuário também sente o efeito de
   // jogar em casa/fora, só nunca recebe o reforço extra de mando reservado pra IA visitada.
-  const time = criarTimeSimulado(estado.timeAtual.nome, titularesComFadiga, estado.tatica, estado.setas, { mando: meuLadoNaPartida });
+  // Capitão (Gestão Humana): só o time do usuário tem essa mecânica — os outros 39 clubes da
+  // liga são só tabela/estatística, sem elenco "de verdade" pra escolher um capitão.
+  const time = criarTimeSimulado(estado.timeAtual.nome, titularesComFadiga, estado.tatica, estado.setas,
+    { mando: meuLadoNaPartida }, estado.capitaoId);
 
   // Correção de bug — cartão vermelho: essa função RECRIA o time do zero toda vez que a
   // simulação retoma de uma pausa (pra escalação/tática valerem), o que apagaria a lista de
@@ -1174,7 +1298,9 @@ function abrirTelaPartida() {
   mostrarTela("tela-partida");
   document.getElementById("partida-nome-casa").textContent = timeCasaSimulado.nome;
   document.getElementById("partida-nome-fora").textContent = timeForaSimulado.nome;
-  montarLinhasEstatisticasPartida();
+  document.getElementById("estatisticas-partida-nome-casa").textContent = timeCasaSimulado.nome;
+  document.getElementById("estatisticas-partida-nome-fora").textContent = timeForaSimulado.nome;
+  auxiliarEstado = { ultimoMinutoPorChave: {}, textoAtual: "", urgenciaAtual: "neutro", acaoAtual: null };
   renderizarPartida();
   renderizarRodadaParalela();
   atualizarBilheteriaPartida();
@@ -1196,18 +1322,66 @@ function atualizarBilheteriaPartida() {
     "💰 Renda: R$ " + rendaEmReais.toLocaleString("pt-BR");
 }
 
-function montarLinhasEstatisticasPartida() {
-  const container = document.getElementById("linhas-estatisticas-partida");
-  if (container.childElementCount > 0) return; // já montado, só atualiza os valores depois
-  ESTATISTICAS_PARTIDA_DEF.forEach(function (def) {
-    const linha = document.createElement("div");
-    linha.className = "linha-estatistica";
-    linha.innerHTML =
-      "<span class=\"valor-esquerda\" id=\"est-" + def.chave + "-casa\">0</span>" +
-      "<span class=\"rotulo-estatistica\">" + escaparHtml(def.rotulo) + "</span>" +
-      "<span class=\"valor-direita\" id=\"est-" + def.chave + "-fora\">0</span>";
-    container.appendChild(linha);
+/** Quantos cartões (amarelo/vermelho) o lado `lado` (casa/fora) recebeu na partida até agora. */
+function contarCartoesPorLado(partida, lado) {
+  let amarelos = 0, vermelhos = 0;
+  partida.eventos.forEach(function (evento) {
+    if (evento.lado !== lado) return;
+    if (evento.tipo === "cartao-amarelo") amarelos++;
+    else if (evento.tipo === "cartao-vermelho") vermelhos++;
   });
+  return { amarelos: amarelos, vermelhos: vermelhos };
+}
+
+/** Junta estatísticas da engine + posse + cartões num objeto plano pro quadro comparativo. */
+function montarDadosEstatisticasComparativas(lado) {
+  const estat = partidaAtual.estatisticas[lado];
+  const posse = calcularPosse(partidaAtual);
+  const cartoes = contarCartoesPorLado(partidaAtual, lado);
+  return {
+    posse: posse[lado],
+    finalizacoes: estat.finalizacoes,
+    noGol: estat.noGol,
+    chutesFora: estat.chutesFora,
+    escanteios: estat.escanteios,
+    desarmes: estat.desarmes,
+    errosPasse: estat.errosPasse,
+    amarelos: cartoes.amarelos,
+    vermelhos: cartoes.vermelhos,
+  };
+}
+
+/**
+ * Componente único do quadro de estatísticas comparativas (Mandante vs Visitante) —
+ * usado tanto na partida ao vivo (atualizado a cada minuto) quanto no pós-jogo
+ * (montado 1x com o resultado final). Cada linha tem os dois valores e uma barra
+ * bicolor proporcional entre os dois lados.
+ */
+function renderizarQuadroEstatisticasComparativas(containerId, dadosCasa, dadosFora) {
+  const container = document.getElementById(containerId);
+  if (!container) return;
+
+  container.innerHTML = METRICAS_ESTATISTICAS_COMPARATIVAS.map(function (metrica) {
+    const valorCasa = dadosCasa[metrica.chave] || 0;
+    const valorFora = dadosFora[metrica.chave] || 0;
+    const total = valorCasa + valorFora;
+    // Sem nenhum evento dos dois lados (ex.: 0 cartões vermelhos), divide a barra ao meio.
+    const percCasa = total > 0 ? Math.round((valorCasa / total) * 100) : 50;
+    const percFora = 100 - percCasa;
+    const sufixo = metrica.sufixo || "";
+
+    return "<div class=\"linha-estatistica-comparativa\">" +
+      "<div class=\"valores-estatistica-comparativa\">" +
+        "<span class=\"valor-estatistica-comparativa\">" + valorCasa + sufixo + "</span>" +
+        "<span class=\"rotulo-estatistica-comparativa\">" + escaparHtml(metrica.rotulo) + "</span>" +
+        "<span class=\"valor-estatistica-comparativa\">" + valorFora + sufixo + "</span>" +
+      "</div>" +
+      "<div class=\"barra-estatistica-comparativa\">" +
+        "<span class=\"barra-estatistica-casa\" style=\"width: " + percCasa + "%\"></span>" +
+        "<span class=\"barra-estatistica-fora\" style=\"width: " + percFora + "%\"></span>" +
+      "</div>" +
+    "</div>";
+  }).join("");
 }
 
 function iniciarSimulacao() {
@@ -1432,15 +1606,10 @@ function renderizarPartida() {
   document.getElementById("partida-minuto").textContent = partidaAtual.minuto + "'";
   document.getElementById("partida-status").textContent = ROTULO_STATUS_PARTIDA[partidaAtual.status];
 
-  const posse = calcularPosse(partidaAtual);
-  document.getElementById("est-posse-casa").textContent = posse.casa + "%";
-  document.getElementById("est-posse-fora").textContent = posse.fora + "%";
+  renderizarQuadroEstatisticasComparativas("linhas-estatisticas-partida",
+    montarDadosEstatisticasComparativas("casa"), montarDadosEstatisticasComparativas("fora"));
 
-  ["finalizacoes", "noGol", "chutesFora", "desarmes", "errosPasse"].forEach(function (chave) {
-    document.getElementById("est-" + chave + "-casa").textContent = partidaAtual.estatisticas.casa[chave];
-    document.getElementById("est-" + chave + "-fora").textContent = partidaAtual.estatisticas.fora[chave];
-  });
-
+  renderizarPainelAuxiliar();
   renderizarEventosPartida();
   renderizarControlesPartida();
 }
@@ -1511,11 +1680,211 @@ function renderizarControlesPartida() {
   }
 }
 
-/* ---------- Pós-jogo ---------- */
+/* ---------- Auxiliar técnico (dicas táticas em tempo real) ---------- */
 
-const ROTULO_ESTILO_TATICA = { equilibrado: "Equilibrado", ofensivo: "Ofensivo", "contra-ataque": "Contra-ataque", retranca: "Retranca" };
-const ROTULO_MARCACAO_TATICA = { leve: "Leve", normal: "Normal", pesada: "Pesada" };
-const ROTULO_CONCENTRAR_TATICA = { equilibrado: "Equilibrado", meio: "Pelo meio", lados: "Pelos lados" };
+const COOLDOWN_PADRAO_AUXILIAR = 8; // minutos até a mesma dica poder repetir
+
+/**
+ * Percorre os "detectores" táticos e devolve todos os candidatos a dica que bateram a
+ * condição neste minuto. É o `escolherDicaAuxiliar` (abaixo) que decide qual mostrar,
+ * respeitando prioridade e cooldown — aqui só avalia o estado atual da partida, sem
+ * mexer em nada da engine (`timeCasaSimulado`/`timeForaSimulado`/`partida` só são lidos).
+ */
+function avaliarAuxiliar(partida) {
+  const meuTime = meuLadoNaPartida === "casa" ? timeCasaSimulado : timeForaSimulado;
+  const advTime = meuLadoNaPartida === "casa" ? timeForaSimulado : timeCasaSimulado;
+  const ladoAdversario = meuLadoNaPartida === "casa" ? "fora" : "casa";
+  const meuPlacar = meuLadoNaPartida === "casa" ? partida.placarCasa : partida.placarFora;
+  const placarAdversario = meuLadoNaPartida === "casa" ? partida.placarFora : partida.placarCasa;
+  const minhasEstatisticas = partida.estatisticas[meuLadoNaPartida];
+  const estatisticasAdversario = partida.estatisticas[ladoAdversario];
+  const titularesMeus = resolverTitulares(estado.timeAtual.jogadores, estado.formacaoId, estado.titulares)
+    .filter(function (item) { return item.vaga.pos !== "GOL"; });
+
+  const candidatos = [];
+
+  // 1. Meio-campo & posse
+  const diffMeio = meuTime.setores.meio - advTime.setores.meio;
+  if (diffMeio <= -3) {
+    candidatos.push({ chave: "meio-perdendo", prioridade: 3, urgencia: "atencao",
+      texto: "Estamos perdendo a disputa no meio-campo — eles chegam com mais facilidade." });
+  } else if (diffMeio >= 4) {
+    candidatos.push({ chave: "meio-dominando", prioridade: 2, urgencia: "neutro",
+      texto: "Estamos com domínio total do meio-campo." });
+  }
+
+  // 2. Cansaço + sugestão de troca (nomeia o jogador mais cansado em campo).
+  let maisCansado = null;
+  titularesMeus.forEach(function (item) {
+    const energia = obterEnergiaJogador(item.jogador._id);
+    if (energia < 55 && (!maisCansado || energia < maisCansado.energia)) {
+      maisCansado = { jogador: item.jogador, vaga: item.vaga, energia: energia };
+    }
+  });
+  if (maisCansado) {
+    const urgente = maisCansado.energia < 40;
+    candidatos.push({
+      chave: "cansaco-" + maisCansado.jogador._id,
+      prioridade: urgente ? 6 : 4,
+      urgencia: urgente ? "alerta" : "atencao",
+      texto: "O " + maisCansado.jogador.nome + " (" + maisCansado.vaga.pos + ") está " +
+        (urgente ? "muito cansado" : "cansando") + " e começando a errar passes. Pense numa substituição.",
+      acao: "mexer-time",
+    });
+  }
+
+  // 3. Lado vulnerável — setas ofensivas abrindo espaço nas costas, ou lateral cansada/fora de posição.
+  if (meuTime.fatorContraAtaqueConcedido > 1.15) {
+    candidatos.push({ chave: "contra-ataque-exposto", prioridade: 4, urgencia: "atencao",
+      texto: "Estamos abrindo espaço nas costas com as setas ofensivas — cuidado com o contra-ataque." });
+  }
+  const lateralFraca = titularesMeus.find(function (item) {
+    return (item.vaga.pos === "LAT.D" || item.vaga.pos === "LAT.E") &&
+      (item.eficiencia < 0.8 || obterEnergiaJogador(item.jogador._id) < 55);
+  });
+  if (lateralFraca) {
+    const ladoTexto = lateralFraca.vaga.pos === "LAT.D" ? "direita" : "esquerda";
+    candidatos.push({
+      chave: "lateral-" + lateralFraca.vaga.id, prioridade: 4, urgencia: "atencao",
+      texto: "A lateral " + ladoTexto + " está vulnerável — o ponta deles está achando espaço por ali.",
+      acao: "mexer-time",
+    });
+  }
+
+  // 4. Placar & postura (só no 2º tempo, quando faz sentido reagir).
+  if (partida.tempo === 2) {
+    if (meuPlacar < placarAdversario) {
+      candidatos.push({ chave: "postura-atras", prioridade: 5, urgencia: "atencao",
+        texto: "Estamos atrás no placar — precisamos nos lançar mais ao ataque." });
+    } else if (meuPlacar > placarAdversario && partida.minuto >= 70) {
+      candidatos.push({ chave: "postura-segurar", prioridade: 5, urgencia: "neutro",
+        texto: "Estamos ganhando faltando pouco — hora de segurar o resultado." });
+    }
+  }
+
+  // 5. Pontaria / pressão
+  if (minhasEstatisticas.finalizacoes >= 6 && meuPlacar === 0) {
+    candidatos.push({ chave: "pontaria", prioridade: 3, urgencia: "neutro",
+      texto: "Estamos criando bastante, mas falta pontaria pra balançar as redes." });
+  }
+  if (estatisticasAdversario.finalizacoes >= 6) {
+    candidatos.push({ chave: "sufoco", prioridade: 4, urgencia: "atencao",
+      texto: "Eles estão nos pressionando muito — precisamos respirar com a bola." });
+  }
+
+  // 6. Alertas de risco (prioridade alta — dominam o painel enquanto o risco existir).
+  if (meuTime.expulsos && meuTime.expulsos.length > 0) {
+    candidatos.push({ chave: "expulso", prioridade: 9, urgencia: "alerta",
+      texto: "Estamos com um a menos em campo — ajuste a tática pra segurar o resultado." });
+  }
+  const infoGoleiro = obterInfoGoleiro(meuTime);
+  if (!infoGoleiro.natural) {
+    candidatos.push({
+      chave: "sem-goleiro", prioridade: 10, urgencia: "alerta",
+      texto: infoGoleiro.jogador
+        ? "Atenção: " + infoGoleiro.jogador.nome + " é um jogador de linha improvisado no gol — qualquer chute deles vira perigo."
+        : "Atenção: não temos ninguém no gol — qualquer chute deles vira perigo!",
+    });
+  }
+  const pendurado = titularesMeus.find(function (item) {
+    return (estado.cartoesAmarelos[item.jogador._id] || 0) >= LIMITE_AMARELOS_SUSPENSAO - 1 &&
+      (partida.cartoesNoJogoPorJogador[item.jogador._id] || 0) >= 1;
+  });
+  if (pendurado) {
+    candidatos.push({
+      chave: "pendurado-" + pendurado.jogador._id, prioridade: 7, urgencia: "alerta",
+      texto: pendurado.jogador.nome + " está pendurado e levou amarelo — mais uma falta dura e desfalca a próxima rodada.",
+      acao: "mexer-time",
+    });
+  }
+
+  return candidatos;
+}
+
+/** Escolhe o candidato de maior prioridade que não esteja em cooldown (repetiu recente demais). */
+function escolherDicaAuxiliar(candidatos, minutoAtual) {
+  const ordenados = candidatos.slice().sort(function (a, b) { return b.prioridade - a.prioridade; });
+  return ordenados.find(function (candidato) {
+    const ultimoMinuto = auxiliarEstado.ultimoMinutoPorChave[candidato.chave];
+    return ultimoMinuto === undefined || (minutoAtual - ultimoMinuto) >= COOLDOWN_PADRAO_AUXILIAR;
+  }) || null;
+}
+
+/** Leitura mais longa do 1º tempo, mostrada no intervalo em vez de uma dica curta. */
+function montarResumoIntervaloAuxiliar(partida) {
+  const meuTime = meuLadoNaPartida === "casa" ? timeCasaSimulado : timeForaSimulado;
+  const advTime = meuLadoNaPartida === "casa" ? timeForaSimulado : timeCasaSimulado;
+  const meuPlacar = meuLadoNaPartida === "casa" ? partida.placarCasa : partida.placarFora;
+  const placarAdversario = meuLadoNaPartida === "casa" ? partida.placarFora : partida.placarCasa;
+  const posse = calcularPosse(partida);
+  const minhaPosse = meuLadoNaPartida === "casa" ? posse.casa : posse.fora;
+  const minhasEstatisticas = partida.estatisticas[meuLadoNaPartida];
+
+  const frases = [];
+  if (meuPlacar > placarAdversario) frases.push("Estamos vencendo, primeiro tempo bem controlado.");
+  else if (meuPlacar < placarAdversario) frases.push("Estamos atrás no placar, precisamos reagir no 2º tempo.");
+  else frases.push("Seguimos empatados, o jogo está equilibrado.");
+
+  frases.push("Posse de bola em " + minhaPosse + "%, com " + minhasEstatisticas.finalizacoes +
+    " finalizações (" + minhasEstatisticas.noGol + " no alvo).");
+
+  const diffMeio = meuTime.setores.meio - advTime.setores.meio;
+  if (diffMeio <= -2) frases.push("O meio-campo deles está por cima — vale pensar nalgum ajuste tático.");
+  else if (diffMeio >= 3) frases.push("Estamos dominando o meio-campo, bom sinal pro 2º tempo.");
+
+  return frases.join(" ");
+}
+
+/** Pinta o balão do auxiliar com a dica escolhida (ou o resumo, no intervalo). */
+function renderizarPainelAuxiliar() {
+  const painel = document.getElementById("painel-auxiliar");
+  const textoEl = document.getElementById("texto-auxiliar");
+  if (!painel || !textoEl) return;
+
+  const statusSemAuxiliar = ["fim", "nao-iniciada", "penalti", "expulsao"];
+  if (!partidaAtual || !partidaAtual.interativa || statusSemAuxiliar.indexOf(partidaAtual.status) !== -1) {
+    painel.hidden = true;
+    return;
+  }
+  painel.hidden = false;
+
+  if (partidaAtual.status === "intervalo") {
+    auxiliarEstado.textoAtual = montarResumoIntervaloAuxiliar(partidaAtual);
+    auxiliarEstado.urgenciaAtual = "neutro";
+    auxiliarEstado.acaoAtual = null;
+  } else {
+    const candidatos = avaliarAuxiliar(partidaAtual);
+    const escolhida = escolherDicaAuxiliar(candidatos, partidaAtual.minuto);
+    if (escolhida) {
+      auxiliarEstado.ultimoMinutoPorChave[escolhida.chave] = partidaAtual.minuto;
+      auxiliarEstado.textoAtual = escolhida.texto;
+      auxiliarEstado.urgenciaAtual = escolhida.urgencia;
+      auxiliarEstado.acaoAtual = escolhida.acao || null;
+    } else if (!auxiliarEstado.textoAtual) {
+      auxiliarEstado.textoAtual = "Observando o jogo…";
+      auxiliarEstado.urgenciaAtual = "neutro";
+      auxiliarEstado.acaoAtual = null;
+    }
+  }
+
+  textoEl.textContent = "🎧 " + auxiliarEstado.textoAtual;
+  painel.className = "painel-auxiliar auxiliar-" + auxiliarEstado.urgenciaAtual +
+    (auxiliarEstado.acaoAtual ? " auxiliar-clicavel" : "");
+}
+
+/** Clique no balão: só faz algo quando a dica atual tem uma ação (ex.: dica de cansaço/lateral/pendurado). */
+function acionarPainelAuxiliar() {
+  if (!auxiliarEstado.acaoAtual || !partidaAtual) return;
+  if (auxiliarEstado.acaoAtual === "mexer-time") {
+    if (partidaAtual.status === "jogando") {
+      partidaAtual.status = "pausada";
+      pararIntervaloPartida();
+    }
+    abrirTelaEscalacao();
+  }
+}
+
+/* ---------- Pós-jogo ---------- */
 
 /** Nota (0 a 10) de cada jogador do MEU time que entrou em campo nesta partida. */
 function calcularNotasPosJogo() {
@@ -1578,31 +1947,10 @@ function abrirTelaPosJogo() {
   listaTodas.innerHTML = "";
   notas.forEach(function (e) { listaTodas.appendChild(criarItemNotaPosJogo(e)); });
 
-  const qtdSetasAtivas = Object.values(estado.setas || {}).reduce(function (soma, chaves) { return soma + (chaves ? chaves.length : 0); }, 0);
-  const posse = calcularPosse(partidaAtual);
-  const minhaPosse = meuLadoNaPartida === "casa" ? posse.casa : posse.fora;
-  const minhasEstatisticas = partidaAtual.estatisticas[meuLadoNaPartida];
-
-  const resumo = [
-    ["Formação", estado.formacaoId],
-    ["Estilo de jogo", ROTULO_ESTILO_TATICA[estado.tatica.estilo] || estado.tatica.estilo],
-    ["Marcação", ROTULO_MARCACAO_TATICA[estado.tatica.marcacao] || estado.tatica.marcacao],
-    ["Concentrar ataques", ROTULO_CONCENTRAR_TATICA[estado.tatica.concentrar] || estado.tatica.concentrar],
-    ["Setas ativas", qtdSetasAtivas + " no time titular de saída"],
-    ["Posse de bola", minhaPosse + "%"],
-    ["Finalizações", minhasEstatisticas.finalizacoes + " (" + minhasEstatisticas.noGol + " no gol)"],
-    ["Substituições feitas", (partidaAtual.substituicoesFeitas || 0) + " de " + LIMITE_SUBSTITUICOES],
-  ];
-
-  const listaResumo = document.getElementById("lista-resumo-tatico-posjogo");
-  listaResumo.innerHTML = "";
-  resumo.forEach(function (par) {
-    const li = document.createElement("li");
-    li.className = "item-resumo-tatico-posjogo";
-    li.innerHTML = "<span class=\"rotulo-resumo-tatico\">" + escaparHtml(par[0]) + "</span>" +
-      "<span class=\"valor-resumo-tatico\">" + escaparHtml(String(par[1])) + "</span>";
-    listaResumo.appendChild(li);
-  });
+  document.getElementById("estatisticas-nome-casa").textContent = nomeCasa;
+  document.getElementById("estatisticas-nome-fora").textContent = nomeFora;
+  renderizarQuadroEstatisticasComparativas("lista-estatisticas-comparativas",
+    montarDadosEstatisticasComparativas("casa"), montarDadosEstatisticasComparativas("fora"));
 }
 
 /** Chamado pelo botão "Continuar" do pós-jogo — só aí de fato fecha a partida. */
@@ -1845,6 +2193,21 @@ function atualizarInfoRodada() {
   const elInfo = document.getElementById("proximo-jogo-info");
   if (!textoEl || !btnRodada) return;
 
+  // "Mexer no time" com a partida rolando: o card do próximo jogo vira o card do
+  // confronto AO VIVO, com o placar e o minuto no momento da pausa (Correção de bug).
+  if (estaEmPartidaAtiva()) {
+    const souCasaAoVivo = meuLadoNaPartida === "casa";
+    const nomeMeuTimeAoVivo = souCasaAoVivo ? timeCasaSimulado.nome : timeForaSimulado.nome;
+    const nomeAdversarioAoVivo = souCasaAoVivo ? timeForaSimulado.nome : timeCasaSimulado.nome;
+    const meuPlacarAoVivo = souCasaAoVivo ? partidaAtual.placarCasa : partidaAtual.placarFora;
+    const placarAdversarioAoVivo = souCasaAoVivo ? partidaAtual.placarFora : partidaAtual.placarCasa;
+    if (elMando) elMando.textContent = "🔴 Ao vivo · " + partidaAtual.minuto + "'";
+    if (elMeuTime) elMeuTime.textContent = nomeMeuTimeAoVivo + " " + meuPlacarAoVivo;
+    if (elAdversario) elAdversario.textContent = placarAdversarioAoVivo + " " + nomeAdversarioAoVivo;
+    if (elInfo) elInfo.textContent = "Partida pausada — mexa no time e volte pro jogo";
+    return;
+  }
+
   if (!estado.temporada) {
     textoEl.textContent = "Carregando temporada…";
     if (elMando) elMando.textContent = "Carregando…";
@@ -1982,10 +2345,61 @@ async function iniciarRodadaOficial() {
   iniciarSimulacao();
 }
 
+/**
+ * Moral do elenco (Gestão Humana): roda ao fim de CADA rodada oficial. Quem jogou (titular de
+ * saída ou entrou do banco, via `partidaAtual.jogadoresQueJogaram`) ganha moral — mais ainda se
+ * o time venceu ou se o pós-jogo deu boa nota. Quem ficou de fora conta mais uma rodada seguida
+ * sem jogar e só perde moral a partir da 3ª consecutiva (reserva de força alta perde mais rápido
+ * que jovem de base/reserva fraco). Quem cruza a moral crítica pede pra ser listado no mercado
+ * (reaproveita `estado.jogadoresAVenda`, que já aumenta a chance de proposta espontânea).
+ */
+function aplicarMoralPosRodada() {
+  if (!estado.moralPorJogador) return;
+
+  const meuPlacar = meuLadoNaPartida === "casa" ? partidaAtual.placarCasa : partidaAtual.placarFora;
+  const placarAdversario = meuLadoNaPartida === "casa" ? partidaAtual.placarFora : partidaAtual.placarCasa;
+  const foiVitoria = meuPlacar > placarAdversario;
+
+  const notaPorJogador = {};
+  calcularNotasPosJogo().forEach(function (entrada) { notaPorJogador[entrada.idJogador] = entrada.nota; });
+
+  const idsQueJogaram = new Set(partidaAtual.jogadoresQueJogaram || []);
+  const pedidosDeTransferencia = [];
+
+  estado.timeAtual.jogadores.forEach(function (jogador) {
+    const moralAntes = obterMoralJogador(estado.moralPorJogador, jogador._id);
+    let moralDepois;
+
+    if (idsQueJogaram.has(jogador._id)) {
+      const notaBoa = (notaPorJogador[jogador._id] || 0) >= 7;
+      moralDepois = calcularNovaMoralTitular(moralAntes, foiVitoria, notaBoa);
+      estado.rodadasSemJogarPorJogador[jogador._id] = 0;
+    } else {
+      const rodadasSemJogar = (estado.rodadasSemJogarPorJogador[jogador._id] || 0) + 1;
+      estado.rodadasSemJogarPorJogador[jogador._id] = rodadasSemJogar;
+      moralDepois = calcularNovaMoralBanco(moralAntes, rodadasSemJogar, jogador.forca);
+    }
+
+    estado.moralPorJogador[jogador._id] = moralDepois;
+
+    // Só avisa na hora em que a moral CRUZA pra crítica (evita alerta toda rodada enquanto seguir baixa).
+    if (moralEstaCritica(moralDepois) && !moralEstaCritica(moralAntes)) {
+      estado.jogadoresAVenda[jogador._id] = true;
+      pedidosDeTransferencia.push(jogador.nome);
+    }
+  });
+
+  if (pedidosDeTransferencia.length > 0) {
+    alert("😠 Pedido de transferência: " + pedidosDeTransferencia.join(", ") +
+      " está(ão) insatisfeito(s) com a reserva e quer(em) ser negociado(s) — já entrou(aram) na lista de vendas.");
+  }
+}
+
 /** Chamado ao fim de uma rodada oficial: fecha os resultados na tabela e avança a temporada. */
 async function concluirRodadaOficial() {
   aplicarDesgastePosPartida();
   aplicarCartoesPosPartida();
+  aplicarMoralPosRodada();
   // A escalação titular volta a ser a de saída — trocas feitas "mexendo no
   // time" durante a partida valem só pra essa partida, não pra próxima rodada.
   if (partidaAtual.escalacaoInicial) estado.titulares = partidaAtual.escalacaoInicial;
@@ -2143,6 +2557,44 @@ async function processarFimDeTemporada() {
     }
   }
 
+  // Premiação de fim de temporada (Prize Money & Bônus de Acesso): % dinâmica do pote da
+  // divisão em que o clube jogou essa temporada, de acordo com a posição final na tabela.
+  // Quem ficou entre os 4 primeiros da Série B ainda leva o Bônus de Acesso (verba de
+  // preparação pra Série A), somado à premiação normal pela posição na própria Série B.
+  let premiacaoRecebida = null;
+  if (estado.financas) {
+    const percentualPremio = CONFIG_FINANCEIRO.tabelaPercentualPremiacaoPorPosicao[posicaoFinal - 1] || 0;
+    const valorPremio = calcularPremiacaoPorPosicao(posicaoFinal, divisaoAntiga);
+    const valorBonusAcesso = calcularBonusAcessoSerieB(posicaoFinal, divisaoAntiga);
+    const somaPremiacao = valorPremio + valorBonusAcesso;
+
+    if (somaPremiacao > 0) {
+      estado.financas.caixa = Math.round((estado.financas.caixa + somaPremiacao) * 100) / 100;
+
+      estado.financas.extrato = estado.financas.extrato || [];
+      if (valorPremio > 0) {
+        estado.financas.extrato.push({
+          ano: estado.temporada.ano,
+          descricao: "Premiação " + posicaoFinal + "º Lugar - " + (ROTULO_DIVISAO_CAMPEONATO[divisaoAntiga] || "Campeonato"),
+          valor: valorPremio,
+        });
+      }
+      if (valorBonusAcesso > 0) {
+        estado.financas.extrato.push({
+          ano: estado.temporada.ano,
+          descricao: "Verba de Preparação para a Série A (Bônus de Acesso)",
+          valor: valorBonusAcesso,
+        });
+      }
+      if (estado.financas.extrato.length > 20) estado.financas.extrato.splice(0, estado.financas.extrato.length - 20);
+    }
+
+    premiacaoRecebida = {
+      posicaoFinal: posicaoFinal, percentual: percentualPremio,
+      valorPremio: valorPremio, valorBonusAcesso: valorBonusAcesso, novoSaldo: estado.financas.caixa,
+    };
+  }
+
   // Snapshot da temporada que está terminando pro comparativo do Dashboard (Fase 22), antes de zerar os acumuladores.
   if (estado.financas && estado.dashboard) {
     const valorElencoAtual = calcularValorElencoEmReais(estado.timeAtual.jogadores);
@@ -2212,6 +2664,7 @@ async function processarFimDeTemporada() {
     ultimoRelatorio: {
       rebaixados: resultado.rebaixados, promovidos: resultado.promovidos,
       evolucao: evolucaoResumo, saidasDeGraca: saidasDeGraca, meta: relatorioMeta,
+      premiacao: premiacaoRecebida,
     },
   };
 
@@ -2393,6 +2846,13 @@ function abrirTelaContratos() {
 function renovarContrato(idJogador) {
   const jogador = encontrarJogadorPorId(estado.timeAtual.jogadores, idJogador);
   if (!jogador) return;
+
+  // Moral crítica (Gestão Humana): jogador insatisfeito com a reserva se recusa a renovar.
+  if (moralEstaCritica(obterMoralJogador(estado.moralPorJogador, idJogador))) {
+    alert(jogador.nome + ": \"Estou insatisfeito com a reserva e não aceito renovar assim.\"");
+    return;
+  }
+
   estado.contratos[idJogador] = renovarContratoJogador(estado.contratos[idJogador], jogador);
   salvarProgresso();
   renderizarContratos();
@@ -2843,6 +3303,7 @@ function fecharContratacaoCompleta(jogadorOriginal, nomeTimeVendedor, divisaoVen
   estado.jogadoresComprados.push(jogadorContratado);
   estado.contratos[novoId] = { anosRestantes: duracaoAnos, multiplicadorSalario: multiplicadorSalario, clausulaRescisao: clausulaRescisao };
   estado.energiaPorJogador[novoId] = 100;
+  estado.moralPorJogador[novoId] = CONFIG_FINANCEIRO.moralInicial;
 
   // Contratação de craque vira boom de vendas de camisas na hora (Fase 21).
   const vendaCamisas = calcularVendaCamisasContratacao(valorTransferencia, jogadorContratado.forca);
@@ -2938,6 +3399,7 @@ function concluirEmprestimo(jogadorOriginal, nomeTimeOrigem, divisaoOrigem, perc
     },
   };
   estado.energiaPorJogador[novoId] = 100;
+  estado.moralPorJogador[novoId] = CONFIG_FINANCEIRO.moralInicial;
 
   salvarProgresso();
 }
@@ -3177,6 +3639,9 @@ function removerJogadorDoElenco(idJogador) {
   delete estado.energiaPorJogador[idJogador];
   delete estado.vendasCamisasPorJogador[idJogador]; // ranking de camisas é só de quem está no elenco (Fase 21)
   delete estado.jogadoresAVenda[idJogador];
+  delete estado.moralPorJogador[idJogador];
+  delete estado.rodadasSemJogarPorJogador[idJogador];
+  if (estado.capitaoId === idJogador) estado.capitaoId = null; // o capitão saiu do clube — precisa escolher outro
   Object.keys(estado.titulares).forEach(function (vagaId) {
     if (estado.titulares[vagaId] === idJogador) {
       delete estado.titulares[vagaId];
@@ -3488,6 +3953,7 @@ function gerarJovemDaBase() {
   estado.jogadoresComprados.push(jovem); // mesma trilha de persistência dos jogadores que vêm de fora do arquivo de dados
   estado.contratos[novoId] = criarContratoInicial(jovem);
   estado.energiaPorJogador[novoId] = 100;
+  estado.moralPorJogador[novoId] = CONFIG_FINANCEIRO.moralInicial;
 
   const estrelas = calcularEstrelasPotencial(jovem);
   let mensagem = "A base revelou um talento! " + jovem.nome + " (" + jovem.pos + ", força " + jovem.forca + ", " + jovem.idade + " anos" +
@@ -3739,6 +4205,31 @@ function renderizarRelatorioTemporada() {
       textoMetaEl.className = "linha-relatorio " + (relatorio.meta.cumprida ? "valor-positivo-financas" : "valor-negativo-financas");
     } else {
       textoMetaEl.hidden = true;
+    }
+  }
+
+  const secaoPremiacao = document.getElementById("secao-relatorio-premiacao");
+  if (secaoPremiacao) {
+    const premiacao = relatorio.premiacao;
+    if (!premiacao || (premiacao.valorPremio <= 0 && premiacao.valorBonusAcesso <= 0)) {
+      secaoPremiacao.hidden = true;
+    } else {
+      secaoPremiacao.hidden = false;
+      document.getElementById("texto-relatorio-premiacao-posicao").textContent =
+        "Posição final: " + premiacao.posicaoFinal + "º lugar";
+      document.getElementById("texto-relatorio-premiacao-valor").textContent =
+        "Premiação por desempenho: " + formatarReais(premiacao.valorPremio) + " (" + premiacao.percentual.toFixed(1).replace(".", ",") + "% do pote)";
+
+      const elAcesso = document.getElementById("texto-relatorio-premiacao-acesso");
+      if (premiacao.valorBonusAcesso > 0) {
+        elAcesso.hidden = false;
+        elAcesso.textContent = "🎉 Bônus de Acesso (verba de preparação p/ Série A): " + formatarReais(premiacao.valorBonusAcesso);
+      } else {
+        elAcesso.hidden = true;
+      }
+
+      document.getElementById("texto-relatorio-premiacao-saldo").textContent =
+        "Novo saldo do clube: " + formatarReais(premiacao.novoSaldo);
     }
   }
 
@@ -4121,6 +4612,17 @@ async function continuarJogoSalvo() {
       if (!estado.contratos[jogador._id]) estado.contratos[jogador._id] = criarContratoInicial(jogador);
     });
 
+    // Saves de antes da Gestão Humana (moral/capitão) não têm esses campos — cria com o padrão.
+    estado.moralPorJogador = registro.moralPorJogador || {};
+    estado.timeAtual.jogadores.forEach(function (jogador) {
+      if (estado.moralPorJogador[jogador._id] === undefined) estado.moralPorJogador[jogador._id] = CONFIG_FINANCEIRO.moralInicial;
+    });
+    estado.rodadasSemJogarPorJogador = registro.rodadasSemJogarPorJogador || {};
+    estado.capitaoId = registro.capitaoId !== undefined ? registro.capitaoId : null;
+    if (estado.capitaoId !== null && !encontrarJogadorPorId(estado.timeAtual.jogadores, estado.capitaoId)) {
+      estado.capitaoId = null; // o capitão salvo já não está mais no elenco (dispensado/vendido)
+    }
+
     // Reaplica a evolução de força/idade acumulada de temporadas passadas
     // por cima do elenco "de fábrica" que acabou de vir do arquivo de dados.
     estado.timeAtual.jogadores = aplicarEvolucaoNoElenco(estado.timeAtual.jogadores, estado.evolucao);
@@ -4328,6 +4830,12 @@ function ligarBotoes() {
 
   const btnMexerTimePartida = document.getElementById("btn-mexer-time-partida");
   if (btnMexerTimePartida) btnMexerTimePartida.addEventListener("click", abrirTelaEscalacao);
+
+  const painelAuxiliar = document.getElementById("painel-auxiliar");
+  if (painelAuxiliar) painelAuxiliar.addEventListener("click", acionarPainelAuxiliar);
+
+  const selectCapitao = document.getElementById("select-capitao");
+  if (selectCapitao) selectCapitao.addEventListener("change", function () { definirCapitao(selectCapitao.value); });
 
   const btnVoltarEscalacaoFim = document.getElementById("btn-voltar-escalacao-fim");
   if (btnVoltarEscalacaoFim) {

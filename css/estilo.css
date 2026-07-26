@@ -79,6 +79,16 @@ body::before {
   animation: surgir-tela 0.22s ease;
 }
 
+/* Mesmo problema do .tela acima: esses elementos também têm "display" próprio
+   com a mesma prioridade de [hidden], e no "Mexer no time" durante a partida
+   isso fazia o hub-nav (Rodada/Elenco/Tabela/...) continuar aparecendo mesmo
+   com `.hidden = true` no JS. */
+.hub-nav[hidden],
+.topo-hub[hidden],
+.cartao-proximo-jogo[hidden] {
+  display: none;
+}
+
 @keyframes surgir-tela {
   from { opacity: 0; }
   to { opacity: 1; }
@@ -445,6 +455,56 @@ body::before {
 .item-jogador .energia-alta .valor { color: #7ee0a5; }
 .item-jogador .energia-media .valor { color: #ffb85c; }
 .item-jogador .energia-baixa .valor { color: #ff8f8f; }
+
+/* ============================================================
+   Gestão Humana — moral do elenco e capitão
+   ============================================================ */
+
+.item-jogador .moral {
+  flex-shrink: 0;
+  text-align: center;
+  min-width: 48px;
+}
+
+.item-jogador .moral .valor {
+  font-size: 13px;
+  font-weight: 800;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.item-jogador .moral .rotulo {
+  display: block;
+  font-size: 8px;
+  color: var(--cinza-texto);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.item-jogador .moral-alta .valor { color: #7ee0a5; }
+.item-jogador .moral-media .valor { color: #ffb85c; }
+.item-jogador .moral-baixa .valor { color: #ff8f8f; }
+
+.tag-capitao {
+  display: inline-block;
+  color: var(--amarelo);
+  border: 1px solid var(--amarelo);
+  border-radius: 50%;
+  width: 15px;
+  height: 15px;
+  line-height: 13px;
+  text-align: center;
+  font-size: 10px;
+  font-weight: 800;
+  margin-right: 2px;
+}
+
+/* Braçadeira no campo tático — canto da bolinha do jogador escalado como capitão. */
+.tag-capitao-campo {
+  color: var(--amarelo);
+  font-weight: 800;
+  margin-right: 1px;
+}
 
 /* ============================================================
    Tela de Escalação e Tática — Fase 2
@@ -819,6 +879,30 @@ body::before {
 .numero-energia-vaga.energia-vaga-alta { color: #7ee0a5; }
 .numero-energia-vaga.energia-vaga-media { color: #ffb85c; }
 .numero-energia-vaga.energia-vaga-baixa { color: #ff8f8f; }
+
+/* Nota ao vivo (rendimento na partida) — chip escuro embaixo da barra de energia, no
+   campo tático durante o "Mexer no time". Mesma lógica de contraste do número de energia. */
+.nota-ao-vivo-vaga {
+  display: inline-block;
+  margin-top: 2px;
+  padding: 0 4px;
+  border-radius: 3px;
+  background: rgba(0, 0, 0, 0.72);
+  font-size: 9px;
+  font-weight: 800;
+  line-height: 1.4;
+}
+
+.nota-ao-vivo-vaga.nota-ao-vivo-boa { color: #7ee0a5; }
+.nota-ao-vivo-vaga.nota-ao-vivo-media { color: #ffd85c; }
+.nota-ao-vivo-vaga.nota-ao-vivo-ruim { color: #ff8f8f; }
+
+/* Indicador de gols (⚽) colado no nome do jogador, no campo tático durante a partida. */
+.badge-gols-vaga {
+  margin-left: 2px;
+  font-size: 8px;
+  letter-spacing: -1px;
+}
 
 /* ============================================================
    Setas — Fase 3
@@ -1261,6 +1345,47 @@ body::before {
   flex: 0 0 84px !important;
 }
 
+/* Balão do auxiliar técnico (dicas táticas em tempo real) — sempre visível durante o jogo,
+   troca de frase minuto a minuto. É um <button> pra dar pra tocar nas dicas com ação (ex.:
+   cansaço) e abrir direto "Mexer no time"; sem ação, o toque simplesmente não faz nada. */
+.painel-auxiliar {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 10px 14px;
+  border-radius: var(--raio);
+  font-size: 12.5px;
+  line-height: 1.4;
+  color: var(--branco);
+  cursor: default;
+  -webkit-tap-highlight-color: transparent;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.painel-auxiliar.auxiliar-neutro {
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.painel-auxiliar.auxiliar-atencao {
+  background: rgba(255, 210, 63, 0.12);
+  border: 1px solid rgba(255, 210, 63, 0.35);
+}
+
+.painel-auxiliar.auxiliar-alerta {
+  background: rgba(255, 90, 90, 0.14);
+  border: 1px solid rgba(255, 90, 90, 0.4);
+  color: #ffb3b3;
+}
+
+.painel-auxiliar.auxiliar-clicavel {
+  cursor: pointer;
+}
+
+.painel-auxiliar.auxiliar-clicavel:active {
+  transform: scale(0.98);
+}
+
 .secao-estatisticas-partida h3,
 .secao-eventos-partida h3 {
   font-size: 12px;
@@ -1271,34 +1396,6 @@ body::before {
   margin-bottom: 8px;
 }
 
-.linha-estatistica {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 6px 0;
-  font-size: 13px;
-}
-
-.linha-estatistica .valor-esquerda,
-.linha-estatistica .valor-direita {
-  flex-shrink: 0;
-  width: 40px;
-  font-weight: 800;
-  color: var(--amarelo);
-}
-
-.linha-estatistica .valor-esquerda {
-  text-align: right;
-}
-
-.linha-estatistica .rotulo-estatistica {
-  flex: 1;
-  text-align: center;
-  color: var(--cinza-texto);
-  font-size: 11px;
-  text-transform: uppercase;
-  letter-spacing: 0.3px;
-}
 
 /* Quadro fixo de eventos (Task 2): altura equivalente a 6 linhas, com rolagem interna —
    assim "Outros jogos da rodada" não fica empurrado pra baixo conforme a partida avança. */
@@ -1412,7 +1509,7 @@ body::before {
 }
 
 .secao-destaques-posjogo h3,
-.secao-resumo-tatico-posjogo h3,
+.secao-estatisticas-posjogo h3,
 .secao-todas-notas-posjogo h3 {
   font-size: 13px;
   font-weight: 700;
@@ -1464,28 +1561,80 @@ body::before {
 .nota-media { color: var(--amarelo); }
 .nota-ruim { color: #ff8f8f; }
 
-.lista-resumo-tatico {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
+/* Quadro de estatísticas comparativas (pós-jogo), estilo Flashscore/Sofascore:
+   card escurecido, número em destaque dos dois lados e uma barra bicolor
+   proporcional embaixo de cada linha. */
+.cartao-estatisticas-comparativas {
+  padding: 12px 14px 16px;
+  border-radius: var(--raio);
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.08);
 }
 
-.item-resumo-tatico-posjogo {
+.cabecalho-estatisticas-comparativas {
   display: flex;
   justify-content: space-between;
-  padding: 6px 12px;
-  border-radius: 10px;
-  background: rgba(255, 255, 255, 0.04);
+  margin-bottom: 10px;
+  font-size: 12px;
+  font-weight: 800;
+  color: var(--amarelo);
+}
+
+.time-estatisticas-comparativas-visitante {
+  text-align: right;
+}
+
+.linha-estatistica-comparativa {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 8px 0;
+}
+
+.linha-estatistica-comparativa + .linha-estatistica-comparativa {
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.valores-estatistica-comparativa {
+  display: flex;
+  align-items: center;
   font-size: 13px;
 }
 
-.rotulo-resumo-tatico {
-  color: var(--cinza-texto);
+.valor-estatistica-comparativa {
+  flex: 1;
+  font-weight: 800;
+  color: var(--branco);
 }
 
-.valor-resumo-tatico {
-  color: var(--branco);
-  font-weight: 700;
+.valores-estatistica-comparativa .valor-estatistica-comparativa:last-child {
+  text-align: right;
+}
+
+.rotulo-estatistica-comparativa {
+  flex: 2;
+  text-align: center;
+  color: var(--cinza-texto);
+  font-size: 11px;
+}
+
+.barra-estatistica-comparativa {
+  display: flex;
+  width: 100%;
+  height: 6px;
+  border-radius: 4px;
+  overflow: hidden;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.barra-estatistica-casa {
+  height: 100%;
+  background: var(--amarelo);
+}
+
+.barra-estatistica-fora {
+  height: 100%;
+  background: var(--cinza-texto);
 }
 
 /* ============================================================
@@ -2197,6 +2346,27 @@ body::before {
   font-weight: 700;
   color: #ff8f8f;
   margin-bottom: 4px;
+}
+
+.secao-relatorio-premiacao {
+  margin-top: 4px;
+  padding-top: 8px;
+  border-top: 1px solid rgba(255, 210, 63, 0.25);
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.secao-relatorio-premiacao h4 {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--amarelo);
+  margin-bottom: 2px;
+}
+
+.linha-relatorio-saldo {
+  font-weight: 800;
+  color: var(--amarelo);
 }
 
 /* ============================================================

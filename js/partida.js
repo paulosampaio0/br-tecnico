@@ -162,7 +162,51 @@ const MANDO_BONUS_EXTRA_IA_CASA = { ataque: 0.7, defesa: 0.5 };
 // Penalidade de desvantagem numérica, por jogador expulso, até o fim da partida.
 const PENALIDADE_NUMERICA_POR_EXPULSO = { ataque: -2.2, defesa: -2.5, meio: -2.8 };
 
-/** Monta a lista { vaga, jogador } dos titulares, a partir do mapa da escalação. */
+/* ============================================================
+   Eficiência posicional (Correção de bug — 2026-07-25)
+   Antes a força de cada jogador entrava inteira no cálculo do setor,
+   não importava a posição em que ele estava escalado — um zagueiro
+   no ataque rendia igual a um atacante nativo. Agora cada jogador
+   carrega um multiplicador de eficiência (`item.eficiencia`) de
+   acordo com o quanto a vaga escalada é compatível com a posição
+   natural dele, e esse multiplicador entra tanto na força do setor
+   quanto nos sorteios individuais (finalização, defesa improvisada).
+   ============================================================ */
+const GRUPOS_POSICAO_SIMILAR = [
+  ["PD", "PE", "ATA"], // pontas e centroavante trocam entre si sem perda grande
+  ["VOL", "MEI"],
+  ["LAT.D", "LAT.E"],
+];
+const INDICE_SETOR_POSICAO = { defesa: 0, meio: 1, ataque: 2 };
+const EFICIENCIA_GOLEIRO_IMPROVISADO = 0.18; // jogador de linha no gol: 18% da capacidade de defesa
+
+/**
+ * Multiplicador de força (0–1) de um jogador atuando na vaga `posVaga`, dado
+ * que sua posição natural é `posNatural`. 1.0 = posição exata; cai conforme
+ * o "salto" entre setores (defesa/meio/ataque) aumenta; goleiro tem regra
+ * própria (jogador de linha no gol é uma penalidade muito mais dura).
+ */
+function calcularEficienciaPosicional(posNatural, posVaga) {
+  if (posVaga === "GOL") return posNatural === "GOL" ? 1.0 : EFICIENCIA_GOLEIRO_IMPROVISADO;
+  if (posNatural === "GOL") return EFICIENCIA_GOLEIRO_IMPROVISADO; // goleiro escalado na linha (caso raro)
+  if (posNatural === posVaga) return 1.0;
+
+  const mesmoGrupo = GRUPOS_POSICAO_SIMILAR.some(function (grupo) {
+    return grupo.indexOf(posNatural) !== -1 && grupo.indexOf(posVaga) !== -1;
+  });
+  if (mesmoGrupo) return 0.8; // posição similar/correlata
+
+  const setorNatural = SETOR_POR_POSICAO[posNatural];
+  const setorVaga = SETOR_POR_POSICAO[posVaga];
+  if (!setorNatural || !setorVaga) return 0.5;
+
+  const distancia = Math.abs(INDICE_SETOR_POSICAO[setorNatural] - INDICE_SETOR_POSICAO[setorVaga]);
+  if (distancia === 0) return 0.8; // mesmo setor, posição específica diferente (ex.: ZAG no LAT)
+  if (distancia === 1) return 0.5; // mudança de setor (ex.: MEI/VOL no ZAG, ZAG no MEI)
+  return 0.3; // inversão total de papel (ex.: ZAG no ATA, ATA no ZAG)
+}
+
+/** Monta a lista { vaga, jogador, eficiencia } dos titulares, a partir do mapa da escalação. */
 function resolverTitulares(jogadores, formacaoId, titularesMap) {
   const vagas = obterFormacao(formacaoId);
   const lista = [];
@@ -170,7 +214,9 @@ function resolverTitulares(jogadores, formacaoId, titularesMap) {
     const idJogador = titularesMap[vaga.id];
     if (idJogador === undefined) return;
     const jogador = encontrarJogadorPorId(jogadores, idJogador);
-    if (jogador) lista.push({ vaga: vaga, jogador: jogador });
+    if (jogador) {
+      lista.push({ vaga: vaga, jogador: jogador, eficiencia: calcularEficienciaPosicional(jogador.pos, vaga.pos) });
+    }
   });
   return lista;
 }
@@ -193,7 +239,8 @@ function calcularForcaTime(titularesResolvidos, tatica) {
   titularesResolvidos.forEach(function (item) {
     const setor = SETOR_POR_POSICAO[item.vaga.pos];
     if (!setor) return; // goleiro não entra no embate por setor
-    soma[setor] += item.jogador.forca;
+    const eficiencia = item.eficiencia !== undefined ? item.eficiencia : 1;
+    soma[setor] += item.jogador.forca * eficiencia;
     contagem[setor] += 1;
   });
 
@@ -216,8 +263,11 @@ function calcularForcaTime(titularesResolvidos, tatica) {
  * `mando` aplica o bônus/penalidade normal de jogar em casa/fora; `bonusExtraIA` soma um reforço A MAIS
  * só quando esse time é a IA jogando em casa contra o usuário visitante (pedido explícito de deixar
  * jogar fora mais difícil de verdade).
+ * `idCapitao` (Gestão Humana/Capitão): opcional, só o time do usuário usa — se o dono desse _id
+ * estiver entre `titularesResolvidos`, guarda o fator de liderança dele (ver `calcularSetoresEfetivosDoMinuto`,
+ * onde o bônus de resiliência mental é de fato aplicado quando o time está perdendo no 2º tempo).
  */
-function criarTimeSimulado(nome, titularesResolvidos, tatica, setasPorVaga, opcoesMando) {
+function criarTimeSimulado(nome, titularesResolvidos, tatica, setasPorVaga, opcoesMando, idCapitao) {
   const setores = calcularForcaTime(titularesResolvidos, tatica);
 
   if (opcoesMando && opcoesMando.mando === "casa") {
@@ -232,6 +282,12 @@ function criarTimeSimulado(nome, titularesResolvidos, tatica, setasPorVaga, opco
     setores.defesa += MANDO_PENALIDADE_FORA.defesa;
   }
 
+  let capitao = null;
+  if (idCapitao !== undefined && idCapitao !== null) {
+    const itemCapitao = titularesResolvidos.find(function (item) { return item.jogador._id === idCapitao; });
+    if (itemCapitao) capitao = { idJogador: idCapitao, fator: calcularFatorLiderancaCapitao(itemCapitao.jogador) };
+  }
+
   return {
     nome: nome,
     titulares: titularesResolvidos, // guardado pra sortear nomes de jogadores nos eventos
@@ -240,6 +296,9 @@ function criarTimeSimulado(nome, titularesResolvidos, tatica, setasPorVaga, opco
     setasAtivas: montarSetasAtivas(titularesResolvidos, setasPorVaga), // Rebalanceamento: cada seta com sua taxa de sucesso (Overall)
     fatorContraAtaqueConcedido: 1, // recalculado minuto a minuto quando alguém do setor defensivo tem seta ofensiva bem-sucedida
     expulsos: [], // _ids de quem já foi expulso NESTA partida — excluídos dos sorteios de cartão/finalização
+    // capitão (Gestão Humana): null se não foi escalado nesta partida (ou o time não tem função de capitão,
+    // caso dos times da CPU) — "em campo" é checado na hora via `estaExpulso`, não fica bakeado aqui.
+    capitao: capitao,
   };
 }
 
@@ -249,7 +308,7 @@ function estaExpulso(time, idJogador) {
 }
 
 function criarEstatisticasVazias() {
-  return { finalizacoes: 0, noGol: 0, chutesFora: 0, desarmes: 0, errosPasse: 0 };
+  return { finalizacoes: 0, noGol: 0, chutesFora: 0, desarmes: 0, errosPasse: 0, escanteios: 0 };
 }
 
 /**
@@ -314,16 +373,31 @@ function jogadorAleatorio(timeSimulado) {
   return lista[Math.floor(Math.random() * lista.length)].jogador;
 }
 
-/** Como jogadorAleatorio, mas nunca sorteia o goleiro — ele não finaliza a gol. */
-function jogadorDeLinhaAleatorio(timeSimulado) {
+/**
+ * Como jogadorAleatorio, mas nunca sorteia o goleiro — ele não finaliza a gol.
+ * Devolve o ITEM ({ vaga, jogador, eficiencia }), não só o jogador, porque a
+ * eficiência posicional dele (Correção de bug — 2026-07-25) influencia a
+ * chance de acertar o gol nessa finalização específica.
+ */
+function itemDeLinhaAleatorio(timeSimulado) {
   const linha = titularesEmCampo(timeSimulado).filter(function (i) { return i.vaga.pos !== "GOL"; });
   const lista = linha.length > 0 ? linha : titularesEmCampo(timeSimulado);
-  return lista[Math.floor(Math.random() * lista.length)].jogador;
+  return lista[Math.floor(Math.random() * lista.length)];
 }
 
-function encontrarGoleiro(timeSimulado) {
+/**
+ * Info do goleiro em campo do time (Correção de bug — 2026-07-25): antes o
+ * goleiro não tinha NENHUM efeito no cálculo de chance de gol (o setor de
+ * defesa só soma zagueiro/lateral) — um time sem goleiro (expulso e sem
+ * substituição) defendia normalmente. Agora devolve quem está na vaga de
+ * GOL (pode ser `null` se ninguém ocupa — goleiro expulso sem repor) e o
+ * fator de eficiência (1.0 = goleiro nato; bem baixo = improvisado/ausente).
+ */
+function obterInfoGoleiro(timeSimulado) {
   const item = titularesEmCampo(timeSimulado).find(function (i) { return i.vaga.pos === "GOL"; });
-  return item ? item.jogador : null;
+  if (!item) return { jogador: null, natural: false, fator: 0.1 }; // sem ninguém na vaga: pior que improvisado
+  const natural = item.jogador.pos === "GOL";
+  return { jogador: item.jogador, natural: natural, fator: natural ? 1.0 : EFICIENCIA_GOLEIRO_IMPROVISADO };
 }
 
 function registrarEvento(partida, tipo, lado, texto, idJogador) {
@@ -386,10 +460,17 @@ function processarLadoPartida(partida, atacante, defensor, ladoAtacante, permiti
   const estatAtacante = partida.estatisticas[ladoAtacante];
   const estatDefensor = partida.estatisticas[ladoDefensor];
 
-  // Setor de ataque do time atacante vs setor de defesa do adversário —
-  // é esse embate que decide quem cria mais chances de gol por minuto. O
+  // Info do goleiro do time que defende (Correção de bug — 2026-07-25): antes o goleiro
+  // não entrava em NENHUMA conta — um time sem goleiro (expulso e sem substituição) ou
+  // com um jogador de linha improvisado ali defendia exatamente igual a um goleiro nato.
+  const infoGoleiro = obterInfoGoleiro(defensor);
+  const bonusDefesaGoleiro = ((infoGoleiro.jogador ? infoGoleiro.jogador.forca : 30) - 35) * 0.4 * infoGoleiro.fator;
+
+  // Setor de ataque do time atacante vs setor de defesa do adversário (já incluindo o
+  // goleiro) — é esse embate que decide quem cria mais chances de gol por minuto. O
   // meio-campo entra como uma vantagem geral (quem domina o meio cria mais).
-  const diferenca = atacante.setores.ataque - defensor.setores.defesa;
+  const defesaEfetiva = defensor.setores.defesa + bonusDefesaGoleiro;
+  const diferenca = atacante.setores.ataque - defesaEfetiva;
   const vantagemMeio = calcularVantagemMeio(atacante.setores, defensor.setores);
   // Exposição a contra-ataque (Rebalanceamento de setas 2026-07-23): se o time que defende
   // tem zagueiro/lateral/volante com seta ofensiva bem-sucedida nesse minuto, fica mais fácil
@@ -398,13 +479,26 @@ function processarLadoPartida(partida, atacante, defensor, ladoAtacante, permiti
 
   if (Math.random() < probChance) {
     estatAtacante.finalizacoes++;
-    const vantagem = (atacante.setores.ataque - defensor.setores.defesa) / 40;
+    const vantagem = (atacante.setores.ataque - defesaEfetiva) / 40;
     // Fator zebra do lado que defende (Rebalanceamento 2026-07-23): dia inspirado do
     // goleiro/defesa reduz a conversão do ataque adversário; dia ruim aumenta — é isso
     // que permite um time mais fraco "segurar" um favorito de vez em quando.
-    const chanceGol = clamp((0.26 + vantagem) * partida.fatorZebra[ladoDefensor], 0.05, 0.6);
+    let chanceGol = clamp((0.26 + vantagem) * partida.fatorZebra[ladoDefensor], 0.05, 0.6);
+    // Goleiro improvisado ou ausente (Correção de bug — 2026-07-25): quanto menor o fator,
+    // mais essa penalidade empurra a chance de gol pra cima — praticamente certo de virar
+    // gol quando não há goleiro de verdade em campo.
+    chanceGol = clamp(chanceGol + (1 - infoGoleiro.fator) * 0.5, 0.05, 0.95);
+
+    const itemFinalizador = itemDeLinhaAleatorio(atacante); // o goleiro não finaliza a gol
+    const jogador = itemFinalizador.jogador;
+    // Eficiência posicional do finalizador (Correção de bug — 2026-07-25): jogador fora de
+    // posição (ex.: zagueiro escalado no ataque) tem chance de gol MUITO menor e tende
+    // muito mais a chutar pra fora do que a acertar o gol.
+    const fatorChuteEficiencia = clamp(0.35 + 0.65 * itemFinalizador.eficiencia, 0.35, 1);
+    chanceGol *= fatorChuteEficiencia;
+    const janelaNoGol = 0.35 * fatorChuteEficiencia;
+
     const rolagem = Math.random();
-    const jogador = jogadorDeLinhaAleatorio(atacante); // o goleiro não finaliza a gol
 
     if (rolagem < chanceGol) {
       // Uma pequena fração das chances de gol vira pênalti.
@@ -434,11 +528,17 @@ function processarLadoPartida(partida, atacante, defensor, ladoAtacante, permiti
       estatAtacante.noGol++;
       if (ladoAtacante === "casa") partida.placarCasa++; else partida.placarFora++;
       registrarEvento(partida, "gol", ladoAtacante, "⚽ Gol de " + jogador.nome + "!", jogador._id);
-    } else if (rolagem < chanceGol + 0.35) {
+    } else if (rolagem < chanceGol + janelaNoGol) {
       estatAtacante.noGol++;
-      const goleiro = encontrarGoleiro(defensor);
-      registrarEvento(partida, "chance", ladoAtacante,
-        "Chute de " + jogador.nome + (goleiro ? ", mas " + goleiro.nome + " defende!" : ", mas o goleiro defende!"), jogador._id);
+      let textoDefesa;
+      if (!infoGoleiro.jogador) {
+        textoDefesa = "Chute de " + jogador.nome + ", mas a zaga tira em cima da linha — o gol estava vazio!";
+      } else if (!infoGoleiro.natural) {
+        textoDefesa = "Chute de " + jogador.nome + ", mas o improvisado " + infoGoleiro.jogador.nome + " segura!";
+      } else {
+        textoDefesa = "Chute de " + jogador.nome + ", mas " + infoGoleiro.jogador.nome + " defende!";
+      }
+      registrarEvento(partida, "chance", ladoAtacante, textoDefesa, jogador._id);
     } else {
       estatAtacante.chutesFora++;
       registrarEvento(partida, "chance", ladoAtacante, "Chute de " + jogador.nome + " para fora.", jogador._id);
@@ -447,6 +547,7 @@ function processarLadoPartida(partida, atacante, defensor, ladoAtacante, permiti
 
   if (Math.random() < 0.04) estatDefensor.desarmes++;
   if (Math.random() < 0.05) estatAtacante.errosPasse++;
+  if (Math.random() < 0.055) estatAtacante.escanteios++; // ~5 por time numa partida de 90min, perto da média real
 
   if (Math.random() < 0.015) {
     processarCartao(partida, atacante, ladoAtacante, "amarelo");
@@ -548,6 +649,25 @@ function calcularSetoresEfetivosDoMinuto(time, lado, partida, ladoComEscolhaCobr
     setores.ataque += PENALIDADE_NUMERICA_POR_EXPULSO.ataque * qtd;
     setores.defesa += PENALIDADE_NUMERICA_POR_EXPULSO.defesa * qtd;
     setores.meio += PENALIDADE_NUMERICA_POR_EXPULSO.meio * qtd;
+  }
+
+  // Capitão & resiliência mental (Gestão Humana): só entra em jogo no 2º tempo, quando o time
+  // está perdendo por 1 ou 2 gols. Com um capitão de liderança alta em campo, o time briga mais
+  // pelo empate (mais ataque e menos pane defensiva); sem capitão (nunca teve ou foi expulso),
+  // fica mais suscetível a tomar mais gols enquanto tenta reagir.
+  if (partida.tempo === 2) {
+    const meusGols = lado === "casa" ? partida.placarCasa : partida.placarFora;
+    const golsSofridos = lado === "casa" ? partida.placarFora : partida.placarCasa;
+    const diferenca = meusGols - golsSofridos;
+    if (diferenca >= CONFIG_FINANCEIRO.capitaoComebackDiferencaMinima && diferenca <= CONFIG_FINANCEIRO.capitaoComebackDiferencaMaxima) {
+      const capitaoEmCampo = time.capitao && !estaExpulso(time, time.capitao.idJogador);
+      if (capitaoEmCampo) {
+        setores.ataque += time.capitao.fator * CONFIG_FINANCEIRO.capitaoComebackBonusAtaqueMaximo;
+        setores.defesa += time.capitao.fator * CONFIG_FINANCEIRO.capitaoComebackBonusDefesaMaximo;
+      } else {
+        setores.defesa -= CONFIG_FINANCEIRO.capitaoAusentePenalidadeDefesa;
+      }
+    }
   }
 
   time.setores = setores;

@@ -220,7 +220,78 @@ const CONFIG_FINANCEIRO = {
   // Patrimônio total = caixa + valor do elenco + isto × soma dos níveis de infraestrutura.
   fatorValorPorNivelInfra: 8,
   qtdMaximaTemporadasHistorico: 10,
+
+  // --- Premiação de fim de temporada (Prize Money & Bônus de Acesso) ---
+
+  // Pote total de premiação de cada divisão, em R$ milhões — rateado pela tabela
+  // percentual abaixo conforme a posição final na temporada que está terminando.
+  poteTotalPremiacao: { serie_a: 500, serie_b: 150 },
+
+  // % do pote da divisão que cada posição final recebe (índice 0 = 1º lugar).
+  // Do 17º ao 20º (Z4) não recebe nada — por isso o array só tem 16 posições;
+  // qualquer posição além dela cai no "|| 0" de calcularPremiacaoPorPosicao.
+  tabelaPercentualPremiacaoPorPosicao: [
+    18.6, 14.5, 11.5, 9.0, // 1º ao 4º (G4)
+    6.2, 5.7, 5.1, 4.7, // 5º ao 8º (Sul-Americana)
+    4.3, 3.9, 3.5, 3.2, 2.9, 2.6, // 9º ao 14º (intermediário)
+    2.3, 2.0, // 15º e 16º (sobrevivente)
+  ],
+
+  // Bônus de Acesso: os 4 primeiros da Série B ganham uma verba extra (% do pote da
+  // Série A) de preparação, além da premiação normal pela posição na própria Série B.
+  qtdClubesBonusAcessoSerieB: 4,
+  fatorBonusAcessoSobrePoteSerieA: 0.15,
+
+  // --- Moral do elenco & capitão (Gestão Humana) ---
+
+  moralInicial: 70, // 0-100, média padrão
+  moralLimiteCritico: 30, // abaixo disso: recusa renovação e pede transferência
+  moralLimiteBaixa: 40, // faixa "insatisfeito" (🔴) na UI
+  moralLimiteAlta: 80, // faixa "alta" (🟢) na UI — entre os dois é "média" (🟡)
+
+  // Titular ganha moral por jogar; vitória e nota boa somam um pouco mais em cima disso.
+  moralGanhoTitularBase: 3,
+  moralGanhoTitularVitoria: 2,
+  moralGanhoTitularNotaBoa: 2, // nota (pós-jogo) >= 7
+
+  // Banco/não relacionado: só perde moral a partir da 3ª rodada CONSECUTIVA sem jogar.
+  // Reserva de Overall alto (força >= moralForcaAltoOverallReserva) fica mais impaciente
+  // e perde moral mais rápido do que jovem de base/reserva de força baixa.
+  moralRodadasConsecutivasParaPerder: 3,
+  moralForcaAltoOverallReserva: 40,
+  moralPerdaBancoAltoOverall: 10,
+  moralPerdaBancoPadrao: 5,
+
+  // Rendimento em campo cai um pouco pra quem está escalado com moral crítica.
+  moralLimiteRendimentoReduzido: 30,
+  fatorRendimentoMoralBaixa: 0.94, // -6% na força efetiva em campo
+
+  // --- Capitão & resiliência mental (comeback boost) ---
+
+  capitaoIdadeMinimaLideranca: 22, // abaixo disso, o capitão não soma nada de liderança
+  capitaoIdadeMaximaCurva: 28, // idade a partir da qual a experiência já conta 100%
+  capitaoForcaMinimaCurva: 34,
+  capitaoForcaMaximaCurva: 44,
+  // Diferença de placar (o MEU time perdendo) que ativa o bônus de virada, só no 2º tempo.
+  capitaoComebackDiferencaMinima: -2,
+  capitaoComebackDiferencaMaxima: -1,
+  capitaoComebackBonusAtaqueMaximo: 2.2, // no auge da liderança (fator 1.0)
+  capitaoComebackBonusDefesaMaximo: 1.2, // reduz a "pane defensiva" enquanto tenta virar
+  capitaoAusentePenalidadeDefesa: 1.2, // sem capitão (ou expulso) perdendo: mais vulnerável a goleada
 };
+
+/** Premiação (R$ milhões) da posição final de um clube na divisão em que jogou a temporada. */
+function calcularPremiacaoPorPosicao(posicaoFinal, divisaoChave) {
+  const percentual = CONFIG_FINANCEIRO.tabelaPercentualPremiacaoPorPosicao[posicaoFinal - 1] || 0;
+  const pote = CONFIG_FINANCEIRO.poteTotalPremiacao[divisaoChave] || 0;
+  return Math.round(pote * (percentual / 100) * 100) / 100;
+}
+
+/** Bônus de Acesso (R$ milhões): só pros 4 primeiros da Série B, sobre o pote da Série A. */
+function calcularBonusAcessoSerieB(posicaoFinal, divisaoChave) {
+  if (divisaoChave !== "serie_b" || posicaoFinal > CONFIG_FINANCEIRO.qtdClubesBonusAcessoSerieB) return 0;
+  return Math.round(CONFIG_FINANCEIRO.poteTotalPremiacao.serie_a * CONFIG_FINANCEIRO.fatorBonusAcessoSobrePoteSerieA * 100) / 100;
+}
 
 function converterEuroParaReal(valorEmMilhoesEuro) {
   return Math.round(valorEmMilhoesEuro * CONFIG_FINANCEIRO.taxaEurParaReal * 100) / 100;
@@ -248,6 +319,60 @@ function calcularDuracaoContratoInicial(jogador) {
 
 function criarContratoInicial(jogador) {
   return { anosRestantes: calcularDuracaoContratoInicial(jogador), multiplicadorSalario: 1 };
+}
+
+/* ============================================================
+   Moral do elenco & capitão (Gestão Humana, Moral e Vestiário)
+   ============================================================ */
+
+/** Moral atual de um jogador (0-100) — 70 é o padrão pra quem ainda não tem entrada no mapa. */
+function obterMoralJogador(moralPorJogador, idJogador) {
+  const valor = moralPorJogador ? moralPorJogador[idJogador] : undefined;
+  return valor !== undefined ? valor : CONFIG_FINANCEIRO.moralInicial;
+}
+
+/**
+ * Moral do titular que jogou a rodada: ganha uma base fixa por ter jogado, mais um bônus se
+ * o resultado foi vitória e outro se a nota dele no pós-jogo foi boa (>= 7) — nunca passa de 100.
+ */
+function calcularNovaMoralTitular(moralAtual, foiVitoria, notaBoa) {
+  let ganho = CONFIG_FINANCEIRO.moralGanhoTitularBase;
+  if (foiVitoria) ganho += CONFIG_FINANCEIRO.moralGanhoTitularVitoria;
+  if (notaBoa) ganho += CONFIG_FINANCEIRO.moralGanhoTitularNotaBoa;
+  return Math.min(100, moralAtual + ganho);
+}
+
+/**
+ * Moral de quem ficou no banco (relacionado ou nem relacionado) mais uma rodada: só cai a
+ * partir da 3ª rodada CONSECUTIVA sem jogar — reserva de Overall alto (mais acostumado a
+ * jogar) fica impaciente mais rápido que jovem de base/reserva fraco.
+ */
+function calcularNovaMoralBanco(moralAtual, rodadasConsecutivasSemJogar, forcaJogador) {
+  if (rodadasConsecutivasSemJogar < CONFIG_FINANCEIRO.moralRodadasConsecutivasParaPerder) return moralAtual;
+  const perda = forcaJogador >= CONFIG_FINANCEIRO.moralForcaAltoOverallReserva
+    ? CONFIG_FINANCEIRO.moralPerdaBancoAltoOverall
+    : CONFIG_FINANCEIRO.moralPerdaBancoPadrao;
+  return Math.max(0, moralAtual - perda);
+}
+
+function moralEstaCritica(moral) {
+  return moral < CONFIG_FINANCEIRO.moralLimiteCritico;
+}
+
+/**
+ * Fator de liderança do capitão (0 a 1), a partir de idade e força: capitão experiente
+ * (idade alta + força alta) chega no máximo (1.0); capitão jovem (< 22 anos) não soma
+ * nada (0) — mesmo se a força já for alta, falta a maturidade pra puxar o vestiário.
+ */
+function calcularFatorLiderancaCapitao(jogador) {
+  if (jogador.idade < CONFIG_FINANCEIRO.capitaoIdadeMinimaLideranca) return 0;
+  const fatorIdade = clamp(
+    (jogador.idade - CONFIG_FINANCEIRO.capitaoIdadeMinimaLideranca) /
+      (CONFIG_FINANCEIRO.capitaoIdadeMaximaCurva - CONFIG_FINANCEIRO.capitaoIdadeMinimaLideranca), 0, 1);
+  const fatorForca = clamp(
+    (jogador.forca - CONFIG_FINANCEIRO.capitaoForcaMinimaCurva) /
+      (CONFIG_FINANCEIRO.capitaoForcaMaximaCurva - CONFIG_FINANCEIRO.capitaoForcaMinimaCurva), 0, 1);
+  return Math.round(((fatorIdade + fatorForca) / 2) * 100) / 100;
 }
 
 /** Quanto (fração — 0.25 = +25%) o jogador pede de aumento pra renovar, conforme a força atual. */
