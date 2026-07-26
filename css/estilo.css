@@ -843,6 +843,12 @@ body::before {
   border-style: dashed;
 }
 
+/* Tap-to-swap: 1ª seleção armada, esperando o 2º toque pra trocar. */
+.vaga.selecionado-troca .bolinha {
+  border-color: #3ddc7a;
+  box-shadow: 0 0 0 3px rgba(61, 220, 122, 0.5);
+}
+
 .vaga .nome-vaga {
   font-size: 9px;
   font-weight: 700;
@@ -880,28 +886,188 @@ body::before {
 .numero-energia-vaga.energia-vaga-media { color: #ffb85c; }
 .numero-energia-vaga.energia-vaga-baixa { color: #ff8f8f; }
 
-/* Nota ao vivo (rendimento na partida) — chip escuro embaixo da barra de energia, no
-   campo tático durante o "Mexer no time". Mesma lógica de contraste do número de energia. */
-.nota-ao-vivo-vaga {
-  display: inline-block;
-  margin-top: 2px;
-  padding: 0 4px;
-  border-radius: 3px;
-  background: rgba(0, 0, 0, 0.72);
-  font-size: 9px;
-  font-weight: 800;
-  line-height: 1.4;
+/* ============================================================
+   Campo Tático Duplo (estilo Flashscore/Sofascore) — Mexer no time
+   ============================================================ */
+
+/* Campo mais alto que o editor single-team — precisa de espaço vertical
+   pras DUAS escalações (mandante em cima, visitante embaixo). */
+.campo-duplo {
+  aspect-ratio: 3 / 5;
 }
 
-.nota-ao-vivo-vaga.nota-ao-vivo-boa { color: #7ee0a5; }
-.nota-ao-vivo-vaga.nota-ao-vivo-media { color: #ffd85c; }
-.nota-ao-vivo-vaga.nota-ao-vivo-ruim { color: #ff8f8f; }
+.rotulo-time-campo-duplo {
+  position: absolute;
+  left: 8px;
+  z-index: 2;
+  padding: 2px 8px;
+  border-radius: 20px;
+  background: rgba(0, 0, 0, 0.55);
+  color: var(--branco);
+  font-size: 10px;
+  font-weight: 800;
+  max-width: 45%;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 
-/* Indicador de gols (⚽) colado no nome do jogador, no campo tático durante a partida. */
-.badge-gols-vaga {
-  margin-left: 2px;
-  font-size: 8px;
-  letter-spacing: -1px;
+.rotulo-time-casa { top: 6px; }
+.rotulo-time-fora { bottom: 6px; }
+
+/* Vagas do campo duplo são bem menores que as do editor single-team —
+   22 jogadores dividem o mesmo campo, não 11. */
+.vaga-dupla .bolinha-wrap,
+.vaga-dupla .bolinha {
+  width: 26px;
+  height: 26px;
+}
+
+.vaga-dupla .bolinha {
+  font-size: 9px;
+}
+
+.vaga-dupla .nome-vaga {
+  font-size: 7.5px;
+  max-width: 46px;
+}
+
+/* Time adversário: só visualização (sem cursor de clique) e uma cor diferente da
+   bolinha pra distinguir de longe do meu time (que continua no amarelo padrão). */
+.vaga-adversario {
+  cursor: default;
+}
+
+.vaga-adversario .bolinha {
+  background: #3b7fd4;
+  color: var(--branco);
+  border-color: rgba(255, 255, 255, 0.5);
+}
+
+/* Pílula de nota da partida (Match Rating) — sempre acima da bolinha do jogador. */
+.nota-partida-badge {
+  display: inline-block;
+  padding: 1px 5px;
+  border-radius: 10px;
+  font-size: 9px;
+  font-weight: 800;
+  line-height: 1.5;
+  color: #0b1f12;
+}
+
+.nota-partida-badge.nota-partida-boa { background: #3ddc7a; }
+.nota-partida-badge.nota-partida-media { background: #ffb85c; }
+.nota-partida-badge.nota-partida-ruim { background: #ff6b6b; color: #2a0b0b; }
+
+/* Ícones de evento (substituição/cartão/gol) sobrepostos, numa linha embaixo do nome. */
+.icones-evento-partida-wrap {
+  display: block;
+  font-size: 9px;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.icone-evento-partida {
+  margin: 0 1px;
+}
+
+/* ============================================================
+   Jogadores substituídos (estilo Flashscore/Sofascore) — Mexer no time
+   ============================================================ */
+
+.secao-substituicoes-partida h3 {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--cinza-texto);
+  margin-bottom: 8px;
+}
+
+.colunas-substituicoes {
+  display: flex;
+  gap: 10px;
+}
+
+.coluna-substituicoes {
+  flex: 1;
+  min-width: 0;
+}
+
+.nome-time-substituicoes {
+  font-size: 11px;
+  font-weight: 800;
+  color: var(--amarelo);
+  text-align: center;
+  margin-bottom: 6px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.lista-substituicoes {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.item-substituicao {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  font-size: 11px;
+}
+
+.item-substituicao.item-vazio {
+  color: var(--cinza-texto);
+  justify-content: center;
+  text-align: center;
+  font-size: 10px;
+}
+
+.avatar-substituicao {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: var(--amarelo);
+  color: #3a2b00;
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.info-substituicao {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.linha-entrou-substituicao {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.nome-substituicao {
+  font-weight: 700;
+  color: var(--branco);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.linha-saiu-substituicao {
+  font-size: 10px;
+  color: var(--cinza-texto);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 /* ============================================================
@@ -1030,7 +1196,8 @@ body::before {
 
 /* Tática — grupos de opções (chips) */
 .secao-tatica h3,
-.secao-banco h3 {
+.secao-banco h3,
+.secao-nao-relacionados h3 {
   font-size: 12px;
   font-weight: 700;
   color: var(--cinza-texto);
@@ -1041,6 +1208,115 @@ body::before {
 
 .secao-tatica h3:not(:first-child) {
   margin-top: 14px;
+}
+
+/* ============================================================
+   Banco de reservas e Não relacionados — carrossel horizontal
+   (estilo Touchline/FM) e mecânica de troca (tap to swap)
+   ============================================================ */
+
+.dica-troca-jogadores {
+  font-size: 11px;
+  color: var(--cinza-texto);
+  text-align: center;
+  margin-top: 6px;
+}
+
+.carrossel-jogadores {
+  display: flex;
+  overflow-x: auto;
+  gap: 12px;
+  padding: 4px 2px 8px;
+  scroll-snap-type: x mandatory;
+  scrollbar-width: none;
+}
+
+.carrossel-jogadores::-webkit-scrollbar {
+  display: none;
+}
+
+.carrossel-jogadores .item-vazio-carrossel {
+  flex: 1;
+  padding: 12px;
+  text-align: center;
+  font-size: 12px;
+  color: var(--cinza-texto);
+}
+
+.node-compacto-jogador {
+  flex: 0 0 auto;
+  scroll-snap-align: start;
+  width: 62px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  background: none;
+  border: 2px solid transparent;
+  border-radius: 12px;
+  padding: 6px 2px;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  position: relative;
+}
+
+.node-compacto-jogador.selecionado-troca {
+  border-color: var(--amarelo);
+  background: rgba(255, 210, 63, 0.12);
+}
+
+.node-compacto-jogador:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.avatar-compacto-jogador {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--amarelo);
+  color: #3a2b00;
+  font-size: 11px;
+  font-weight: 800;
+  border: 2px solid rgba(255, 255, 255, 0.7);
+}
+
+.pilula-pos-forca {
+  display: inline-block;
+  padding: 1px 6px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--branco);
+  font-size: 9px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.nome-compacto-jogador {
+  font-size: 9.5px;
+  font-weight: 700;
+  color: var(--branco);
+  max-width: 58px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.mini-indicadores-compacto {
+  display: flex;
+  gap: 4px;
+  font-size: 9px;
+}
+
+.tags-compacto-jogador {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  font-size: 9px;
+  line-height: 1;
 }
 
 .grupo-opcoes {

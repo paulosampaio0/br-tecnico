@@ -91,6 +91,10 @@ let meuLadoNaPartida = "casa"; // se o meu time é "casa" ou "fora" na partida a
 // abrir "Mexer no time" ao tocar na dica de cansaço). Resetado a cada partida em abrirTelaPartida.
 let auxiliarEstado = { ultimoMinutoPorChave: {}, textoAtual: "", urgenciaAtual: "neutro", acaoAtual: null };
 
+// Tap-to-swap (Gestão de elenco: banco/não relacionados) — guarda a 1ª seleção enquanto o
+// técnico não toca no 2º jogador. { tipo: "titular", vagaId } | { tipo: "banco"|"naoRelacionado", idJogador }.
+let selecaoTrocaAtual = null;
+
 // Navegação da tela de tabela (Fase 6).
 let divisaoTabelaAtual = "serie_a";
 let rodadaResultadosExibida = 1;
@@ -181,6 +185,7 @@ function salvarProgresso() {
     moralPorJogador: estado.moralPorJogador,
     rodadasSemJogarPorJogador: estado.rodadasSemJogarPorJogador,
     capitaoId: estado.capitaoId,
+    relacionadosIds: estado.relacionadosIds,
     // Quem ainda está no elenco (contratos que venceram sem renovação saem — Fase 11).
     // Sem isso, recarregar o jogo traria de volta jogadores que já foram embora.
     elencoIds: estado.timeAtual.jogadores.map(function (j) { return j._id; }),
@@ -400,6 +405,9 @@ async function escalarEsteTime(time) {
   estado.timeAtual = { divisaoChave: divisaoAtual, nome: time.nome, jogadores: time.jogadores };
   estado.formacaoId = "4-4-2";
   estado.titulares = autoEscalarMelhores(time.jogadores, estado.formacaoId);
+  // Banco relacionado (Gestão de elenco): semeado 1x aqui com os melhores reservas por força —
+  // dali em diante é 100% manual, o técnico reorganiza pelo tap-to-swap.
+  estado.relacionadosIds = escolherRelacionadosPadrao(time.jogadores, estado.titulares);
   estado.tatica = taticaPadrao();
   estado.setas = {};
   estado.temporada = null; // time novo começa uma temporada nova
@@ -508,6 +516,7 @@ function trocarFormacao(novaFormacaoId) {
   estado.formacaoId = novaFormacaoId;
   estado.titulares = autoEscalarMelhores(estado.timeAtual.jogadores, novaFormacaoId);
   estado.setas = {}; // as vagas mudam de função na nova formação, então as setas recomeçam
+  sincronizarRelacionadosComTitulares(); // quem virou titular na formação nova sai do banco
   salvarProgresso();
   renderizarCampo();
   renderizarResumoSetas();
@@ -533,6 +542,7 @@ function aplicarEscalacaoAutomatica() {
 
   estado.titulares = novosTitulares;
   estado.setas = {}; // nova escalação do zero — as setas eram por jogador/vaga da escalação anterior
+  sincronizarRelacionadosComTitulares(); // quem virou titular na escalação automática sai do banco
   salvarProgresso();
   renderizarCampo();
   renderizarResumoSetas();
@@ -648,10 +658,28 @@ function reencaixarFormacaoEmPartida(novaFormacaoId) {
 }
 
 function renderizarCampo() {
-  const campoEl = document.getElementById("campo-titular");
+  const emPartidaAoVivo = estaEmPartidaAtiva();
+
+  // Campo Tático Duplo (Correção): durante uma partida ativa, o campo de edição single-team
+  // vira o campo duplo (mandante x visitante, estilo Flashscore/Sofascore) com a lista de
+  // substituições logo abaixo; fora de partida, continua o editor de escalação de sempre.
+  const campoDuploEl = document.getElementById("campo-duplo-partida");
+  const secaoSubsEl = document.getElementById("secao-substituicoes-partida");
+  const campoSimplesEl = document.getElementById("campo-titular");
+  if (campoDuploEl) campoDuploEl.hidden = !emPartidaAoVivo;
+  if (secaoSubsEl) secaoSubsEl.hidden = !emPartidaAoVivo;
+  if (campoSimplesEl) campoSimplesEl.hidden = emPartidaAoVivo;
+
+  if (emPartidaAoVivo) {
+    renderizarCampoDuploPartida();
+    renderizarSubstituicoesPartida();
+    montarSelectCapitao();
+    return;
+  }
+
+  const campoEl = campoSimplesEl;
   campoEl.innerHTML = "";
 
-  const emPartidaAoVivo = estaEmPartidaAtiva();
   const vagas = obterFormacao(estado.formacaoId);
   vagas.forEach(function (vaga) {
     const idJogador = estado.titulares[vaga.id];
@@ -671,19 +699,21 @@ function renderizarCampo() {
       "<span class=\"nome-vaga\">" +
         (jogador && estado.capitaoId === jogador._id ? "<span class=\"tag-capitao-campo\" title=\"Capitão\">©</span>" : "") +
         (jogador ? escaparHtml(sobrenomeCurto(jogador.nome)) : "Vazio") +
-        (jogador && emPartidaAoVivo ? montarBadgeGolsVaga(jogador) : "") +
       "</span>" +
-      (jogador ? montarBarraEnergiaVaga(jogador) : "") +
-      (jogador && emPartidaAoVivo ? montarNotaAoVivoVaga(jogador) : "");
+      (jogador ? montarBarraEnergiaVaga(jogador) : "");
+
+    if (selecaoTrocaAtual && selecaoTrocaAtual.tipo === "titular" && selecaoTrocaAtual.vagaId === vaga.id) {
+      botao.classList.add("selecionado-troca");
+    }
 
     botao.addEventListener("click", function () {
       // Um arrasto de verdade que acabou de acontecer NESTE botão não deve
-      // também abrir o seletor de jogador (senão os dois gestos se confundem).
+      // também contar como toque de seleção (senão os dois gestos se confundem).
       if (botao.dataset.gestoArrasto === "1") {
         delete botao.dataset.gestoArrasto;
         return;
       }
-      abrirSeletorJogador(vaga);
+      alternarSelecaoTroca({ tipo: "titular", vagaId: vaga.id }, botao);
     });
 
     // O goleiro não recebe setas — não faz sentido táticamente.
@@ -705,6 +735,174 @@ function renderizarCampo() {
   }
 
   montarSelectCapitao();
+}
+
+/**
+ * Campo Tático Duplo (estilo Flashscore/Sofascore): as DUAS equipes no mesmo campo durante o
+ * "Mexer no time" — mandante em cima atacando pra baixo, visitante embaixo atacando pra cima.
+ * Reaproveita as mesmas vagas/formações da match engine (`obterFormacao`/`resolverTitulares`,
+ * partida.js), só comprimindo o Y de cada time na sua metade do campo.
+ */
+function renderizarCampoDuploPartida() {
+  const campoEl = document.getElementById("campo-duplo-partida");
+  if (!campoEl || !partidaAtual) return;
+
+  // Os rótulos dos times ficam fora do innerHTML que é limpo (senão eles somem a cada redesenho).
+  const nomeCasaEl = document.getElementById("campo-duplo-nome-casa");
+  const nomeForaEl = document.getElementById("campo-duplo-nome-fora");
+  if (nomeCasaEl) nomeCasaEl.textContent = timeCasaSimulado.nome;
+  if (nomeForaEl) nomeForaEl.textContent = timeForaSimulado.nome;
+
+  Array.from(campoEl.querySelectorAll(".vaga-dupla")).forEach(function (el) { el.remove(); });
+
+  // Mandante: comprime e INVERTE o Y (a formação normal tem o goleiro em y=92 e o ataque em
+  // y=12, pensada pra atacar "pra cima"; o mandante no campo duplo ataca pra baixo, então
+  // inverte antes de comprimir na metade de cima — goleiro perto do topo, ataque perto do meio).
+  montarMetadeCampoDuplo(campoEl, "casa", function (y) { return (100 - y) * 0.5; });
+  // Visitante: comprime SEM inverter, na metade de baixo — goleiro perto da base, ataque perto do meio.
+  montarMetadeCampoDuplo(campoEl, "fora", function (y) { return 50 + y * 0.5; });
+
+  if (typeof radarAberto !== "undefined" && radarAberto && typeof destacarVagaRadar === "function") {
+    destacarVagaRadar(radarAberto.vagaId);
+  }
+}
+
+/**
+ * Monta as vagas de UM lado (casa/fora) dentro do campo duplo. Só o lado que é o MEU time
+ * (`meuLadoNaPartida`) fica interativo (tocar pra substituir, arrastar seta, toque longo pro
+ * Radar Tático) — o adversário é só visualização, os outros ~39 clubes da liga não têm uma
+ * escalação "editável" de verdade fora da match engine.
+ */
+function montarMetadeCampoDuplo(campoEl, lado, transformarY) {
+  const souEuNesseLado = lado === meuLadoNaPartida;
+  const itens = souEuNesseLado
+    ? resolverTitulares(estado.timeAtual.jogadores, estado.formacaoId, estado.titulares)
+    : (lado === "casa" ? timeCasaSimulado : timeForaSimulado).titulares;
+
+  // Quem entrou como substituto NESTE lado (só o meu time tem eventos de substituição —
+  // a CPU não faz trocas) — usado pro ícone 🔄 no node.
+  const idsQueEntraram = new Set(
+    partidaAtual.eventos
+      .filter(function (e) { return e.tipo === "substituicao" && e.lado === lado; })
+      .map(function (e) { return e.idJogadorEntra; })
+  );
+
+  itens.forEach(function (item) {
+    const vaga = item.vaga;
+    const jogador = item.jogador;
+
+    const node = document.createElement(souEuNesseLado ? "button" : "div");
+    if (souEuNesseLado) node.type = "button";
+    node.className = "vaga vaga-dupla" + (souEuNesseLado ? " vaga-minha" : " vaga-adversario");
+    node.style.left = vaga.x + "%";
+    node.style.top = transformarY(vaga.y) + "%";
+
+    const entrou = idsQueEntraram.has(jogador._id);
+    const statusCartao = obterStatusCartaoAoVivo(jogador._id, lado);
+    const gols = contarGolsAoVivoJogador(jogador._id, lado);
+    const icones = montarIconesEventoPartida(entrou, statusCartao, gols);
+    const nota = calcularNotaAoVivoJogador(jogador._id, lado);
+    const faixaNota = nota >= 7.0 ? "boa" : nota >= 6.0 ? "media" : "ruim";
+
+    node.innerHTML =
+      "<span class=\"nota-partida-badge nota-partida-" + faixaNota + "\">" + nota.toFixed(1) + "</span>" +
+      "<span class=\"bolinha-wrap\">" +
+        "<span class=\"bolinha\">" + obterNumeroCamisa(jogador) + "</span>" +
+        (souEuNesseLado ? montarIndicadoresSetas(vaga, jogador) : "") +
+      "</span>" +
+      "<span class=\"nome-vaga\">" +
+        (souEuNesseLado && estado.capitaoId === jogador._id ? "<span class=\"tag-capitao-campo\" title=\"Capitão\">©</span>" : "") +
+        escaparHtml(sobrenomeCurto(jogador.nome)) +
+      "</span>" +
+      (icones ? "<span class=\"icones-evento-partida-wrap\">" + icones + "</span>" : "");
+
+    if (souEuNesseLado) {
+      node.addEventListener("click", function () {
+        // Um arrasto de verdade que acabou de acontecer NESTE botão não deve
+        // também abrir o seletor de jogador (senão os dois gestos se confundem).
+        if (node.dataset.gestoArrasto === "1") { delete node.dataset.gestoArrasto; return; }
+        abrirSeletorJogador(vaga);
+      });
+      if (vaga.pos !== "GOL") anexarArrastoSeta(node, vaga, jogador);
+      if (typeof anexarLongPressRadar === "function") anexarLongPressRadar(node, vaga, jogador);
+    }
+
+    campoEl.appendChild(node);
+  });
+}
+
+/** Ícones sobrepostos de eventos (substituição/cartão/gol) — reaproveitado no campo duplo e na lista de substituídos. */
+function montarIconesEventoPartida(entrou, statusCartao, gols) {
+  return (entrou ? "<span class=\"icone-evento-partida\" title=\"Entrou\">🔄</span>" : "") +
+    (statusCartao === "amarelo" ? "<span class=\"icone-evento-partida\" title=\"Cartão amarelo\">🟨</span>" : "") +
+    (statusCartao === "vermelho" ? "<span class=\"icone-evento-partida\" title=\"Cartão vermelho\">🟥</span>" : "") +
+    (gols > 0 ? "<span class=\"icone-evento-partida\" title=\"" + gols + " gol(s)\">" +
+      (gols >= 3 ? "⚽×" + gols : "⚽".repeat(gols)) + "</span>" : "");
+}
+
+/**
+ * Seção "Jogadores substituídos" (estilo Flashscore/Sofascore), logo abaixo do campo duplo —
+ * duas colunas (mandante/visitante), uma linha por substituição JÁ feita nesta partida.
+ */
+function renderizarSubstituicoesPartida() {
+  const colCasaEl = document.getElementById("lista-substituicoes-casa");
+  const colForaEl = document.getElementById("lista-substituicoes-fora");
+  if (!colCasaEl || !colForaEl || !partidaAtual) return;
+
+  const nomeCasaEl = document.getElementById("substituicoes-nome-casa");
+  const nomeForaEl = document.getElementById("substituicoes-nome-fora");
+  if (nomeCasaEl) nomeCasaEl.textContent = timeCasaSimulado.nome;
+  if (nomeForaEl) nomeForaEl.textContent = timeForaSimulado.nome;
+
+  montarColunaSubstituicoes(colCasaEl, "casa");
+  montarColunaSubstituicoes(colForaEl, "fora");
+}
+
+/** Monta a coluna de substituições de UM lado (casa/fora). */
+function montarColunaSubstituicoes(containerEl, lado) {
+  containerEl.innerHTML = "";
+
+  const poolJogadores = lado === meuLadoNaPartida
+    ? estado.timeAtual.jogadores
+    : (lado === "casa" ? timeCasaSimulado : timeForaSimulado).titulares.map(function (item) { return item.jogador; });
+
+  const substituicoes = partidaAtual.eventos.filter(function (e) { return e.tipo === "substituicao" && e.lado === lado; });
+
+  if (substituicoes.length === 0) {
+    const vazio = document.createElement("li");
+    vazio.className = "item-substituicao item-vazio";
+    vazio.textContent = "Nenhuma substituição ainda.";
+    containerEl.appendChild(vazio);
+    return;
+  }
+
+  substituicoes.forEach(function (evento) {
+    const jogadorEntra = encontrarJogadorPorId(poolJogadores, evento.idJogadorEntra);
+    if (!jogadorEntra) return;
+    const jogadorSai = evento.idJogadorSai !== null && evento.idJogadorSai !== undefined
+      ? encontrarJogadorPorId(poolJogadores, evento.idJogadorSai) : null;
+
+    const nota = calcularNotaAoVivoJogador(jogadorEntra._id, lado);
+    const faixaNota = nota >= 7.0 ? "boa" : nota >= 6.0 ? "media" : "ruim";
+    const gols = contarGolsAoVivoJogador(jogadorEntra._id, lado);
+    const statusCartao = obterStatusCartaoAoVivo(jogadorEntra._id, lado);
+    const icones = montarIconesEventoPartida(false, statusCartao, gols);
+
+    const li = document.createElement("li");
+    li.className = "item-substituicao";
+    li.innerHTML =
+      "<span class=\"avatar-substituicao\">" + obterNumeroCamisa(jogadorEntra) + "</span>" +
+      "<span class=\"info-substituicao\">" +
+        "<span class=\"linha-entrou-substituicao\">" +
+          "<span class=\"nome-substituicao\">" + escaparHtml(jogadorEntra.nome) + "</span>" +
+          "<span class=\"nota-partida-badge nota-partida-" + faixaNota + "\">" + nota.toFixed(1) + "</span>" +
+          (icones ? "<span class=\"icones-evento-partida-wrap\">" + icones + "</span>" : "") +
+        "</span>" +
+        "<span class=\"linha-saiu-substituicao\">🔄 " +
+          escaparHtml(jogadorSai ? jogadorSai.nome : "vaga vazia") + " " + evento.minuto + "'</span>" +
+      "</span>";
+    containerEl.appendChild(li);
+  });
 }
 
 /**
@@ -755,12 +953,16 @@ function montarBarraEnergiaVaga(jogador) {
 /**
  * Nota "ao vivo" do jogador (rendimento na partida em andamento, 1.0–10.0) — mesma lógica
  * de `calcularNotasPosJogo` (pós-jogo), mas calculada a qualquer momento a partir dos
- * eventos já ocorridos, pra mostrar no campo tático durante o "Mexer no time".
+ * eventos já ocorridos, pra mostrar no campo tático durante o "Mexer no time". `lado`
+ * (Correção — Campo Tático Duplo) é opcional e default pro meu lado, mas aceita "casa"/"fora"
+ * pra também dar nota a jogadores do adversário no campo duplo (ambos os times têm eventos
+ * gravados em `partidaAtual.eventos`, não só o meu).
  */
-function calcularNotaAoVivoJogador(idJogador) {
+function calcularNotaAoVivoJogador(idJogador, lado) {
+  const ladoAlvo = lado || meuLadoNaPartida;
   let nota = 6.0;
   partidaAtual.eventos.forEach(function (evento) {
-    if (evento.idJogador !== idJogador || evento.lado !== meuLadoNaPartida) return;
+    if (evento.idJogador !== idJogador || evento.lado !== ladoAlvo) return;
     if (evento.tipo === "gol") nota += 1.4;
     else if (evento.tipo === "cartao-amarelo") nota -= 0.5;
     else if (evento.tipo === "cartao-vermelho") nota -= 2.2;
@@ -768,27 +970,29 @@ function calcularNotaAoVivoJogador(idJogador) {
   return clamp(nota, 1, 10);
 }
 
-/** Quantos gols o jogador já marcou NESTA partida (pro indicador ⚽ no campo). */
-function contarGolsAoVivoJogador(idJogador) {
+/** Quantos gols o jogador já marcou NESTA partida (pro indicador ⚽ no campo). `lado` — ver `calcularNotaAoVivoJogador`. */
+function contarGolsAoVivoJogador(idJogador, lado) {
+  const ladoAlvo = lado || meuLadoNaPartida;
   return partidaAtual.eventos.filter(function (evento) {
-    return evento.idJogador === idJogador && evento.lado === meuLadoNaPartida && evento.tipo === "gol";
+    return evento.idJogador === idJogador && evento.lado === ladoAlvo && evento.tipo === "gol";
   }).length;
 }
 
-/** Badge de nota ao vivo (1.0–10.0) embaixo da barra de energia, colorida pelo rendimento. */
-function montarNotaAoVivoVaga(jogador) {
-  const nota = calcularNotaAoVivoJogador(jogador._id);
-  const faixa = nota >= 7.5 ? "boa" : nota >= 6.0 ? "media" : "ruim";
-  return "<span class=\"nota-ao-vivo-vaga nota-ao-vivo-" + faixa + "\" title=\"Nota na partida\">" +
-    nota.toFixed(1) + "</span>";
+/** Cartão mais grave que o jogador já levou NESTA partida ("amarelo"/"vermelho"/null). */
+function obterStatusCartaoAoVivo(idJogador, lado) {
+  const ladoAlvo = lado || meuLadoNaPartida;
+  let status = null;
+  partidaAtual.eventos.forEach(function (evento) {
+    if (evento.idJogador !== idJogador || evento.lado !== ladoAlvo) return;
+    if (evento.tipo === "cartao-vermelho") status = "vermelho";
+    else if (evento.tipo === "cartao-amarelo" && status !== "vermelho") status = "amarelo";
+  });
+  return status;
 }
 
-/** ⚽ ao lado do nome pra cada gol marcado na partida (⚽x3 a partir do 3º). */
-function montarBadgeGolsVaga(jogador) {
-  const gols = contarGolsAoVivoJogador(jogador._id);
-  if (gols <= 0) return "";
-  const texto = gols >= 3 ? "⚽×" + gols : "⚽".repeat(gols);
-  return "<span class=\"badge-gols-vaga\" title=\"" + gols + " gol(s) na partida\">" + texto + "</span>";
+/** Número de camisa determinístico (não existe nos dados) — estável entre renders. */
+function obterNumeroCamisa(jogador) {
+  return (jogador._id % 99) + 1;
 }
 
 /** Monta o HTML das setinhas já ativas de um jogador, encaixadas na bolinha. */
@@ -1007,46 +1211,239 @@ function renderizarResumoSetas() {
 }
 
 /**
- * Os reservas "relacionados" pra partida — igual à vida real, nem todo o
- * elenco fica disponível no banco, só um grupo limitado (aqui, até
- * TAMANHO_BANCO_RELACIONADO, priorizando ter sempre um goleiro reserva).
+ * Escolha PADRÃO de relacionados pra partida (só usada pra "semear" `estado.relacionadosIds`
+ * — 1x quando o elenco é escalado, e como fallback pra saves antigos de antes dessa função
+ * existir). Depois de semeado, o banco vira 100% manual (o técnico monta e reorganiza pelo
+ * tap-to-swap) — essa função nunca mais roda sozinha por trás, senão apagaria escolhas do
+ * usuário. Prioriza sempre ter 1 goleiro reserva, o resto é por força.
  */
-function calcularBancoRelacionado() {
-  const idsTitulares = new Set(Object.values(estado.titulares));
-  const reservas = estado.timeAtual.jogadores.filter(function (j) { return !idsTitulares.has(j._id); });
+function escolherRelacionadosPadrao(jogadores, titularesMap) {
+  const idsTitulares = new Set(Object.values(titularesMap || {}));
+  const candidatos = jogadores.filter(function (j) { return !idsTitulares.has(j._id); });
 
-  const goleiros = reservas.filter(function (j) { return j.pos === "GOL"; })
+  const goleiros = candidatos.filter(function (j) { return j.pos === "GOL"; })
     .sort(function (a, b) { return b.forca - a.forca; });
-  const linha = reservas.filter(function (j) { return j.pos !== "GOL"; })
+  const linha = candidatos.filter(function (j) { return j.pos !== "GOL"; })
     .sort(function (a, b) { return b.forca - a.forca; });
 
-  const banco = [];
-  if (goleiros[0]) banco.push(goleiros[0]);
+  const escolhidos = [];
+  if (goleiros[0]) escolhidos.push(goleiros[0]._id);
   linha.forEach(function (j) {
-    if (banco.length < TAMANHO_BANCO_RELACIONADO) banco.push(j);
+    if (escolhidos.length < TAMANHO_BANCO_RELACIONADO) escolhidos.push(j._id);
   });
+  return escolhidos;
+}
+
+/** Tira da lista de relacionados quem virou titular (ex.: depois de trocar formação/escalação automática). */
+function sincronizarRelacionadosComTitulares() {
+  if (!estado.relacionadosIds) return;
+  const idsTitulares = new Set(Object.values(estado.titulares));
+  estado.relacionadosIds = estado.relacionadosIds.filter(function (id) { return !idsTitulares.has(id); });
+}
+
+/** Os reservas relacionados pra partida — 100% escolha do técnico (`estado.relacionadosIds`), tamanho fixo em TAMANHO_BANCO_RELACIONADO. */
+function calcularBancoRelacionado() {
+  const ids = estado.relacionadosIds || [];
+  const banco = estado.timeAtual.jogadores.filter(function (j) { return ids.indexOf(j._id) !== -1; });
   return ordenarElenco(banco);
 }
 
+/** Elenco que NÃO é titular nem está no banco relacionado — não foi convocado pro jogo atual. */
+function calcularNaoRelacionados() {
+  const idsTitulares = new Set(Object.values(estado.titulares));
+  const idsRelacionados = new Set(estado.relacionadosIds || []);
+  const resto = estado.timeAtual.jogadores.filter(function (j) {
+    return !idsTitulares.has(j._id) && !idsRelacionados.has(j._id);
+  });
+  return ordenarElenco(resto);
+}
+
+/** Mini indicador (bolinha colorida + valor) de energia OU moral, compacto pro carrossel de jogadores. */
+function montarMiniIndicadorCompacto(valor, limiarAlta, limiarBaixa, titulo) {
+  const nivel = valor >= limiarAlta ? "alta" : valor >= limiarBaixa ? "media" : "baixa";
+  const bolinha = nivel === "alta" ? "🟢" : nivel === "media" ? "🟡" : "🔴";
+  return "<span title=\"" + titulo + ": " + valor + "\">" + bolinha + "</span>";
+}
+
+/**
+ * Node compacto de um jogador (avatar + posição/força + nome curto + energia/moral) — usado
+ * no carrossel do Banco e no de Não Relacionados. `origem` identifica de onde esse jogador
+ * vem pro mecanismo de tap-to-swap: { tipo: "banco"|"naoRelacionado", idJogador }.
+ */
+function criarNodeCompactoJogador(jogador, origem) {
+  const botao = document.createElement("button");
+  botao.type = "button";
+  botao.className = "node-compacto-jogador";
+  botao.dataset.idJogador = jogador._id;
+  // O banco/não relacionados é montado ANTES do jogo, igual à súmula real — trocar quem foi
+  // convocado só faz sentido pré-partida; durante o jogo, a substituição de verdade continua
+  // pelo campo tático duplo (abrirSeletorJogador), que já valida limite/suspensão/etc.
+  if (jogadorEstaSuspenso(jogador._id) || estaEmPartidaAtiva()) {
+    botao.disabled = true;
+    botao.title = estaEmPartidaAtiva() ? "O banco fica travado durante a partida." : "Jogador suspenso.";
+  }
+
+  const energia = obterEnergiaJogador(jogador._id);
+  const moral = estado.moralPorJogador ? obterMoralJogador(estado.moralPorJogador, jogador._id) : 100;
+  const tagCapitao = estado.capitaoId === jogador._id ? "<span class=\"tags-compacto-jogador\" title=\"Capitão\">©</span>" : "";
+  const tagSuspenso = jogadorEstaSuspenso(jogador._id) ? "<span class=\"tags-compacto-jogador\" title=\"Suspenso\">🚫</span>" : "";
+
+  botao.innerHTML =
+    tagCapitao + tagSuspenso +
+    "<span class=\"avatar-compacto-jogador\">" + obterNumeroCamisa(jogador) + "</span>" +
+    "<span class=\"pilula-pos-forca\">" + jogador.forca + " " + escaparHtml(jogador.pos) + "</span>" +
+    "<span class=\"nome-compacto-jogador\">" + escaparHtml(sobrenomeCurto(jogador.nome)) + "</span>" +
+    "<span class=\"mini-indicadores-compacto\">" +
+      montarMiniIndicadorCompacto(energia, 70, 40, "Energia") +
+      montarMiniIndicadorCompacto(moral, CONFIG_FINANCEIRO.moralLimiteAlta, CONFIG_FINANCEIRO.moralLimiteBaixa, "Moral") +
+    "</span>";
+
+  botao.addEventListener("click", function () {
+    alternarSelecaoTroca({ tipo: origem.tipo, idJogador: jogador._id }, botao);
+  });
+
+  return botao;
+}
+
 function renderizarBanco() {
-  const listaEl = document.getElementById("lista-banco");
+  const carrosselEl = document.getElementById("carrossel-banco");
   const qtdEl = document.getElementById("qtd-banco");
-  listaEl.innerHTML = "";
+  const qtdMaxEl = document.getElementById("qtd-banco-maximo");
+  carrosselEl.innerHTML = "";
 
   const banco = calcularBancoRelacionado();
   qtdEl.textContent = banco.length;
+  if (qtdMaxEl) qtdMaxEl.textContent = TAMANHO_BANCO_RELACIONADO;
 
   if (banco.length === 0) {
-    const vazio = document.createElement("li");
-    vazio.className = "item-jogador item-vazio";
-    vazio.textContent = "Todo o elenco disponível está escalado.";
-    listaEl.appendChild(vazio);
+    const vazio = document.createElement("p");
+    vazio.className = "item-vazio-carrossel";
+    vazio.textContent = "Banco vazio — toque num titular e depois num Não Relacionado pra chamar alguém.";
+    carrosselEl.appendChild(vazio);
+  } else {
+    banco.forEach(function (jogador) {
+      carrosselEl.appendChild(criarNodeCompactoJogador(jogador, { tipo: "banco" }));
+    });
+  }
+
+  renderizarNaoRelacionados();
+  reaplicarSelecaoTrocaVisual();
+}
+
+/** Elenco que sobrou fora do banco relacionado — também em carrossel, mesmo node compacto. */
+function renderizarNaoRelacionados() {
+  const carrosselEl = document.getElementById("carrossel-nao-relacionados");
+  const qtdEl = document.getElementById("qtd-nao-relacionados");
+  if (!carrosselEl) return;
+  carrosselEl.innerHTML = "";
+
+  const naoRelacionados = calcularNaoRelacionados();
+  if (qtdEl) qtdEl.textContent = naoRelacionados.length;
+
+  if (naoRelacionados.length === 0) {
+    const vazio = document.createElement("p");
+    vazio.className = "item-vazio-carrossel";
+    vazio.textContent = "Todo o elenco disponível está escalado ou no banco.";
+    carrosselEl.appendChild(vazio);
     return;
   }
 
-  banco.forEach(function (jogador) {
-    listaEl.appendChild(criarItemJogador(jogador, true));
+  naoRelacionados.forEach(function (jogador) {
+    carrosselEl.appendChild(criarNodeCompactoJogador(jogador, { tipo: "naoRelacionado" }));
   });
+}
+
+/** Depois de qualquer redesenho do banco/não relacionados, reaplica o destaque de quem já
+    estava selecionado pro tap-to-swap (senão o redesenho apagaria a borda mesmo com a
+    seleção ainda "armada" esperando o segundo toque). */
+function reaplicarSelecaoTrocaVisual() {
+  if (!selecaoTrocaAtual || selecaoTrocaAtual.tipo === "titular") return;
+  const el = document.querySelector("[data-id-jogador=\"" + selecaoTrocaAtual.idJogador + "\"]");
+  if (el) el.classList.add("selecionado-troca");
+}
+
+function mesmaSelecaoTroca(a, b) {
+  if (a.tipo !== b.tipo) return false;
+  return a.tipo === "titular" ? a.vagaId === b.vagaId : a.idJogador === b.idJogador;
+}
+
+/**
+ * Tap-to-swap: 1º toque arma a seleção (destaca a borda); tocar de novo no mesmo jogador
+ * cancela; tocar num jogador DIFERENTE executa a troca na hora — ver `executarTrocaSelecionados`.
+ */
+function alternarSelecaoTroca(descritor, elemento) {
+  if (!selecaoTrocaAtual) {
+    selecaoTrocaAtual = descritor;
+    if (elemento) elemento.classList.add("selecionado-troca");
+    return;
+  }
+
+  if (mesmaSelecaoTroca(selecaoTrocaAtual, descritor)) {
+    selecaoTrocaAtual = null;
+    if (elemento) elemento.classList.remove("selecionado-troca");
+    return;
+  }
+
+  const primeiraSelecao = selecaoTrocaAtual;
+  selecaoTrocaAtual = null;
+  executarTrocaSelecionados(primeiraSelecao, descritor);
+}
+
+/**
+ * Executa a troca entre as duas seleções (qualquer combinação de titular/banco/não
+ * relacionado — ver Tarefa 3). A ideia central: o que estava no lugar de B agora recebe A
+ * de volta, e vice-versa — por isso o banco nunca cresce além de TAMANHO_BANCO_RELACIONADO
+ * (é sempre 1 por 1) e o titular deslocado sempre cai no MESMO grupo de onde o outro veio.
+ */
+function executarTrocaSelecionados(sel1, sel2) {
+  // Os dois titulares: troca simples de vaga (mesmo comportamento de sempre).
+  if (sel1.tipo === "titular" && sel2.tipo === "titular") {
+    const id1 = estado.titulares[sel1.vagaId];
+    const id2 = estado.titulares[sel2.vagaId];
+    if (id1 === undefined && id2 === undefined) return; // as duas vagas vazias: nada a trocar
+
+    if (id2 === undefined) delete estado.titulares[sel1.vagaId]; else estado.titulares[sel1.vagaId] = id2;
+    if (id1 === undefined) delete estado.titulares[sel2.vagaId]; else estado.titulares[sel2.vagaId] = id1;
+    // As setas são da VAGA, não do jogador — ao trocar de vaga, elas ficam pra trás de propósito.
+    delete estado.setas[sel1.vagaId];
+    delete estado.setas[sel2.vagaId];
+
+    salvarProgresso();
+    renderizarCampo();
+    renderizarResumoSetas();
+    if (typeof atualizarRadarTaticoSeAberto === "function") atualizarRadarTaticoSeAberto();
+    return;
+  }
+
+  // Um titular + um jogador de fora (banco OU não relacionado): quem sai da vaga vai pro
+  // MESMO grupo de onde o outro veio — reaproveita `escolherJogadorParaVaga` (já valida
+  // suspensão e, se algum dia isso rodar em partida, os limites de substituição também).
+  if (sel1.tipo === "titular" || sel2.tipo === "titular") {
+    const titularSel = sel1.tipo === "titular" ? sel1 : sel2;
+    const outroSel = sel1.tipo === "titular" ? sel2 : sel1;
+    const idAntigoNaVaga = estado.titulares[titularSel.vagaId];
+    if (idAntigoNaVaga === outroSel.idJogador) return; // já é o mesmo jogador
+
+    if (outroSel.tipo === "banco") {
+      estado.relacionadosIds = (estado.relacionadosIds || []).filter(function (id) { return id !== outroSel.idJogador; });
+      if (idAntigoNaVaga !== undefined) estado.relacionadosIds.push(idAntigoNaVaga);
+    }
+    // Se outroSel.tipo === "naoRelacionado": não precisa mexer em relacionadosIds — o
+    // ex-titular já vira "não relacionado" sozinho (não está mais em titulares nem no banco).
+
+    escolherJogadorParaVaga(titularSel.vagaId, outroSel.idJogador); // já salva e redesenha tudo
+    return;
+  }
+
+  // Banco <-> Não relacionado: troca 1 por 1 (o banco nunca cresce nem encolhe).
+  if (sel1.tipo === sel2.tipo) return; // os dois no mesmo grupo — nada a trocar
+  const doBanco = sel1.tipo === "banco" ? sel1 : sel2;
+  const doNaoRelacionado = sel1.tipo === "banco" ? sel2 : sel1;
+  estado.relacionadosIds = (estado.relacionadosIds || []).filter(function (id) { return id !== doBanco.idJogador; });
+  estado.relacionadosIds.push(doNaoRelacionado.idJogador);
+
+  salvarProgresso();
+  renderizarBanco();
 }
 
 /* ---------- Tática ---------- */
@@ -3641,6 +4038,9 @@ function removerJogadorDoElenco(idJogador) {
   delete estado.jogadoresAVenda[idJogador];
   delete estado.moralPorJogador[idJogador];
   delete estado.rodadasSemJogarPorJogador[idJogador];
+  if (estado.relacionadosIds) {
+    estado.relacionadosIds = estado.relacionadosIds.filter(function (id) { return id !== idJogador; });
+  }
   if (estado.capitaoId === idJogador) estado.capitaoId = null; // o capitão saiu do clube — precisa escolher outro
   Object.keys(estado.titulares).forEach(function (vagaId) {
     if (estado.titulares[vagaId] === idJogador) {
@@ -4621,6 +5021,19 @@ async function continuarJogoSalvo() {
     estado.capitaoId = registro.capitaoId !== undefined ? registro.capitaoId : null;
     if (estado.capitaoId !== null && !encontrarJogadorPorId(estado.timeAtual.jogadores, estado.capitaoId)) {
       estado.capitaoId = null; // o capitão salvo já não está mais no elenco (dispensado/vendido)
+    }
+
+    // Banco relacionado (Gestão de elenco): saves antigos de antes dessa função não têm
+    // `relacionadosIds` — semeia com o padrão (melhores reservas por força). Saves que já
+    // têm são filtrados contra o elenco atual (tira quem saiu do clube ou virou titular).
+    if (registro.relacionadosIds) {
+      const idsTitularesAtuais = new Set(Object.values(estado.titulares));
+      const idsElencoAtual = new Set(estado.timeAtual.jogadores.map(function (j) { return j._id; }));
+      estado.relacionadosIds = registro.relacionadosIds.filter(function (id) {
+        return idsElencoAtual.has(id) && !idsTitularesAtuais.has(id);
+      });
+    } else {
+      estado.relacionadosIds = escolherRelacionadosPadrao(estado.timeAtual.jogadores, estado.titulares);
     }
 
     // Reaplica a evolução de força/idade acumulada de temporadas passadas
