@@ -230,50 +230,6 @@ function atualizarRadarTaticoSeAberto() {
   renderizarConteudoRadar(vaga, jogador);
 }
 
-/* ---------- Toque longo no campo pra abrir o Radar ---------- */
-
-const RADAR_LONGPRESS_MS = 500;
-
-/** Liga o gesto de "segurar 500ms" numa vaga preenchida do campo. */
-function anexarLongPressRadar(botaoVaga, vaga, jogador) {
-  botaoVaga.addEventListener("pointerdown", function (evento) {
-    if (evento.button !== undefined && evento.button !== 0) return;
-    const pointerId = evento.pointerId;
-    const inicioX = evento.clientX, inicioY = evento.clientY;
-
-    const timer = setTimeout(function () {
-      // Um toque longo nunca deve também virar arrasto de seta nem clique de trocar jogador.
-      if (typeof arrasto !== "undefined" && arrasto && arrasto.pointerId === pointerId) {
-        limparArrasto();
-      }
-      botaoVaga.dataset.gestoArrasto = "1";
-      if (navigator.vibrate) navigator.vibrate(15);
-      abrirRadarTatico(vaga, jogador);
-      limpar();
-    }, RADAR_LONGPRESS_MS);
-
-    function aoMover(ev) {
-      if (ev.pointerId !== pointerId) return;
-      const distancia = Math.hypot(ev.clientX - inicioX, ev.clientY - inicioY);
-      if (distancia > LIMIAR_ARRASTO_PX) limpar();
-    }
-    function aoSoltar(ev) {
-      if (ev.pointerId !== pointerId) return;
-      limpar();
-    }
-    function limpar() {
-      clearTimeout(timer);
-      window.removeEventListener("pointermove", aoMover);
-      window.removeEventListener("pointerup", aoSoltar);
-      window.removeEventListener("pointercancel", aoSoltar);
-    }
-
-    window.addEventListener("pointermove", aoMover);
-    window.addEventListener("pointerup", aoSoltar);
-    window.addEventListener("pointercancel", aoSoltar);
-  });
-}
-
 /* ---------- Fechar: botão, tocar fora, arrastar pra baixo ---------- */
 
 function anexarFechoArrastoRadar() {

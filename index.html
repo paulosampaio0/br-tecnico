@@ -142,11 +142,6 @@
       <select id="select-formacao"></select>
     </div>
 
-    <div class="controle-formacao">
-      <label for="select-capitao">© Capitão</label>
-      <select id="select-capitao"></select>
-    </div>
-
     <button class="btn-dado" id="btn-escalacao-automatica" type="button" title="Escalação Inteligente: monta os 11 melhores automaticamente">
       🎲 Escalação automática
     </button>
@@ -168,7 +163,8 @@
 
     <p class="dica-setas">
       Segure e arraste um jogador (exceto o goleiro) para até 2 direções:
-      isso ativa um estilo especial de atuação para ele.
+      isso ativa um estilo especial de atuação para ele. Toque no ícone 🎯 do
+      jogador para abrir o Radar Tático.
     </p>
 
     <section class="secao-substituicoes-partida" id="secao-substituicoes-partida" hidden>
@@ -190,17 +186,6 @@
       <ul class="lista lista-resumo-setas" id="lista-resumo-setas"></ul>
     </section>
 
-    <section class="secao-tatica">
-      <h3>Estilo de jogo</h3>
-      <div class="grupo-opcoes" id="opcoes-estilo"></div>
-
-      <h3>Marcação</h3>
-      <div class="grupo-opcoes" id="opcoes-marcacao"></div>
-
-      <h3>Concentrar ataques</h3>
-      <div class="grupo-opcoes" id="opcoes-concentrar"></div>
-    </section>
-
     <section class="secao-banco">
       <h3>Banco de reservas (<span id="qtd-banco">0</span>/<span id="qtd-banco-maximo">9</span>)</h3>
       <div class="carrossel-jogadores" id="carrossel-banco"></div>
@@ -210,6 +195,22 @@
     <section class="secao-nao-relacionados">
       <h3>Não relacionados (<span id="qtd-nao-relacionados">0</span>)</h3>
       <div class="carrossel-jogadores" id="carrossel-nao-relacionados"></div>
+    </section>
+
+    <section class="secao-tatica">
+      <h3>Estilo de jogo</h3>
+      <div class="grupo-opcoes" id="opcoes-estilo"></div>
+
+      <h3>Marcação</h3>
+      <div class="grupo-opcoes" id="opcoes-marcacao"></div>
+
+      <h3>Concentrar ataques</h3>
+      <div class="grupo-opcoes" id="opcoes-concentrar"></div>
+
+      <div class="controle-formacao">
+        <label for="select-capitao">© Capitão</label>
+        <select id="select-capitao"></select>
+      </div>
     </section>
 
     <p class="aviso-salvo" id="aviso-salvo">✓ Progresso salvo automaticamente neste celular.</p>

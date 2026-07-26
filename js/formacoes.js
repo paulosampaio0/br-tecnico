@@ -76,9 +76,27 @@ const FORMACOES = {
 };
 
 const ORDEM_FORMACOES = ["4-4-2", "4-3-3", "4-2-3-1", "3-5-2", "4-5-1"];
+const FORMACAO_PERSONALIZADA_ID = "personalizada";
 
-/** Devolve a lista de vagas (slots) de uma formação. */
+/**
+ * Devolve a lista de vagas (slots) de uma formação. A formação "personalizada" não tem um
+ * grid fixo próprio — ela pega as vagas (posição/rótulo) de uma formação-base salva em
+ * `estado.formacaoPersonalizada.baseFormacaoId` e substitui x/y pelas coordenadas que o
+ * técnico arrastou (`coords`), guardadas por id de vaga. Vaga sem coordenada salva ainda
+ * (ex.: logo na primeira vez) cai no x/y padrão da formação-base.
+ */
 function obterFormacao(id) {
+  if (id === FORMACAO_PERSONALIZADA_ID) {
+    const personalizada = typeof estado !== "undefined" ? estado.formacaoPersonalizada : null;
+    const baseId = (personalizada && FORMACOES[personalizada.baseFormacaoId]) ? personalizada.baseFormacaoId : "4-4-2";
+    const base = FORMACOES[baseId];
+    const coords = personalizada ? personalizada.coords : null;
+    if (!coords) return base;
+    return base.map(function (vaga) {
+      const coord = coords[vaga.id];
+      return coord ? Object.assign({}, vaga, { x: coord.x, y: coord.y }) : vaga;
+    });
+  }
   return FORMACOES[id] || FORMACOES["4-4-2"];
 }
 

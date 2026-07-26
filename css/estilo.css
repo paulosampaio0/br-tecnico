@@ -837,6 +837,35 @@ body::before {
 .seta-indicador.esquerda { left: -12px; top: 50%; transform: translateY(-50%); }
 .seta-indicador.direita { right: -12px; top: 50%; transform: translateY(-50%); }
 
+/* Ícone dedicado pra abrir o Radar Tático — canto superior direito do node do jogador. */
+.icone-radar-jogador {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 9px;
+  line-height: 1;
+  background: rgba(0, 0, 0, 0.75);
+  border: 1px solid rgba(255, 255, 255, 0.6);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
+  cursor: pointer;
+  touch-action: manipulation;
+  z-index: 3;
+}
+
+.vaga-dupla .icone-radar-jogador {
+  width: 13px;
+  height: 13px;
+  font-size: 7px;
+  top: -4px;
+  right: -4px;
+}
+
 .vaga.vazia .bolinha {
   background: rgba(255, 255, 255, 0.15);
   color: var(--cinza-texto);
@@ -847,6 +876,22 @@ body::before {
 .vaga.selecionado-troca .bolinha {
   border-color: #3ddc7a;
   box-shadow: 0 0 0 3px rgba(61, 220, 122, 0.5);
+}
+
+/* Formação Personalizada: aro tracejado sinaliza que o jogador pode ser arrastado livremente. */
+.vaga.vaga-personalizavel .bolinha {
+  border-style: dashed;
+  border-color: rgba(255, 255, 255, 0.9);
+}
+
+/* Enquanto o dedo está segurando e arrastando o jogador pra uma nova posição. */
+.vaga.vaga-arrastando {
+  z-index: 5;
+}
+
+.vaga.vaga-arrastando .bolinha {
+  transform: scale(1.15);
+  box-shadow: 0 0 0 3px rgba(255, 184, 92, 0.6), 0 4px 12px rgba(0, 0, 0, 0.5);
 }
 
 .vaga .nome-vaga {
@@ -1258,6 +1303,10 @@ body::before {
   cursor: pointer;
   -webkit-tap-highlight-color: transparent;
   position: relative;
+  /* Deixa o navegador rolar o carrossel num swipe horizontal normalmente; só um gesto
+     majoritariamente vertical (arrastar o jogador pra cima, em direção ao campo/banco) é
+     interceptado pelo JS como arrasto (ver `anexarArrastoOrigemCompacta`). */
+  touch-action: pan-x;
 }
 
 .node-compacto-jogador.selecionado-troca {
@@ -1268,6 +1317,49 @@ body::before {
 .node-compacto-jogador:disabled {
   opacity: 0.5;
   cursor: default;
+}
+
+/* Drag & Drop (Banco ↔ Campo, Não Relacionados ↔ Banco) */
+
+.node-compacto-jogador.arrastando-origem {
+  opacity: 0.3;
+}
+
+/* "Fantasma" semi-transparente que acompanha o dedo/ponteiro durante o arrasto. */
+.ghost-arrasto-jogador {
+  position: fixed;
+  top: 0;
+  left: 0;
+  transform: translate(-50%, -50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  opacity: 0.85;
+  pointer-events: none;
+  z-index: 999;
+  filter: drop-shadow(0 4px 10px rgba(0, 0, 0, 0.6));
+}
+
+/* Alvo válido pra soltar um reserva vindo do Banco: titulares em campo (ou vagas vazias). */
+.vaga.vaga-alvo-drop .bolinha {
+  animation: pulso-alvo-drop 0.9s ease-in-out infinite;
+}
+
+@keyframes pulso-alvo-drop {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(61, 220, 122, 0.55); }
+  50% { box-shadow: 0 0 0 7px rgba(61, 220, 122, 0.18); }
+}
+
+/* Alvo válido pra soltar um Não Relacionado: a seção inteira do Banco + cada card dele. */
+.secao-banco.alvo-drop-banco {
+  outline: 2px dashed #3ddc7a;
+  outline-offset: 6px;
+  border-radius: 14px;
+}
+
+.node-compacto-jogador.alvo-drop-valido {
+  border-color: rgba(61, 220, 122, 0.6);
 }
 
 .avatar-compacto-jogador {

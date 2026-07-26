@@ -128,6 +128,11 @@ const estado = {
   jogadoresAVenda: {}, // { _id: true } — marcados pelo técnico como disponíveis pro mercado, aumenta chance de proposta
   dashboard: { vendaAtletasTemporada: 0, vendaCamisasTemporada: 0, comprasTemporada: 0 }, // zera a cada temporada (Fase 22)
   historicoTemporadas: [], // [{ ano, posicaoFinal, caixa, valorElenco, patrimonio }] — Fase 22
+  // Formação "Personalizada": baseFormacaoId dá as vagas (pos/rótulo) de partida, coords
+  // guarda os ajustes de x/y por vaga (%) que o técnico arrastou, titulares guarda um
+  // retrato da escalação pra restaurar quando o técnico volta pra essa formação depois
+  // de ter passado por outra. null até a primeira vez que o técnico seleciona "Personalizada".
+  formacaoPersonalizada: null,
 };
 
 // Filtros e resultado da busca no Mercado, e proposta em andamento (Fase 12).
@@ -206,6 +211,7 @@ function salvarProgresso() {
     jogadoresAVenda: estado.jogadoresAVenda,
     dashboard: estado.dashboard,
     historicoTemporadas: estado.historicoTemporadas,
+    formacaoPersonalizada: estado.formacaoPersonalizada,
     atualizadoEm: new Date().toISOString(),
   };
   try {
@@ -404,6 +410,7 @@ async function escalarEsteTime(time) {
 
   estado.timeAtual = { divisaoChave: divisaoAtual, nome: time.nome, jogadores: time.jogadores };
   estado.formacaoId = "4-4-2";
+  estado.formacaoPersonalizada = null;
   estado.titulares = autoEscalarMelhores(time.jogadores, estado.formacaoId);
   // Banco relacionado (Gestão de elenco): semeado 1x aqui com os melhores reservas por força —
   // dali em diante é 100% manual, o técnico reorganiza pelo tap-to-swap.
@@ -495,6 +502,11 @@ function renderizarInfoSubstituicoes() {
 function montarSelectFormacao() {
   const select = document.getElementById("select-formacao");
   if (select.childElementCount === 0) {
+    const opcaoPersonalizada = document.createElement("option");
+    opcaoPersonalizada.value = FORMACAO_PERSONALIZADA_ID;
+    opcaoPersonalizada.textContent = "Personalizada";
+    select.appendChild(opcaoPersonalizada);
+
     ORDEM_FORMACOES.forEach(function (id) {
       const opcao = document.createElement("option");
       opcao.value = id;
@@ -513,8 +525,30 @@ function trocarFormacao(novaFormacaoId) {
     reencaixarFormacaoEmPartida(novaFormacaoId);
     return;
   }
+
+  // Saindo da Personalizada: guarda um retrato da escalação atual pra restaurar
+  // quando o técnico voltar pra ela (senão perderia as trocas feitas nesse meio tempo).
+  if (estado.formacaoId === FORMACAO_PERSONALIZADA_ID && estado.formacaoPersonalizada) {
+    estado.formacaoPersonalizada.titulares = Object.assign({}, estado.titulares);
+  }
+
+  if (novaFormacaoId === FORMACAO_PERSONALIZADA_ID) {
+    if (estado.formacaoPersonalizada && estado.formacaoPersonalizada.titulares) {
+      // Já tinha uma Personalizada salva — restaura exatamente como o técnico deixou.
+      estado.titulares = Object.assign({}, estado.formacaoPersonalizada.titulares);
+    } else {
+      // Primeira vez: parte da escalação/formação atual (vira "destravável" sem resetar nada).
+      estado.formacaoPersonalizada = {
+        baseFormacaoId: FORMACOES[estado.formacaoId] ? estado.formacaoId : "4-4-2",
+        coords: {},
+        titulares: Object.assign({}, estado.titulares),
+      };
+    }
+  } else {
+    estado.titulares = autoEscalarMelhores(estado.timeAtual.jogadores, novaFormacaoId);
+  }
+
   estado.formacaoId = novaFormacaoId;
-  estado.titulares = autoEscalarMelhores(estado.timeAtual.jogadores, novaFormacaoId);
   estado.setas = {}; // as vagas mudam de função na nova formação, então as setas recomeçam
   sincronizarRelacionadosComTitulares(); // quem virou titular na formação nova sai do banco
   salvarProgresso();
@@ -680,14 +714,23 @@ function renderizarCampo() {
   const campoEl = campoSimplesEl;
   campoEl.innerHTML = "";
 
+  const dicaEl = document.querySelector(".dica-setas");
+  if (dicaEl) {
+    dicaEl.textContent = estado.formacaoId === FORMACAO_PERSONALIZADA_ID
+      ? "Arraste um jogador de linha (exceto o goleiro) para qualquer posição do campo — a posição fica salva na Formação Personalizada. Toque no ícone 🎯 do jogador para abrir o Radar Tático."
+      : "Segure e arraste um jogador (exceto o goleiro) para até 2 direções: isso ativa um estilo especial de atuação para ele. Toque no ícone 🎯 do jogador para abrir o Radar Tático.";
+  }
+
   const vagas = obterFormacao(estado.formacaoId);
   vagas.forEach(function (vaga) {
     const idJogador = estado.titulares[vaga.id];
     const jogador = idJogador !== undefined ? encontrarJogadorPorId(estado.timeAtual.jogadores, idJogador) : null;
 
+    const personalizavel = estado.formacaoId === FORMACAO_PERSONALIZADA_ID && jogador && vaga.pos !== "GOL";
+
     const botao = document.createElement("button");
     botao.type = "button";
-    botao.className = "vaga" + (jogador ? "" : " vazia");
+    botao.className = "vaga" + (jogador ? "" : " vazia") + (personalizavel ? " vaga-personalizavel" : "");
     botao.dataset.vagaId = vaga.id;
     botao.style.left = vaga.x + "%";
     botao.style.top = vaga.y + "%";
@@ -695,6 +738,7 @@ function renderizarCampo() {
       "<span class=\"bolinha-wrap\">" +
         "<span class=\"bolinha\">" + vaga.rotulo + "</span>" +
         (jogador ? montarIndicadoresSetas(vaga, jogador) : "") +
+        (jogador ? "<span class=\"icone-radar-jogador\" title=\"Radar tático\">🎯</span>" : "") +
       "</span>" +
       "<span class=\"nome-vaga\">" +
         (jogador && estado.capitaoId === jogador._id ? "<span class=\"tag-capitao-campo\" title=\"Capitão\">©</span>" : "") +
@@ -716,14 +760,24 @@ function renderizarCampo() {
       alternarSelecaoTroca({ tipo: "titular", vagaId: vaga.id }, botao);
     });
 
-    // O goleiro não recebe setas — não faz sentido táticamente.
-    if (jogador && vaga.pos !== "GOL") {
-      anexarArrastoSeta(botao, vaga, jogador);
+    // Radar Tático: agora é um ícone dedicado (🎯) no canto do jogador, não mais toque longo.
+    if (jogador) {
+      const iconeRadar = botao.querySelector(".icone-radar-jogador");
+      if (iconeRadar) {
+        iconeRadar.addEventListener("click", function (evento) {
+          evento.stopPropagation();
+          if (typeof abrirRadarTatico === "function") abrirRadarTatico(vaga, jogador);
+        });
+      }
     }
 
-    // Radar Tático: toque longo (500ms) em qualquer jogador preenchido, inclusive o goleiro.
-    if (jogador && typeof anexarLongPressRadar === "function") {
-      anexarLongPressRadar(botao, vaga, jogador);
+    // Formação Personalizada: arrastar reposiciona o jogador livre no campo, em vez de
+    // criar seta tática (os dois gestos usam o mesmo dedo/botão, então não coexistem).
+    // O goleiro fica sempre fixo na área do gol, em qualquer formação.
+    if (personalizavel) {
+      anexarArrastoPosicaoLivre(botao, vaga);
+    } else if (jogador && vaga.pos !== "GOL") {
+      anexarArrastoSeta(botao, vaga, jogador);
     }
 
     campoEl.appendChild(botao);
@@ -794,6 +848,9 @@ function montarMetadeCampoDuplo(campoEl, lado, transformarY) {
     const node = document.createElement(souEuNesseLado ? "button" : "div");
     if (souEuNesseLado) node.type = "button";
     node.className = "vaga vaga-dupla" + (souEuNesseLado ? " vaga-minha" : " vaga-adversario");
+    // Só o MEU lado precisa disso — é por aqui que o drag&drop do Banco (soltar em cima de um
+    // titular durante a partida) descobre em qual vaga a substituição deve entrar.
+    if (souEuNesseLado) node.dataset.vagaId = vaga.id;
     node.style.left = vaga.x + "%";
     node.style.top = transformarY(vaga.y) + "%";
 
@@ -809,6 +866,7 @@ function montarMetadeCampoDuplo(campoEl, lado, transformarY) {
       "<span class=\"bolinha-wrap\">" +
         "<span class=\"bolinha\">" + obterNumeroCamisa(jogador) + "</span>" +
         (souEuNesseLado ? montarIndicadoresSetas(vaga, jogador) : "") +
+        (souEuNesseLado ? "<span class=\"icone-radar-jogador\" title=\"Radar tático\">🎯</span>" : "") +
       "</span>" +
       "<span class=\"nome-vaga\">" +
         (souEuNesseLado && estado.capitaoId === jogador._id ? "<span class=\"tag-capitao-campo\" title=\"Capitão\">©</span>" : "") +
@@ -824,7 +882,15 @@ function montarMetadeCampoDuplo(campoEl, lado, transformarY) {
         abrirSeletorJogador(vaga);
       });
       if (vaga.pos !== "GOL") anexarArrastoSeta(node, vaga, jogador);
-      if (typeof anexarLongPressRadar === "function") anexarLongPressRadar(node, vaga, jogador);
+
+      // Radar Tático: ícone dedicado (🎯) no canto do jogador, não mais toque longo.
+      const iconeRadar = node.querySelector(".icone-radar-jogador");
+      if (iconeRadar) {
+        iconeRadar.addEventListener("click", function (evento) {
+          evento.stopPropagation();
+          if (typeof abrirRadarTatico === "function") abrirRadarTatico(vaga, jogador);
+        });
+      }
     }
 
     campoEl.appendChild(node);
@@ -1136,6 +1202,97 @@ function limparArrasto() {
   arrasto = null;
 }
 
+/* ---------- Arrastar para reposicionar (Formação Personalizada) ---------- */
+
+let arrastoPosicao = null; // { pointerId, vaga, botao, campoRect, inicioX/Y, arrastouDeVerdade, novoX/Y }
+
+// Margem (%) pra não deixar o jogador ser solto colado na borda do campo, some da vista.
+const MARGEM_ARRASTO_LIVRE_PCT = 4;
+
+/** Liga o gesto de arrastar livremente um jogador no campo — só usado na formação Personalizada. */
+function anexarArrastoPosicaoLivre(botaoVaga, vaga) {
+  botaoVaga.addEventListener("pointerdown", function (evento) {
+    if (evento.button !== undefined && evento.button !== 0) return; // só clique/toque principal
+    evento.preventDefault();
+
+    const campoEl = document.getElementById("campo-titular");
+    arrastoPosicao = {
+      pointerId: evento.pointerId,
+      vaga: vaga,
+      botao: botaoVaga,
+      campoRect: campoEl.getBoundingClientRect(),
+      inicioX: evento.clientX,
+      inicioY: evento.clientY,
+      arrastouDeVerdade: false,
+      novoX: vaga.x,
+      novoY: vaga.y,
+    };
+
+    window.addEventListener("pointermove", moverArrastoPosicaoLivre);
+    window.addEventListener("pointerup", finalizarArrastoPosicaoLivre);
+    window.addEventListener("pointercancel", cancelarArrastoPosicaoLivre);
+  });
+}
+
+function moverArrastoPosicaoLivre(evento) {
+  if (!arrastoPosicao || evento.pointerId !== arrastoPosicao.pointerId) return;
+
+  const dx = evento.clientX - arrastoPosicao.inicioX;
+  const dy = evento.clientY - arrastoPosicao.inicioY;
+
+  if (!arrastoPosicao.arrastouDeVerdade) {
+    if (Math.hypot(dx, dy) < LIMIAR_ARRASTO_PX) return;
+    arrastoPosicao.arrastouDeVerdade = true;
+    arrastoPosicao.botao.classList.add("vaga-arrastando");
+  }
+
+  const rect = arrastoPosicao.campoRect;
+  const x = Math.max(MARGEM_ARRASTO_LIVRE_PCT, Math.min(100 - MARGEM_ARRASTO_LIVRE_PCT,
+    ((evento.clientX - rect.left) / rect.width) * 100));
+  const y = Math.max(MARGEM_ARRASTO_LIVRE_PCT, Math.min(100 - MARGEM_ARRASTO_LIVRE_PCT,
+    ((evento.clientY - rect.top) / rect.height) * 100));
+
+  arrastoPosicao.botao.style.left = x + "%";
+  arrastoPosicao.botao.style.top = y + "%";
+  arrastoPosicao.novoX = x;
+  arrastoPosicao.novoY = y;
+}
+
+function finalizarArrastoPosicaoLivre(evento) {
+  if (!arrastoPosicao || evento.pointerId !== arrastoPosicao.pointerId) return;
+
+  if (arrastoPosicao.arrastouDeVerdade) {
+    salvarCoordenadaPersonalizada(arrastoPosicao.vaga.id, arrastoPosicao.novoX, arrastoPosicao.novoY);
+    arrastoPosicao.botao.classList.remove("vaga-arrastando");
+    // Um arrasto de verdade não deve também contar como toque de seleção (tap-to-swap).
+    arrastoPosicao.botao.dataset.gestoArrasto = "1";
+  }
+
+  limparArrastoPosicaoLivre();
+}
+
+function cancelarArrastoPosicaoLivre() {
+  // Gesto cancelado a meio caminho (ex.: o sistema tomou o toque) — não confirma
+  // a posição solta no ar; volta pro campo redesenhado com a última coordenada salva.
+  if (arrastoPosicao && arrastoPosicao.arrastouDeVerdade) renderizarCampo();
+  limparArrastoPosicaoLivre();
+}
+
+function limparArrastoPosicaoLivre() {
+  window.removeEventListener("pointermove", moverArrastoPosicaoLivre);
+  window.removeEventListener("pointerup", finalizarArrastoPosicaoLivre);
+  window.removeEventListener("pointercancel", cancelarArrastoPosicaoLivre);
+  arrastoPosicao = null;
+}
+
+/** Persiste a coordenada arrastada na Formação Personalizada do time atual. */
+function salvarCoordenadaPersonalizada(vagaId, x, y) {
+  if (!estado.formacaoPersonalizada) return;
+  estado.formacaoPersonalizada.coords[vagaId] = { x: Math.round(x * 10) / 10, y: Math.round(y * 10) / 10 };
+  salvarProgresso();
+  if (typeof atualizarRadarTaticoSeAberto === "function") atualizarRadarTaticoSeAberto();
+}
+
 /** Liga/desliga uma seta numa vaga, respeitando o máximo de 2 por jogador. */
 function alternarSeta(vagaId, chave) {
   const atuais = estado.setas[vagaId] || [];
@@ -1265,31 +1422,43 @@ function montarMiniIndicadorCompacto(valor, limiarAlta, limiarBaixa, titulo) {
   return "<span title=\"" + titulo + ": " + valor + "\">" + bolinha + "</span>";
 }
 
+/** O jogador já foi substituído nesta partida (saiu de campo) — não pode voltar (súmula real). */
+function jaSaiuDaPartidaAoVivo(idJogador) {
+  return estaEmPartidaAtiva() && !!(partidaAtual.jogadoresQueSairam || []).length &&
+    partidaAtual.jogadoresQueSairam.indexOf(idJogador) !== -1;
+}
+
 /**
  * Node compacto de um jogador (avatar + posição/força + nome curto + energia/moral) — usado
  * no carrossel do Banco e no de Não Relacionados. `origem` identifica de onde esse jogador
- * vem pro mecanismo de tap-to-swap: { tipo: "banco"|"naoRelacionado", idJogador }.
+ * vem pro mecanismo de tap-to-swap e de arrastar-e-soltar: { tipo: "banco"|"naoRelacionado", idJogador }.
  */
 function criarNodeCompactoJogador(jogador, origem) {
   const botao = document.createElement("button");
   botao.type = "button";
   botao.className = "node-compacto-jogador";
   botao.dataset.idJogador = jogador._id;
-  // O banco/não relacionados é montado ANTES do jogo, igual à súmula real — trocar quem foi
-  // convocado só faz sentido pré-partida; durante o jogo, a substituição de verdade continua
-  // pelo campo tático duplo (abrirSeletorJogador), que já valida limite/suspensão/etc.
-  if (jogadorEstaSuspenso(jogador._id) || estaEmPartidaAtiva()) {
+
+  // Não Relacionados só pode ser mexido ANTES do jogo, igual à súmula real (convocação já
+  // fechou) — o Banco de Reservas, esse sim, fica ativo também DURANTE a partida: arrastar um
+  // reserva pra cima de um titular em campo é uma substituição de verdade (ver `resolverDropJogador`).
+  const travadoParaEdicao = origem.tipo === "naoRelacionado" && estaEmPartidaAtiva();
+  const jaSaiu = origem.tipo === "banco" && jaSaiuDaPartidaAoVivo(jogador._id);
+  if (jogadorEstaSuspenso(jogador._id) || travadoParaEdicao || jaSaiu) {
     botao.disabled = true;
-    botao.title = estaEmPartidaAtiva() ? "O banco fica travado durante a partida." : "Jogador suspenso.";
+    botao.title = jaSaiu ? "Já foi substituído nesta partida — não pode voltar a jogar."
+      : travadoParaEdicao ? "Não relacionados só podem ser chamados antes da partida."
+      : "Jogador suspenso.";
   }
 
   const energia = obterEnergiaJogador(jogador._id);
   const moral = estado.moralPorJogador ? obterMoralJogador(estado.moralPorJogador, jogador._id) : 100;
   const tagCapitao = estado.capitaoId === jogador._id ? "<span class=\"tags-compacto-jogador\" title=\"Capitão\">©</span>" : "";
   const tagSuspenso = jogadorEstaSuspenso(jogador._id) ? "<span class=\"tags-compacto-jogador\" title=\"Suspenso\">🚫</span>" : "";
+  const tagSaiu = jaSaiu ? "<span class=\"tags-compacto-jogador\" title=\"Já saiu da partida\">🔻</span>" : "";
 
   botao.innerHTML =
-    tagCapitao + tagSuspenso +
+    tagCapitao + tagSuspenso + tagSaiu +
     "<span class=\"avatar-compacto-jogador\">" + obterNumeroCamisa(jogador) + "</span>" +
     "<span class=\"pilula-pos-forca\">" + jogador.forca + " " + escaparHtml(jogador.pos) + "</span>" +
     "<span class=\"nome-compacto-jogador\">" + escaparHtml(sobrenomeCurto(jogador.nome)) + "</span>" +
@@ -1299,8 +1468,16 @@ function criarNodeCompactoJogador(jogador, origem) {
     "</span>";
 
   botao.addEventListener("click", function () {
+    // Um arrasto de verdade que acabou de acontecer NESTE botão não deve
+    // também contar como toque de seleção (senão os dois gestos se confundem).
+    if (botao.dataset.gestoArrasto === "1") {
+      delete botao.dataset.gestoArrasto;
+      return;
+    }
     alternarSelecaoTroca({ tipo: origem.tipo, idJogador: jogador._id }, botao);
   });
+
+  anexarArrastoOrigemCompacta(botao, jogador, origem);
 
   return botao;
 }
@@ -1444,6 +1621,163 @@ function executarTrocaSelecionados(sel1, sel2) {
 
   salvarProgresso();
   renderizarBanco();
+}
+
+/**
+ * Um Não Relacionado é solto sobre o Banco (área geral, não em cima de um reserva específico):
+ * se ainda houver vaga (< TAMANHO_BANCO_RELACIONADO), ele simplesmente ENTRA, sem tirar
+ * ninguém (diferente do tap-to-swap, que é sempre 1 por 1). Banco já cheio: entra no lugar do
+ * último relacionado da lista (mesma troca 1 por 1 de sempre, só que sem o usuário precisar
+ * mirar num card específico).
+ */
+function moverNaoRelacionadoParaBancoLivre(idJogador) {
+  const banco = calcularBancoRelacionado();
+  estado.relacionadosIds = estado.relacionadosIds || [];
+  if (banco.length < TAMANHO_BANCO_RELACIONADO) {
+    estado.relacionadosIds.push(idJogador);
+  } else {
+    const ultimo = banco[banco.length - 1];
+    estado.relacionadosIds = estado.relacionadosIds.filter(function (id) { return id !== ultimo._id; });
+    estado.relacionadosIds.push(idJogador);
+  }
+  salvarProgresso();
+  renderizarBanco();
+}
+
+/* ---------- Arrastar e soltar: Banco → Titular, Não Relacionado → Banco ----------
+   Reaproveita as MESMAS funções do tap-to-swap (`executarTrocaSelecionados`) — o arrasto só
+   descobre a ORIGEM (o card segurado) e o ALVO (o que está embaixo do dedo ao soltar) e chama
+   o mesmo motor de troca; por isso o resultado é idêntico nas duas telas (pré-jogo e "Mexer no
+   time"), incluindo a validação de substituição ao vivo (limite, jogador já saiu, etc.) que já
+   vive dentro de `escolherJogadorParaVaga`. */
+
+/** Cria o "fantasma" semi-transparente que acompanha o dedo/ponteiro durante o arrasto. */
+function criarGhostArrasto(jogador) {
+  const ghost = document.createElement("div");
+  ghost.className = "ghost-arrasto-jogador";
+  ghost.innerHTML =
+    "<span class=\"avatar-compacto-jogador\">" + obterNumeroCamisa(jogador) + "</span>" +
+    "<span class=\"pilula-pos-forca\">" + jogador.forca + " " + escaparHtml(jogador.pos) + "</span>";
+  document.body.appendChild(ghost);
+  return ghost;
+}
+
+function moverGhost(ghost, x, y) {
+  ghost.style.left = x + "px";
+  ghost.style.top = y + "px";
+}
+
+/** Liga/desliga o destaque de "onde eu posso soltar", conforme a origem do arrasto. */
+function destacarAlvosDropJogador(origemTipo, ligar) {
+  if (origemTipo === "banco") {
+    const seletorCampo = estaEmPartidaAtiva() ? "#campo-duplo-partida .vaga.vaga-minha" : "#campo-titular .vaga";
+    document.querySelectorAll(seletorCampo).forEach(function (el) {
+      el.classList.toggle("vaga-alvo-drop", ligar);
+    });
+    return;
+  }
+  const secaoBanco = document.querySelector(".secao-banco");
+  if (secaoBanco) secaoBanco.classList.toggle("alvo-drop-banco", ligar);
+  document.querySelectorAll("#carrossel-banco .node-compacto-jogador").forEach(function (el) {
+    el.classList.toggle("alvo-drop-valido", ligar);
+  });
+}
+
+/** No solto do dedo: acha o que está embaixo do ponteiro e decide a ação (Tarefa 1 e 2). */
+function resolverDropJogador(origem, jogador, clientX, clientY) {
+  const elAlvo = document.elementFromPoint(clientX, clientY);
+  if (!elAlvo) return;
+
+  if (origem.tipo === "banco") {
+    const vagaAlvo = elAlvo.closest(".vaga[data-vaga-id]");
+    const dentroDoCampo = vagaAlvo && (vagaAlvo.closest("#campo-titular") || vagaAlvo.closest("#campo-duplo-partida"));
+    if (dentroDoCampo) {
+      executarTrocaSelecionados(
+        { tipo: "banco", idJogador: jogador._id },
+        { tipo: "titular", vagaId: vagaAlvo.dataset.vagaId }
+      );
+    }
+    return;
+  }
+
+  // origem.tipo === "naoRelacionado" — só chega aqui fora de partida (ver `anexarArrastoOrigemCompacta`).
+  const nodeAlvo = elAlvo.closest(".node-compacto-jogador[data-id-jogador]");
+  if (nodeAlvo && nodeAlvo.closest("#carrossel-banco")) {
+    executarTrocaSelecionados(
+      { tipo: "naoRelacionado", idJogador: jogador._id },
+      { tipo: "banco", idJogador: Number(nodeAlvo.dataset.idJogador) }
+    );
+    return;
+  }
+  if (elAlvo.closest(".secao-banco")) {
+    moverNaoRelacionadoParaBancoLivre(jogador._id);
+  }
+}
+
+/**
+ * Liga o gesto de segurar-e-arrastar num card do Banco/Não Relacionados. O card mantém
+ * `touch-action: pan-x` (ver CSS) pra continuar rolando o carrossel normalmente num swipe
+ * horizontal; só um gesto majoritariamente VERTICAL (dedo subindo em direção ao campo) vira
+ * arrasto de verdade — só a partir daí a rolagem nativa é bloqueada (`preventDefault`).
+ */
+function anexarArrastoOrigemCompacta(botao, jogador, origem) {
+  // Não Relacionados não oferece o gesto de arrastar durante uma partida — o toque simples já
+  // fica desabilitado no botão nesse caso (ver `criarNodeCompactoJogador`), então nem tem o que arrastar.
+  if (origem.tipo === "naoRelacionado" && estaEmPartidaAtiva()) return;
+
+  botao.addEventListener("pointerdown", function (evento) {
+    if (evento.button !== undefined && evento.button !== 0) return; // só clique/toque principal
+    if (botao.disabled) return;
+
+    const pointerId = evento.pointerId;
+    const inicioX = evento.clientX, inicioY = evento.clientY;
+    let arrastouDeVerdade = false;
+    let ghost = null;
+
+    function aoMover(ev) {
+      if (ev.pointerId !== pointerId) return;
+      const dx = ev.clientX - inicioX, dy = ev.clientY - inicioY;
+
+      if (!arrastouDeVerdade) {
+        if (Math.hypot(dx, dy) < LIMIAR_ARRASTO_PX || Math.abs(dx) > Math.abs(dy)) return;
+        arrastouDeVerdade = true;
+        botao.classList.add("arrastando-origem");
+        ghost = criarGhostArrasto(jogador);
+        destacarAlvosDropJogador(origem.tipo, true);
+      }
+
+      ev.preventDefault();
+      moverGhost(ghost, ev.clientX, ev.clientY);
+    }
+
+    function finalizar(ev) {
+      if (ev.pointerId !== pointerId) return;
+      const xFinal = ev.clientX, yFinal = ev.clientY;
+      limpar();
+      if (arrastouDeVerdade) {
+        botao.dataset.gestoArrasto = "1";
+        resolverDropJogador(origem, jogador, xFinal, yFinal);
+      }
+    }
+
+    function cancelar(ev) {
+      if (ev.pointerId !== pointerId) return;
+      limpar();
+    }
+
+    function limpar() {
+      window.removeEventListener("pointermove", aoMover);
+      window.removeEventListener("pointerup", finalizar);
+      window.removeEventListener("pointercancel", cancelar);
+      botao.classList.remove("arrastando-origem");
+      if (ghost) ghost.remove();
+      destacarAlvosDropJogador(origem.tipo, false);
+    }
+
+    window.addEventListener("pointermove", aoMover);
+    window.addEventListener("pointerup", finalizar);
+    window.addEventListener("pointercancel", cancelar);
+  });
 }
 
 /* ---------- Tática ---------- */
@@ -4960,6 +5294,8 @@ async function continuarJogoSalvo() {
     estado.timeAtual = { divisaoChave: registro.divisao, nome: time.nome, jogadores: jogadoresDoSave };
     estado.formacaoId = registro.formacaoId || "4-4-2";
     estado.titulares = registro.titulares || {};
+    // Saves de antes da Formação Personalizada não têm esse campo.
+    estado.formacaoPersonalizada = registro.formacaoPersonalizada || null;
     estado.tatica = registro.tatica || taticaPadrao();
     estado.setas = registro.setas || {};
     estado.temporada = registro.temporada || null;
