@@ -101,6 +101,7 @@ let rodadaResultadosExibida = 1;
 
 const estado = {
   timeAtual: null, // { divisaoChave, nome, jogadores }
+  tecnico: null, // { nome, nacionalidade } — definido na tela "Novo Jogo" (config. do técnico)
   formacaoId: "4-4-2",
   titulares: {}, // { idDaVaga: _id do jogador }
   tatica: taticaPadrao(),
@@ -212,6 +213,7 @@ function salvarProgresso() {
     dashboard: estado.dashboard,
     historicoTemporadas: estado.historicoTemporadas,
     formacaoPersonalizada: estado.formacaoPersonalizada,
+    tecnico: estado.tecnico,
     atualizadoEm: new Date().toISOString(),
   };
   try {
@@ -252,8 +254,63 @@ function mostrarTela(idTela) {
   document.querySelectorAll(".tela").forEach(function (tela) {
     tela.hidden = tela.id !== idTela;
   });
-  // O Radar Tático é uma folha fixa por cima de tudo — some ao trocar de tela.
-  if (idTela !== "tela-escalacao" && typeof fecharRadarTatico === "function") fecharRadarTatico();
+}
+
+/* ---------- Tela: "Novo Jogo" — configuração do técnico ---------- */
+
+/** Abre a tela de configuração (país/divisão/nome/nacionalidade/aleatório) antes de escolher o time. */
+function abrirTelaNovoJogoConfig() {
+  mostrarTela("tela-novo-jogo");
+  document.getElementById("erro-nome-tecnico").hidden = true;
+  document.getElementById("input-nome-tecnico").classList.remove("campo-invalido");
+  atualizarEstadoCheckboxAleatorio();
+}
+
+/** "Iniciar com um time aleatório" marcado: esconde a escolha manual de divisão (não há mais nada pra escolher). */
+function atualizarEstadoCheckboxAleatorio() {
+  const marcado = document.getElementById("check-time-aleatorio").checked;
+  const grupoDivisao = document.getElementById("grupo-divisao-config");
+  grupoDivisao.classList.toggle("campo-config-desabilitado", marcado);
+  document.getElementById("select-divisao-config").disabled = marcado;
+}
+
+/**
+ * Botão "Iniciar Jogo": valida o nome do técnico, guarda a configuração e segue pro fluxo
+ * de sempre — manual (abre a lista de times já filtrada pela divisão escolhida) ou aleatório
+ * (sorteia divisão + time e vai direto pra escalação, sem passar pela tela de elenco).
+ */
+async function iniciarNovoJogoConfig() {
+  const inputNome = document.getElementById("input-nome-tecnico");
+  const nome = inputNome.value.trim();
+  const erroEl = document.getElementById("erro-nome-tecnico");
+
+  if (!nome) {
+    erroEl.hidden = false;
+    inputNome.classList.add("campo-invalido");
+    inputNome.focus();
+    return;
+  }
+  erroEl.hidden = true;
+  inputNome.classList.remove("campo-invalido");
+
+  estado.tecnico = {
+    nome: nome,
+    nacionalidade: document.getElementById("select-nacionalidade-tecnico").value,
+  };
+
+  const aleatorio = document.getElementById("check-time-aleatorio").checked;
+  const dados = await carregarDados();
+
+  if (aleatorio) {
+    const divisoes = listarDivisoes(dados);
+    const divisaoSorteada = divisoes[Math.floor(Math.random() * divisoes.length)];
+    const timeSorteado = divisaoSorteada.times[Math.floor(Math.random() * divisaoSorteada.times.length)];
+    divisaoAtual = divisaoSorteada.chave;
+    await escalarEsteTime(timeSorteado);
+  } else {
+    divisaoAtual = document.getElementById("select-divisao-config").value;
+    abrirTelaTimes();
+  }
 }
 
 /* ---------- Tela: escolher time ---------- */
@@ -555,7 +612,6 @@ function trocarFormacao(novaFormacaoId) {
   renderizarCampo();
   renderizarResumoSetas();
   renderizarBanco();
-  if (typeof atualizarRadarTaticoSeAberto === "function") atualizarRadarTaticoSeAberto();
 }
 
 /**
@@ -581,7 +637,6 @@ function aplicarEscalacaoAutomatica() {
   renderizarCampo();
   renderizarResumoSetas();
   renderizarBanco();
-  if (typeof atualizarRadarTaticoSeAberto === "function") atualizarRadarTaticoSeAberto();
 }
 
 // Abaixo dessa energia (%), um titular em campo é candidato a sair na Sugestão de Substituição.
@@ -688,7 +743,6 @@ function reencaixarFormacaoEmPartida(novaFormacaoId) {
   renderizarResumoSetas();
   renderizarBanco();
   renderizarInfoSubstituicoes();
-  if (typeof atualizarRadarTaticoSeAberto === "function") atualizarRadarTaticoSeAberto();
 }
 
 function renderizarCampo() {
@@ -717,8 +771,8 @@ function renderizarCampo() {
   const dicaEl = document.querySelector(".dica-setas");
   if (dicaEl) {
     dicaEl.textContent = estado.formacaoId === FORMACAO_PERSONALIZADA_ID
-      ? "Arraste um jogador de linha (exceto o goleiro) para qualquer posição do campo — a posição fica salva na Formação Personalizada. Toque no ícone 🎯 do jogador para abrir o Radar Tático."
-      : "Segure e arraste um jogador (exceto o goleiro) para até 2 direções: isso ativa um estilo especial de atuação para ele. Toque no ícone 🎯 do jogador para abrir o Radar Tático.";
+      ? "Arraste um jogador de linha (exceto o goleiro) para qualquer posição do campo — a posição fica salva na Formação Personalizada."
+      : "Segure e arraste um jogador (exceto o goleiro) para até 2 direções: isso ativa um estilo especial de atuação para ele.";
   }
 
   const vagas = obterFormacao(estado.formacaoId);
@@ -738,7 +792,6 @@ function renderizarCampo() {
       "<span class=\"bolinha-wrap\">" +
         "<span class=\"bolinha\">" + vaga.rotulo + "</span>" +
         (jogador ? montarIndicadoresSetas(vaga, jogador) : "") +
-        (jogador ? "<span class=\"icone-radar-jogador\" title=\"Radar tático\">🎯</span>" : "") +
       "</span>" +
       "<span class=\"nome-vaga\">" +
         (jogador && estado.capitaoId === jogador._id ? "<span class=\"tag-capitao-campo\" title=\"Capitão\">©</span>" : "") +
@@ -760,17 +813,6 @@ function renderizarCampo() {
       alternarSelecaoTroca({ tipo: "titular", vagaId: vaga.id }, botao);
     });
 
-    // Radar Tático: agora é um ícone dedicado (🎯) no canto do jogador, não mais toque longo.
-    if (jogador) {
-      const iconeRadar = botao.querySelector(".icone-radar-jogador");
-      if (iconeRadar) {
-        iconeRadar.addEventListener("click", function (evento) {
-          evento.stopPropagation();
-          if (typeof abrirRadarTatico === "function") abrirRadarTatico(vaga, jogador);
-        });
-      }
-    }
-
     // Formação Personalizada: arrastar reposiciona o jogador livre no campo, em vez de
     // criar seta tática (os dois gestos usam o mesmo dedo/botão, então não coexistem).
     // O goleiro fica sempre fixo na área do gol, em qualquer formação.
@@ -782,11 +824,6 @@ function renderizarCampo() {
 
     campoEl.appendChild(botao);
   });
-
-  // O campo foi redesenhado do zero — reaplica o destaque do Radar Tático, se algum jogador estiver selecionado.
-  if (typeof radarAberto !== "undefined" && radarAberto && typeof destacarVagaRadar === "function") {
-    destacarVagaRadar(radarAberto.vagaId);
-  }
 
   montarSelectCapitao();
 }
@@ -815,17 +852,13 @@ function renderizarCampoDuploPartida() {
   montarMetadeCampoDuplo(campoEl, "casa", function (y) { return (100 - y) * 0.5; });
   // Visitante: comprime SEM inverter, na metade de baixo — goleiro perto da base, ataque perto do meio.
   montarMetadeCampoDuplo(campoEl, "fora", function (y) { return 50 + y * 0.5; });
-
-  if (typeof radarAberto !== "undefined" && radarAberto && typeof destacarVagaRadar === "function") {
-    destacarVagaRadar(radarAberto.vagaId);
-  }
 }
 
 /**
  * Monta as vagas de UM lado (casa/fora) dentro do campo duplo. Só o lado que é o MEU time
- * (`meuLadoNaPartida`) fica interativo (tocar pra substituir, arrastar seta, toque longo pro
- * Radar Tático) — o adversário é só visualização, os outros ~39 clubes da liga não têm uma
- * escalação "editável" de verdade fora da match engine.
+ * (`meuLadoNaPartida`) fica interativo (tocar pra substituir, arrastar seta) — o adversário
+ * é só visualização, os outros ~39 clubes da liga não têm uma escalação "editável" de
+ * verdade fora da match engine.
  */
 function montarMetadeCampoDuplo(campoEl, lado, transformarY) {
   const souEuNesseLado = lado === meuLadoNaPartida;
@@ -866,7 +899,6 @@ function montarMetadeCampoDuplo(campoEl, lado, transformarY) {
       "<span class=\"bolinha-wrap\">" +
         "<span class=\"bolinha\">" + obterNumeroCamisa(jogador) + "</span>" +
         (souEuNesseLado ? montarIndicadoresSetas(vaga, jogador) : "") +
-        (souEuNesseLado ? "<span class=\"icone-radar-jogador\" title=\"Radar tático\">🎯</span>" : "") +
       "</span>" +
       "<span class=\"nome-vaga\">" +
         (souEuNesseLado && estado.capitaoId === jogador._id ? "<span class=\"tag-capitao-campo\" title=\"Capitão\">©</span>" : "") +
@@ -882,15 +914,6 @@ function montarMetadeCampoDuplo(campoEl, lado, transformarY) {
         abrirSeletorJogador(vaga);
       });
       if (vaga.pos !== "GOL") anexarArrastoSeta(node, vaga, jogador);
-
-      // Radar Tático: ícone dedicado (🎯) no canto do jogador, não mais toque longo.
-      const iconeRadar = node.querySelector(".icone-radar-jogador");
-      if (iconeRadar) {
-        iconeRadar.addEventListener("click", function (evento) {
-          evento.stopPropagation();
-          if (typeof abrirRadarTatico === "function") abrirRadarTatico(vaga, jogador);
-        });
-      }
     }
 
     campoEl.appendChild(node);
@@ -1290,7 +1313,6 @@ function salvarCoordenadaPersonalizada(vagaId, x, y) {
   if (!estado.formacaoPersonalizada) return;
   estado.formacaoPersonalizada.coords[vagaId] = { x: Math.round(x * 10) / 10, y: Math.round(y * 10) / 10 };
   salvarProgresso();
-  if (typeof atualizarRadarTaticoSeAberto === "function") atualizarRadarTaticoSeAberto();
 }
 
 /** Liga/desliga uma seta numa vaga, respeitando o máximo de 2 por jogador. */
@@ -1308,7 +1330,6 @@ function alternarSeta(vagaId, chave) {
   salvarProgresso();
   renderizarCampo();
   renderizarResumoSetas();
-  if (typeof atualizarRadarTaticoSeAberto === "function") atualizarRadarTaticoSeAberto();
 }
 
 /** Lista, em texto simples, o efeito de cada seta ativa — os bônus e as contrapartidas. */
@@ -1507,8 +1528,16 @@ function renderizarBanco() {
   reaplicarSelecaoTrocaVisual();
 }
 
-/** Elenco que sobrou fora do banco relacionado — também em carrossel, mesmo node compacto. */
+/**
+ * Elenco que sobrou fora do banco relacionado — também em carrossel, mesmo node compacto.
+ * Durante o "Mexer no time" (partida ativa) essa seção inteira some: a convocação já fechou
+ * (mesma regra de súmula real de sempre — ver `criarNodeCompactoJogador`), então só faz
+ * sentido mostrar o gramado com os titulares e o Banco de Reservas lateral.
+ */
 function renderizarNaoRelacionados() {
+  const secaoEl = document.getElementById("secao-nao-relacionados");
+  if (secaoEl) secaoEl.hidden = estaEmPartidaAtiva();
+
   const carrosselEl = document.getElementById("carrossel-nao-relacionados");
   const qtdEl = document.getElementById("qtd-nao-relacionados");
   if (!carrosselEl) return;
@@ -1588,7 +1617,6 @@ function executarTrocaSelecionados(sel1, sel2) {
     salvarProgresso();
     renderizarCampo();
     renderizarResumoSetas();
-    if (typeof atualizarRadarTaticoSeAberto === "function") atualizarRadarTaticoSeAberto();
     return;
   }
 
@@ -1803,7 +1831,6 @@ function definirTatica(campo, valor) {
   estado.tatica[campo] = valor;
   salvarProgresso();
   renderizarTatica();
-  if (typeof atualizarRadarTaticoSeAberto === "function") atualizarRadarTaticoSeAberto();
 }
 
 /* ---------- Partida ao vivo (Fase 4) ---------- */
@@ -5240,7 +5267,6 @@ function escolherJogadorParaVaga(idVaga, idJogador) {
   renderizarResumoSetas();
   renderizarBanco();
   renderizarInfoSubstituicoes();
-  if (typeof atualizarRadarTaticoSeAberto === "function") atualizarRadarTaticoSeAberto();
   fecharSeletorJogador();
 }
 
@@ -5296,6 +5322,8 @@ async function continuarJogoSalvo() {
     estado.titulares = registro.titulares || {};
     // Saves de antes da Formação Personalizada não têm esse campo.
     estado.formacaoPersonalizada = registro.formacaoPersonalizada || null;
+    // Saves de antes da tela "Novo Jogo" (config. do técnico) não têm esse campo.
+    estado.tecnico = registro.tecnico || null;
     estado.tatica = registro.tatica || taticaPadrao();
     estado.setas = registro.setas || {};
     estado.temporada = registro.temporada || null;
@@ -5412,17 +5440,38 @@ function ligarBotoes() {
   }
 
   const btnNovo = document.getElementById("btn-novo-jogo");
-  if (btnNovo) btnNovo.addEventListener("click", abrirTelaTimes);
+  if (btnNovo) btnNovo.addEventListener("click", abrirTelaNovoJogoConfig);
 
   const btnContinuar = document.getElementById("btn-continuar");
   if (btnContinuar) btnContinuar.addEventListener("click", continuarJogoSalvo);
 
-  const btnVoltarInicio = document.getElementById("btn-voltar-inicio");
-  if (btnVoltarInicio) {
-    btnVoltarInicio.addEventListener("click", function () {
+  const btnVoltarNovoJogo = document.getElementById("btn-voltar-novo-jogo");
+  if (btnVoltarNovoJogo) {
+    btnVoltarNovoJogo.addEventListener("click", function () {
       atualizarBotaoContinuar();
       mostrarTela("tela-inicio");
     });
+  }
+
+  const checkTimeAleatorio = document.getElementById("check-time-aleatorio");
+  if (checkTimeAleatorio) checkTimeAleatorio.addEventListener("change", atualizarEstadoCheckboxAleatorio);
+
+  const inputNomeTecnico = document.getElementById("input-nome-tecnico");
+  if (inputNomeTecnico) {
+    inputNomeTecnico.addEventListener("input", function () {
+      document.getElementById("erro-nome-tecnico").hidden = true;
+      inputNomeTecnico.classList.remove("campo-invalido");
+    });
+  }
+
+  const btnIniciarConfig = document.getElementById("btn-iniciar-config-jogo");
+  if (btnIniciarConfig) btnIniciarConfig.addEventListener("click", iniciarNovoJogoConfig);
+
+  // "←" da lista de times volta pra tela de configuração do técnico (não direto pro título) —
+  // preserva o que já foi preenchido lá (nome, nacionalidade), já que a tela só fica escondida.
+  const btnVoltarInicio = document.getElementById("btn-voltar-inicio");
+  if (btnVoltarInicio) {
+    btnVoltarInicio.addEventListener("click", abrirTelaNovoJogoConfig);
   }
 
   const btnVoltarTimes = document.getElementById("btn-voltar-times");

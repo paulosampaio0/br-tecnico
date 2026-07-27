@@ -39,6 +39,65 @@
 
   </main>
 
+  <!-- Tela: configuração do técnico (país, divisão, nome, nacionalidade, time aleatório) -->
+  <main class="tela tela-novo-jogo" id="tela-novo-jogo" hidden>
+
+    <button class="btn-voltar btn-voltar-novo-jogo" id="btn-voltar-novo-jogo" type="button" aria-label="Voltar">←</button>
+
+    <section class="painel-config-tecnico">
+      <h2 class="titulo-config-tecnico">Escolha o time para treinar</h2>
+
+      <div class="campo-config">
+        <label for="select-pais-config">País</label>
+        <select id="select-pais-config">
+          <option value="BRA">🇧🇷 Brasil</option>
+        </select>
+      </div>
+
+      <div class="campo-config" id="grupo-divisao-config">
+        <label for="select-divisao-config">Divisão</label>
+        <select id="select-divisao-config">
+          <option value="serie_a">1ª divisão — Brasileirão Série A</option>
+          <option value="serie_b">2ª divisão — Brasileirão Série B</option>
+        </select>
+      </div>
+
+      <div class="campo-config">
+        <label for="input-nome-tecnico">Nome do Técnico</label>
+        <input type="text" id="input-nome-tecnico" placeholder="Como o elenco vai te chamar?" maxlength="30" autocomplete="off" />
+        <p class="erro-campo-config" id="erro-nome-tecnico" hidden>Digite o nome do técnico pra continuar.</p>
+      </div>
+
+      <div class="campo-config">
+        <label for="select-nacionalidade-tecnico">Nacionalidade do técnico</label>
+        <select id="select-nacionalidade-tecnico">
+          <option value="BRA">🇧🇷 Brasil</option>
+          <option value="ARG">🇦🇷 Argentina</option>
+          <option value="URU">🇺🇾 Uruguai</option>
+          <option value="PAR">🇵🇾 Paraguai</option>
+          <option value="CHI">🇨🇱 Chile</option>
+          <option value="COL">🇨🇴 Colômbia</option>
+          <option value="POR">🇵🇹 Portugal</option>
+          <option value="ESP">🇪🇸 Espanha</option>
+          <option value="ITA">🇮🇹 Itália</option>
+          <option value="ENG">🇬🇧 Inglaterra</option>
+          <option value="NED">🇳🇱 Holanda</option>
+        </select>
+      </div>
+
+      <label class="checkbox-config" for="check-time-aleatorio">
+        <input type="checkbox" id="check-time-aleatorio" class="input-checkbox-config" />
+        <span class="caixa-checkbox-config" aria-hidden="true"></span>
+        <span>Iniciar com um time aleatório</span>
+      </label>
+    </section>
+
+    <button class="btn-iniciar-config" id="btn-iniciar-config-jogo" type="button">
+      Iniciar Jogo ▶
+    </button>
+
+  </main>
+
   <!-- Tela: escolher time -->
   <main class="tela tela-times" id="tela-times" hidden>
 
@@ -150,49 +209,52 @@
       🎲 Sugerir substituição
     </button>
 
-    <div class="campo" id="campo-titular"></div>
+    <div class="grade-campo-banco">
+      <div class="coluna-campo">
+        <div class="campo" id="campo-titular"></div>
 
-    <!-- Campo tático duplo (Mandante em cima atacando pra baixo, Visitante embaixo atacando
-         pra cima) — só aparece durante uma partida ativa ("Mexer no time"); ver renderizarCampo(). -->
-    <div class="campo campo-duplo" id="campo-duplo-partida" hidden>
-      <span class="rotulo-time-campo-duplo rotulo-time-casa" id="campo-duplo-nome-casa">Mandante</span>
-      <span class="rotulo-time-campo-duplo rotulo-time-fora" id="campo-duplo-nome-fora">Visitante</span>
+        <!-- Campo tático duplo (Mandante em cima atacando pra baixo, Visitante embaixo atacando
+             pra cima) — só aparece durante uma partida ativa ("Mexer no time"); ver renderizarCampo(). -->
+        <div class="campo campo-duplo" id="campo-duplo-partida" hidden>
+          <span class="rotulo-time-campo-duplo rotulo-time-casa" id="campo-duplo-nome-casa">Mandante</span>
+          <span class="rotulo-time-campo-duplo rotulo-time-fora" id="campo-duplo-nome-fora">Visitante</span>
+        </div>
+
+        <p class="info-substituicoes" id="info-substituicoes" hidden></p>
+
+        <p class="dica-setas">
+          Segure e arraste um jogador (exceto o goleiro) para até 2 direções:
+          isso ativa um estilo especial de atuação para ele.
+        </p>
+
+        <section class="secao-substituicoes-partida" id="secao-substituicoes-partida" hidden>
+          <h3>Jogadores substituídos</h3>
+          <div class="colunas-substituicoes">
+            <div class="coluna-substituicoes">
+              <p class="nome-time-substituicoes" id="substituicoes-nome-casa">Mandante</p>
+              <ul class="lista lista-substituicoes" id="lista-substituicoes-casa"></ul>
+            </div>
+            <div class="coluna-substituicoes">
+              <p class="nome-time-substituicoes" id="substituicoes-nome-fora">Visitante</p>
+              <ul class="lista lista-substituicoes" id="lista-substituicoes-fora"></ul>
+            </div>
+          </div>
+        </section>
+
+        <section class="secao-resumo-setas" id="secao-resumo-setas" hidden>
+          <h3>Setas ativas</h3>
+          <ul class="lista lista-resumo-setas" id="lista-resumo-setas"></ul>
+        </section>
+      </div>
+
+      <aside class="secao-banco coluna-banco-lateral" id="secao-banco">
+        <h3>Banco (<span id="qtd-banco">0</span>/<span id="qtd-banco-maximo">9</span>)</h3>
+        <div class="carrossel-jogadores carrossel-banco-lateral" id="carrossel-banco"></div>
+        <p class="dica-troca-jogadores">Toque em 2 jogadores pra trocá-los.</p>
+      </aside>
     </div>
 
-    <p class="info-substituicoes" id="info-substituicoes" hidden></p>
-
-    <p class="dica-setas">
-      Segure e arraste um jogador (exceto o goleiro) para até 2 direções:
-      isso ativa um estilo especial de atuação para ele. Toque no ícone 🎯 do
-      jogador para abrir o Radar Tático.
-    </p>
-
-    <section class="secao-substituicoes-partida" id="secao-substituicoes-partida" hidden>
-      <h3>Jogadores substituídos</h3>
-      <div class="colunas-substituicoes">
-        <div class="coluna-substituicoes">
-          <p class="nome-time-substituicoes" id="substituicoes-nome-casa">Mandante</p>
-          <ul class="lista lista-substituicoes" id="lista-substituicoes-casa"></ul>
-        </div>
-        <div class="coluna-substituicoes">
-          <p class="nome-time-substituicoes" id="substituicoes-nome-fora">Visitante</p>
-          <ul class="lista lista-substituicoes" id="lista-substituicoes-fora"></ul>
-        </div>
-      </div>
-    </section>
-
-    <section class="secao-resumo-setas" id="secao-resumo-setas" hidden>
-      <h3>Setas ativas</h3>
-      <ul class="lista lista-resumo-setas" id="lista-resumo-setas"></ul>
-    </section>
-
-    <section class="secao-banco">
-      <h3>Banco de reservas (<span id="qtd-banco">0</span>/<span id="qtd-banco-maximo">9</span>)</h3>
-      <div class="carrossel-jogadores" id="carrossel-banco"></div>
-      <p class="dica-troca-jogadores">Toque em um jogador e depois em outro para trocá-los.</p>
-    </section>
-
-    <section class="secao-nao-relacionados">
+    <section class="secao-nao-relacionados" id="secao-nao-relacionados">
       <h3>Não relacionados (<span id="qtd-nao-relacionados">0</span>)</h3>
       <div class="carrossel-jogadores" id="carrossel-nao-relacionados"></div>
     </section>
@@ -669,30 +731,13 @@
     </div>
   </div>
 
-  <!-- Radar Tático: toque longo num jogador do campo abre este painel -->
-  <div class="sobreposicao sobreposicao-radar" id="sobreposicao-radar" hidden>
-    <div class="folha-radar" id="folha-radar">
-      <div class="alca-folha-radar"></div>
-      <header class="cabecalho-radar">
-        <div class="info-basica-radar">
-          <h3 id="radar-nome-jogador">Jogador</h3>
-          <p id="radar-clube-posicao">Clube · Posição</p>
-        </div>
-        <button class="btn-fechar" id="btn-fechar-radar" type="button" aria-label="Fechar">✕</button>
-      </header>
-      <div class="conteudo-radar" id="conteudo-radar"></div>
-    </div>
-  </div>
-
   <script src="js/sons.js"></script>
   <script src="js/dados.js"></script>
   <script src="js/financas.js"></script>
   <script src="js/formacoes.js"></script>
   <script src="js/setas.js"></script>
-  <script src="js/radar-engine.js"></script>
   <script src="js/partida.js"></script>
   <script src="js/temporada.js"></script>
   <script src="js/app.js"></script>
-  <script src="js/radar-ui.js"></script>
 </body>
 </html>

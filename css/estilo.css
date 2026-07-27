@@ -15,6 +15,14 @@
 
   --raio: 14px;
   --toque-min: 52px; /* altura mínima confortável para o dedo */
+
+  /* Tela "Novo Jogo" (config. do técnico) — vidro navy + neon verde, à parte da
+     paleta plana verde/dourado do resto do jogo (ver seção dedicada abaixo). */
+  --navy-glass-1: rgba(15, 27, 44, 0.74);
+  --navy-glass-2: rgba(7, 14, 24, 0.88);
+  --navy-borda: rgba(255, 255, 255, 0.1);
+  --neon-verde: #39ff88;
+  --neon-verde-escuro: #14c96a;
 }
 
 /* Reset simples */
@@ -760,6 +768,64 @@ body::before {
   overflow: hidden;
 }
 
+/* Campo + Banco de Reservas lado a lado (o campo cresce, o banco é uma coluna fixa e estreita
+   à direita) — vale tanto pré-jogo quanto durante o "Mexer no time". */
+.grade-campo-banco {
+  display: grid;
+  grid-template-columns: 1fr minmax(84px, 112px);
+  gap: 10px;
+  align-items: start;
+  width: 100%;
+}
+
+.coluna-campo {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-width: 0; /* impede que o aspect-ratio do campo estoure a coluna do grid */
+}
+
+.coluna-banco-lateral {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-self: stretch;
+  padding: 10px 6px 8px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  min-width: 0;
+}
+
+.coluna-banco-lateral.secao-banco h3 {
+  font-size: 10.5px;
+  line-height: 1.25;
+  text-align: center;
+  margin-bottom: 4px;
+}
+
+/* Sobrescreve o carrossel horizontal padrão: aqui a lista de reservas rola na VERTICAL,
+   dentro da coluna lateral (mesmos cards compactos de sempre, só o eixo muda). */
+.carrossel-jogadores.carrossel-banco-lateral {
+  flex-direction: column;
+  overflow-x: visible;
+  overflow-y: auto;
+  scroll-snap-type: y proximity;
+  gap: 10px;
+  max-height: min(64vh, 520px);
+  padding: 2px 2px 4px;
+}
+
+.carrossel-banco-lateral .node-compacto-jogador {
+  width: 100%;
+}
+
+.coluna-banco-lateral .dica-troca-jogadores {
+  font-size: 9px;
+  line-height: 1.3;
+  margin-top: 0;
+}
+
 /* Círculo central, só decorativo */
 .campo::after {
   content: "";
@@ -836,35 +902,6 @@ body::before {
 .seta-indicador.baixo { bottom: -12px; left: 50%; transform: translateX(-50%); }
 .seta-indicador.esquerda { left: -12px; top: 50%; transform: translateY(-50%); }
 .seta-indicador.direita { right: -12px; top: 50%; transform: translateY(-50%); }
-
-/* Ícone dedicado pra abrir o Radar Tático — canto superior direito do node do jogador. */
-.icone-radar-jogador {
-  position: absolute;
-  top: -6px;
-  right: -6px;
-  width: 16px;
-  height: 16px;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 9px;
-  line-height: 1;
-  background: rgba(0, 0, 0, 0.75);
-  border: 1px solid rgba(255, 255, 255, 0.6);
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
-  cursor: pointer;
-  touch-action: manipulation;
-  z-index: 3;
-}
-
-.vaga-dupla .icone-radar-jogador {
-  width: 13px;
-  height: 13px;
-  font-size: 7px;
-  top: -4px;
-  right: -4px;
-}
 
 .vaga.vazia .bolinha {
   background: rgba(255, 255, 255, 0.15);
@@ -2222,286 +2259,6 @@ body::before {
 .item-evolucao .desce { color: #ff8f8f; font-weight: 700; }
 
 /* ============================================================
-   Radar Tático — toque longo num jogador do campo
-   ============================================================ */
-
-/* Destaque do jogador selecionado no campo, atrás do painel */
-.vaga.vaga-radar-selecionada .bolinha {
-  border-color: var(--amarelo);
-  box-shadow: 0 0 0 4px rgba(255, 210, 63, 0.35), 0 3px 10px rgba(0, 0, 0, 0.5);
-  animation: pulso-selecao-radar 1.1s ease-in-out infinite;
-}
-
-@keyframes pulso-selecao-radar {
-  0%, 100% { box-shadow: 0 0 0 4px rgba(255, 210, 63, 0.35), 0 3px 10px rgba(0, 0, 0, 0.5); }
-  50% { box-shadow: 0 0 0 8px rgba(255, 210, 63, 0.12), 0 3px 10px rgba(0, 0, 0, 0.5); }
-}
-
-.sobreposicao-radar {
-  background: rgba(0, 0, 0, 0.4); /* leve escurecimento — o campo continua visível atrás */
-  align-items: flex-end;
-  z-index: 60;
-}
-
-.folha-radar {
-  width: 100%;
-  height: 72vh;
-  max-height: 72vh;
-  background: var(--verde-escuro);
-  border-radius: 20px 20px 0 0;
-  box-shadow: 0 -10px 30px rgba(0, 0, 0, 0.55);
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-  animation: subir-folha-radar 0.28s cubic-bezier(0.2, 0.8, 0.3, 1);
-  touch-action: none;
-}
-
-@keyframes subir-folha-radar {
-  from { transform: translateY(100%); }
-  to { transform: translateY(0); }
-}
-
-.alca-folha-radar {
-  width: 40px;
-  height: 4px;
-  border-radius: 3px;
-  background: rgba(255, 255, 255, 0.25);
-  margin: 10px auto 0;
-  flex-shrink: 0;
-}
-
-.cabecalho-radar {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 10px;
-  padding: 10px 18px 12px;
-  flex-shrink: 0;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-}
-
-.info-basica-radar h3 {
-  font-size: 18px;
-  font-weight: 800;
-}
-
-.info-basica-radar p {
-  font-size: 12px;
-  color: var(--cinza-texto);
-  margin-top: 2px;
-}
-
-.conteudo-radar {
-  flex: 1;
-  overflow-y: auto;
-  padding: 14px 18px calc(env(safe-area-inset-bottom) + 24px);
-  -webkit-overflow-scrolling: touch;
-  transition: opacity 0.12s ease;
-}
-
-.conteudo-radar-saindo {
-  opacity: 0;
-}
-
-/* ---- Cartão de informações do jogador ---- */
-
-.grade-info-radar {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 8px;
-  margin-bottom: 6px;
-}
-
-.campo-info-radar {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  padding: 8px 10px;
-  border-radius: 10px;
-  background: rgba(255, 255, 255, 0.05);
-}
-
-.rotulo-info-radar {
-  font-size: 10px;
-  text-transform: uppercase;
-  letter-spacing: 0.4px;
-  color: var(--cinza-texto);
-}
-
-.valor-info-radar {
-  font-size: 14px;
-  font-weight: 700;
-  color: var(--branco);
-}
-
-.campo-energia-radar .valor-info-radar.energia-alta { color: #7ee0a5; }
-.campo-energia-radar .valor-info-radar.energia-media { color: #ffb85c; }
-.campo-energia-radar .valor-info-radar.energia-baixa { color: #ff8f8f; }
-
-.estrelas-radar {
-  text-align: center;
-  color: var(--amarelo);
-  font-size: 13px;
-  font-weight: 700;
-  margin-bottom: 8px;
-}
-
-/* ---- Seções e legenda ---- */
-
-.titulo-secao-radar {
-  font-size: 15px;
-  font-weight: 800;
-  margin: 18px 0 4px;
-  text-align: center;
-}
-
-.legenda-radar {
-  font-size: 11px;
-  color: var(--cinza-texto);
-  text-align: center;
-  margin-bottom: 8px;
-  line-height: 1.4;
-}
-
-/* ---- Gráfico radar (octógono em SVG) ---- */
-
-.radar-svg {
-  width: 100%;
-  max-width: 280px;
-  display: block;
-  margin: 0 auto;
-}
-
-.radar-malha {
-  fill: none;
-  stroke: rgba(255, 255, 255, 0.12);
-  stroke-width: 1;
-}
-
-.radar-eixo {
-  stroke: rgba(255, 255, 255, 0.1);
-  stroke-width: 1;
-}
-
-.radar-rotulo {
-  fill: var(--cinza-texto);
-  font-size: 9px;
-  font-weight: 700;
-  text-transform: uppercase;
-}
-
-.radar-area {
-  stroke-width: 2;
-  transition: points 0.25s ease;
-}
-
-.radar-area-jogador {
-  fill: rgba(255, 210, 63, 0.28);
-  stroke: var(--amarelo);
-}
-
-.radar-area-equipe {
-  fill: rgba(61, 220, 122, 0.22);
-  stroke: #3ddc7a;
-}
-
-/* ---- Barras de indicadores + comparação antes/depois ---- */
-
-.lista-indicadores-radar {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  margin-top: 10px;
-}
-
-.linha-indicador-radar {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.cabecalho-linha-indicador {
-  display: flex;
-  justify-content: space-between;
-  font-size: 12px;
-}
-
-.rotulo-indicador-radar {
-  color: var(--cinza-texto);
-  font-weight: 600;
-}
-
-.valor-indicador-radar {
-  font-weight: 800;
-  color: var(--branco);
-}
-
-.trilho-barra-radar {
-  height: 7px;
-  border-radius: 4px;
-  background: rgba(255, 255, 255, 0.08);
-  overflow: hidden;
-}
-
-.barra-radar {
-  height: 100%;
-  border-radius: 4px;
-  transition: width 0.35s ease;
-}
-
-.barra-radar-boa { background: #3ddc7a; }
-.barra-radar-media { background: var(--amarelo); }
-.barra-radar-fraca { background: #ff8f8f; }
-
-.delta-indicador {
-  font-size: 11px;
-  font-weight: 700;
-  align-self: flex-end;
-}
-
-.delta-positivo { color: #3ddc7a; }
-.delta-negativo { color: #ff8f8f; }
-
-.indicador-atualizado .valor-indicador-radar,
-.indicador-atualizado .delta-indicador {
-  animation: pulso-valor-radar 0.6s ease;
-}
-
-@keyframes pulso-valor-radar {
-  0% { transform: scale(1.25); }
-  100% { transform: scale(1); }
-}
-
-/* ---- Observações automáticas ---- */
-
-.lista-observacoes-radar {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  margin-top: 12px;
-}
-
-.item-observacao-radar {
-  font-size: 12px;
-  padding: 8px 12px;
-  border-radius: 10px;
-  line-height: 1.4;
-}
-
-.item-observacao-boa {
-  background: rgba(61, 220, 122, 0.12);
-  border: 1px solid rgba(61, 220, 122, 0.3);
-  color: #b6f2cd;
-}
-
-.item-observacao-alerta {
-  background: rgba(255, 143, 143, 0.12);
-  border: 1px solid rgba(255, 143, 143, 0.3);
-  color: #ffcaca;
-}
-
-/* ============================================================
    Finanças — Fase 9
    ============================================================ */
 
@@ -3230,4 +2987,273 @@ body::before {
   font-size: 16px;
   color: var(--amarelo);
   letter-spacing: 1px;
+}
+
+/* ============================================================
+   Tela "Novo Jogo" — configuração do técnico
+   Vidro navy sobre estádio à noite (feito 100% em CSS — sem foto), bordas em
+   glow verde-neon, rótulos em dourado premium, CTA glossy com borda dourada.
+   ============================================================ */
+
+.tela-novo-jogo {
+  position: relative;
+  overflow: hidden;
+  justify-content: center;
+  gap: 28px;
+}
+
+/* Camada 1: céu de estádio à noite + refletores nos dois cantos + vinheta. */
+.tela-novo-jogo::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -2;
+  background:
+    radial-gradient(ellipse 60% 38% at 12% -4%, rgba(178, 255, 214, 0.22), transparent 62%),
+    radial-gradient(ellipse 60% 38% at 88% -4%, rgba(178, 255, 214, 0.22), transparent 62%),
+    radial-gradient(ellipse 95% 60% at 50% 108%, rgba(0, 0, 0, 0.65), transparent 72%),
+    linear-gradient(180deg, #04120b 0%, #082418 42%, #0b3d24 100%);
+}
+
+/* Camada 2: gramado em perspectiva, convergindo pro centro — o "estádio" do mockup. */
+.tela-novo-jogo::after {
+  content: "";
+  position: fixed;
+  left: 50%;
+  bottom: -12%;
+  width: 160%;
+  height: 58%;
+  transform: translateX(-50%) perspective(600px) rotateX(58deg);
+  transform-origin: bottom center;
+  background:
+    repeating-linear-gradient(
+      90deg,
+      rgba(255, 255, 255, 0.06) 0px, rgba(255, 255, 255, 0.06) 38px,
+      transparent 38px, transparent 78px
+    ),
+    linear-gradient(180deg, rgba(20, 110, 66, 0.6), rgba(7, 42, 25, 0.12));
+  -webkit-mask-image: linear-gradient(180deg, black, transparent 82%);
+  mask-image: linear-gradient(180deg, black, transparent 82%);
+  z-index: -1;
+  opacity: 0.9;
+}
+
+.btn-voltar-novo-jogo {
+  align-self: flex-start;
+}
+
+.painel-config-tecnico {
+  width: 100%;
+  max-width: 420px;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  padding: 30px 22px 26px;
+  border-radius: 24px;
+  background: linear-gradient(160deg, var(--navy-glass-1), var(--navy-glass-2));
+  border: 1px solid rgba(57, 255, 136, 0.35);
+  backdrop-filter: blur(18px) saturate(140%);
+  -webkit-backdrop-filter: blur(18px) saturate(140%);
+  box-shadow:
+    0 0 0 1px rgba(57, 255, 136, 0.1),
+    0 0 34px rgba(57, 255, 136, 0.16),
+    0 22px 50px rgba(0, 0, 0, 0.55);
+  animation: respiro-painel-config 4.5s ease-in-out infinite;
+}
+
+@keyframes respiro-painel-config {
+  0%, 100% { box-shadow: 0 0 0 1px rgba(57, 255, 136, 0.1), 0 0 34px rgba(57, 255, 136, 0.16), 0 22px 50px rgba(0, 0, 0, 0.55); }
+  50% { box-shadow: 0 0 0 1px rgba(57, 255, 136, 0.22), 0 0 44px rgba(57, 255, 136, 0.28), 0 22px 50px rgba(0, 0, 0, 0.55); }
+}
+
+.titulo-config-tecnico {
+  text-align: center;
+  font-size: clamp(20px, 6vw, 25px);
+  font-weight: 800;
+  letter-spacing: 0.2px;
+  background: linear-gradient(180deg, #fff3d0 0%, var(--amarelo) 55%, var(--amarelo-escuro) 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  filter: drop-shadow(0 2px 14px rgba(255, 210, 63, 0.3));
+}
+
+.campo-config {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  transition: opacity 0.18s ease, filter 0.18s ease;
+}
+
+.campo-config label {
+  font-size: 11.5px;
+  font-weight: 800;
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+  color: var(--amarelo);
+}
+
+.campo-config select,
+.campo-config input[type="text"] {
+  width: 100%;
+  min-height: 48px;
+  padding: 0 40px 0 14px;
+  border-radius: 12px;
+  border: 1px solid var(--navy-borda);
+  background: rgba(255, 255, 255, 0.07);
+  color: var(--branco);
+  font-size: 15px;
+  font-weight: 600;
+  font-family: inherit;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.campo-config input[type="text"] {
+  padding-right: 14px;
+}
+
+.campo-config select {
+  appearance: none;
+  -webkit-appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23ffd23f' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 12px center;
+  background-size: 16px;
+}
+
+.campo-config select option {
+  background: #0d1a2b;
+  color: var(--branco);
+}
+
+.campo-config select:focus,
+.campo-config input[type="text"]:focus {
+  outline: none;
+  border-color: var(--neon-verde);
+  background: rgba(255, 255, 255, 0.11);
+  box-shadow: 0 0 0 3px rgba(57, 255, 136, 0.22), 0 0 16px rgba(57, 255, 136, 0.22);
+}
+
+.campo-config input[type="text"]::placeholder {
+  color: var(--cinza-texto);
+  font-weight: 500;
+}
+
+/* Divisão desabilitada visualmente quando "time aleatório" está marcado. */
+.campo-config.campo-config-desabilitado {
+  opacity: 0.35;
+  filter: grayscale(0.5);
+  pointer-events: none;
+}
+
+.erro-campo-config {
+  font-size: 12px;
+  font-weight: 600;
+  color: #ff8f8f;
+}
+
+.campo-config input.campo-invalido,
+.campo-config input.campo-invalido:focus {
+  border-color: #ff5c5c;
+  box-shadow: 0 0 0 3px rgba(255, 92, 92, 0.22);
+  animation: tremor-campo-config 0.3s ease;
+}
+
+@keyframes tremor-campo-config {
+  0%, 100% { transform: translateX(0); }
+  25% { transform: translateX(-4px); }
+  75% { transform: translateX(4px); }
+}
+
+.checkbox-config {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--branco);
+  padding-top: 2px;
+}
+
+.input-checkbox-config {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.caixa-checkbox-config {
+  flex: 0 0 auto;
+  position: relative;
+  width: 24px;
+  height: 24px;
+  border-radius: 7px;
+  border: 2px solid var(--neon-verde);
+  background: rgba(57, 255, 136, 0.08);
+  box-shadow: 0 0 10px rgba(57, 255, 136, 0.28);
+  transition: background 0.15s ease;
+}
+
+.caixa-checkbox-config::after {
+  content: "";
+  position: absolute;
+  left: 6px;
+  top: 2px;
+  width: 6px;
+  height: 11px;
+  border: solid var(--amarelo-escuro);
+  border-width: 0 3px 3px 0;
+  transform: rotate(40deg);
+  opacity: 0;
+  transition: opacity 0.1s ease;
+}
+
+.input-checkbox-config:checked + .caixa-checkbox-config {
+  background: var(--neon-verde);
+}
+
+.input-checkbox-config:checked + .caixa-checkbox-config::after {
+  opacity: 1;
+}
+
+.input-checkbox-config:focus-visible + .caixa-checkbox-config {
+  outline: 2px solid var(--amarelo);
+  outline-offset: 2px;
+}
+
+.btn-iniciar-config {
+  width: 100%;
+  max-width: 420px;
+  min-height: 58px;
+  border: 1px solid rgba(255, 210, 63, 0.65);
+  border-radius: 16px;
+  background: linear-gradient(180deg, #7dff6c 0%, #22c95e 55%, #129a45 100%);
+  color: #06210f;
+  font-size: 17px;
+  font-weight: 800;
+  letter-spacing: 0.3px;
+  cursor: pointer;
+  position: relative;
+  overflow: hidden;
+  -webkit-tap-highlight-color: transparent;
+  transition: transform 0.08s ease, filter 0.15s ease;
+  box-shadow:
+    0 0 0 1px rgba(255, 210, 63, 0.22) inset,
+    0 10px 26px rgba(34, 201, 94, 0.42),
+    0 0 30px rgba(57, 255, 136, 0.32);
+}
+
+.btn-iniciar-config::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.55), rgba(255, 255, 255, 0) 45%);
+  opacity: 0.55;
+  pointer-events: none;
+}
+
+.btn-iniciar-config:active {
+  transform: scale(0.97);
 }
