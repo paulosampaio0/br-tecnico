@@ -208,6 +208,9 @@
       <button class="hub-nav-item" id="btn-voltar-elenco-escalacao" type="button">
         <span class="hub-nav-icone" aria-hidden="true">👥</span><span>Elenco</span>
       </button>
+      <button class="hub-nav-item" id="btn-ver-selecao-rodada" type="button">
+        <span class="hub-nav-icone" aria-hidden="true">🌟</span><span>Seleção</span>
+      </button>
       <button class="hub-nav-item" id="btn-ver-tabela" type="button">
         <span class="hub-nav-icone" aria-hidden="true">📊</span><span>Tabela</span>
       </button>
@@ -330,6 +333,35 @@
     <button class="btn btn-secundario btn-jogar-amistoso" id="btn-jogar-amistoso" type="button">
       ⚽ Jogar amistoso (sem afetar a tabela)
     </button>
+
+  </main>
+
+  <!-- Tela: Seleção da Rodada (Time da Rodada) -->
+  <main class="tela tela-selecao-rodada" id="tela-selecao-rodada" hidden>
+
+    <header class="cabecalho cabecalho-lista">
+      <button class="btn-voltar" id="btn-voltar-escalacao-selecao-rodada" type="button" aria-label="Voltar">←</button>
+      <h2 class="titulo-lista">Seleção da Rodada</h2>
+    </header>
+
+    <div class="filtros-selecao-rodada">
+      <div class="campo-filtro-selecao-rodada">
+        <label for="select-pais-selecao-rodada">País</label>
+        <select id="select-pais-selecao-rodada" disabled>
+          <option value="brasil">Brasil</option>
+        </select>
+      </div>
+      <div class="campo-filtro-selecao-rodada">
+        <label for="select-divisao-selecao-rodada">Divisão</label>
+        <select id="select-divisao-selecao-rodada"></select>
+      </div>
+      <div class="campo-filtro-selecao-rodada">
+        <label for="select-rodada-selecao-rodada">Rodada</label>
+        <select id="select-rodada-selecao-rodada"></select>
+      </div>
+    </div>
+
+    <div class="campo campo-selecao-rodada" id="campo-selecao-rodada"></div>
 
   </main>
 

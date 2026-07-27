@@ -99,6 +99,10 @@ let selecaoTrocaAtual = null;
 let divisaoTabelaAtual = "serie_a";
 let rodadaResultadosExibida = 1;
 
+// Navegação da tela "Seleção da Rodada".
+let divisaoSelecaoRodadaAtual = null;
+let rodadaSelecaoRodadaAtual = null;
+
 const estado = {
   timeAtual: null, // { divisaoChave, nome, jogadores }
   tecnico: null, // { nome, nacionalidade } — definido na tela "Novo Jogo" (config. do técnico)
@@ -1789,6 +1793,12 @@ function resolverDropJogador(origem, jogador, clientX, clientY) {
  * arrasto de verdade — só a partir daí a rolagem nativa é bloqueada (`preventDefault`).
  */
 function anexarArrastoOrigemCompacta(botao, jogador, origem) {
+  // O Banco agora rola na VERTICAL (coluna lateral estreita) — o gesto de arrasto usava
+  // justamente o movimento vertical pra virar "arrasto de verdade", o que travava o scroll
+  // nativo da lista em celulares. Banco usa só tap-to-swap (`alternarSelecaoTroca`); o
+  // arrasto continua disponível pra Não Relacionados, cujo carrossel é horizontal.
+  if (origem.tipo === "banco") return;
+
   // Não Relacionados não oferece o gesto de arrastar durante uma partida — o toque simples já
   // fica desabilitado no botão nesse caso (ver `criarNodeCompactoJogador`), então nem tem o que arrastar.
   if (origem.tipo === "naoRelacionado" && estaEmPartidaAtiva()) return;
@@ -5098,6 +5108,166 @@ function renderizarOlheiros() {
   });
 }
 
+/* ---------- Tela: Seleção da Rodada (Time da Rodada) ---------- */
+
+/** PRNG determinístico (mulberry32) — mesma semente sempre gera a mesma sequência,
+    então a Seleção da Rodada não muda a cada re-render, só quando a rodada muda de verdade. */
+function criarRandomSeeded(semente) {
+  return function () {
+    semente |= 0;
+    semente = (semente + 0x6D2B79F5) | 0;
+    let t = Math.imul(semente ^ (semente >>> 15), 1 | semente);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+function semeanteDeTexto(texto) {
+  let h = 1779033703 ^ texto.length;
+  for (let i = 0; i < texto.length; i++) {
+    h = Math.imul(h ^ texto.charCodeAt(i), 3432918353);
+    h = (h << 13) | (h >>> 19);
+  }
+  return h >>> 0;
+}
+
+/**
+ * Nota sintética do jogador nessa rodada (não existe simulação de partida pra todos os ~40
+ * times da liga, só pro time do usuário — ver `estado.detalhesPartidaPorRodada`). Pra montar
+ * a Seleção da Rodada de qualquer divisão/rodada, usamos a mesma filosofia de nota das
+ * partidas de verdade (base + variação aleatória), mas com semente fixa por
+ * divisão+rodada+jogador — assim a nota é estável ao reabrir a tela, mas muda entre rodadas.
+ */
+function calcularNotaSinteticaRodada(jogador, nomeTime, divisaoChave, numeroRodada) {
+  const semente = semeanteDeTexto(divisaoChave + "|" + numeroRodada + "|" + nomeTime + "|" + jogador._id);
+  const aleatorio = criarRandomSeeded(semente)();
+  const baseForca = 5.4 + (Math.max(0, jogador.forca - 25) / 50) * 3.4;
+  const nota = baseForca + (aleatorio - 0.5) * 2.6;
+  return Math.round(clamp(nota, 4, 10) * 10) / 10;
+}
+
+/** Sigla curta do time (3 letras) pro card compacto no gramado. */
+function siglaTime(nomeTime) {
+  const letras = nomeTime.replace(/[^A-Za-zÀ-ú ]/g, "").split(" ").filter(Boolean).map(function (p) { return p[0]; });
+  return (letras.join("").slice(0, 3) || nomeTime.slice(0, 3)).toUpperCase();
+}
+
+/** Monta os 11 melhores da rodada (formação 4-3-3) entre TODOS os times de uma divisão. */
+function montarSelecaoDaRodada(dados, divisaoChave, numeroRodada) {
+  const divisao = dados.divisoes[divisaoChave];
+  if (!divisao) return [];
+
+  const candidatos = [];
+  divisao.times.forEach(function (time) {
+    time.jogadores.forEach(function (jogador) {
+      candidatos.push({
+        jogador: jogador,
+        nomeTime: time.nome,
+        chave: time.nome + "|" + jogador._id,
+        nota: calcularNotaSinteticaRodada(jogador, time.nome, divisaoChave, numeroRodada),
+      });
+    });
+  });
+
+  const vagas = FORMACOES["4-3-3"];
+  const usados = new Set();
+  const escolhidos = [];
+
+  vagas.forEach(function (vaga) {
+    const opcoes = candidatos
+      .filter(function (c) { return c.jogador.pos === vaga.pos && !usados.has(c.chave); })
+      .sort(function (a, b) { return b.nota - a.nota; });
+    const escolhido = opcoes[0] || candidatos
+      .filter(function (c) { return !usados.has(c.chave); })
+      .sort(function (a, b) { return b.nota - a.nota; })[0];
+    if (escolhido) {
+      usados.add(escolhido.chave);
+      escolhidos.push(Object.assign({ vaga: vaga }, escolhido));
+    }
+  });
+
+  return escolhidos;
+}
+
+function criarNoSelecaoRodada(item) {
+  const botao = document.createElement("button");
+  botao.type = "button";
+  botao.className = "no-selecao-rodada";
+  botao.style.left = item.vaga.x + "%";
+  botao.style.top = item.vaga.y + "%";
+
+  const faixaNota = item.nota >= 7.5 ? "boa" : item.nota >= 6.2 ? "media" : "ruim";
+  botao.innerHTML =
+    "<span class=\"pilula-pos-forca\">" + escaparHtml(item.jogador.pos) + "</span>" +
+    "<span class=\"nota-partida-badge nota-partida-" + faixaNota + "\">" + item.nota.toFixed(1) + "</span>" +
+    "<span class=\"nome-compacto-jogador\">" + escaparHtml(sobrenomeCurto(item.jogador.nome)) + "</span>" +
+    "<span class=\"sigla-time-selecao-rodada\">" + escaparHtml(siglaTime(item.nomeTime)) + "</span>";
+
+  botao.addEventListener("click", function () {
+    abrirPerfilAtleta(item.jogador, {
+      meu: estado.timeAtual && item.nomeTime === estado.timeAtual.nome,
+      nomeTime: item.nomeTime,
+      divisaoChave: divisaoSelecaoRodadaAtual,
+    });
+  });
+
+  return botao;
+}
+
+let dadosSelecaoRodadaCache = null;
+
+function renderizarSelecaoRodada() {
+  const campoEl = document.getElementById("campo-selecao-rodada");
+  if (!campoEl || !dadosSelecaoRodadaCache) return;
+  campoEl.innerHTML = "";
+  montarSelecaoDaRodada(dadosSelecaoRodadaCache, divisaoSelecaoRodadaAtual, rodadaSelecaoRodadaAtual)
+    .forEach(function (item) { campoEl.appendChild(criarNoSelecaoRodada(item)); });
+}
+
+function montarFiltrosSelecaoRodada(dados) {
+  if (!divisaoSelecaoRodadaAtual) {
+    divisaoSelecaoRodadaAtual = (estado.timeAtual && estado.timeAtual.divisaoChave) || "serie_a";
+  }
+
+  const selectDivisao = document.getElementById("select-divisao-selecao-rodada");
+  if (selectDivisao && selectDivisao.options.length === 0) {
+    listarDivisoes(dados).forEach(function (divisao) {
+      const opcao = document.createElement("option");
+      opcao.value = divisao.chave;
+      opcao.textContent = ROTULO_DIVISAO_ORDINAL[divisao.chave] || divisao.nome;
+      selectDivisao.appendChild(opcao);
+    });
+  }
+  if (selectDivisao) selectDivisao.value = divisaoSelecaoRodadaAtual;
+
+  const totalRodadas = estado.temporada && estado.temporada[divisaoSelecaoRodadaAtual]
+    ? estado.temporada[divisaoSelecaoRodadaAtual].calendario.length
+    : 38;
+  if (!rodadaSelecaoRodadaAtual || rodadaSelecaoRodadaAtual > totalRodadas) {
+    const rodadaAtual = estado.temporada ? estado.temporada.rodadaAtual : 1;
+    rodadaSelecaoRodadaAtual = Math.min(Math.max(1, rodadaAtual - 1), totalRodadas) || 1;
+  }
+
+  const selectRodada = document.getElementById("select-rodada-selecao-rodada");
+  if (selectRodada) {
+    selectRodada.innerHTML = "";
+    for (let i = 1; i <= totalRodadas; i++) {
+      const opcao = document.createElement("option");
+      opcao.value = i;
+      opcao.textContent = i + "ª R";
+      selectRodada.appendChild(opcao);
+    }
+    selectRodada.value = rodadaSelecaoRodadaAtual;
+  }
+}
+
+async function abrirTelaSelecaoRodada() {
+  mostrarTela("tela-selecao-rodada");
+  dadosSelecaoRodadaCache = await carregarDados();
+  montarFiltrosSelecaoRodada(dadosSelecaoRodadaCache);
+  renderizarSelecaoRodada();
+}
+
 function abrirTelaTabela() {
   mostrarTela("tela-tabela");
   divisaoTabelaAtual = estado.timeAtual.divisaoChave;
@@ -6081,6 +6251,30 @@ function ligarBotoes() {
 
   const btnVerTabela = document.getElementById("btn-ver-tabela");
   if (btnVerTabela) btnVerTabela.addEventListener("click", abrirTelaTabela);
+
+  const btnVerSelecaoRodada = document.getElementById("btn-ver-selecao-rodada");
+  if (btnVerSelecaoRodada) btnVerSelecaoRodada.addEventListener("click", abrirTelaSelecaoRodada);
+
+  const btnVoltarEscalacaoSelecaoRodada = document.getElementById("btn-voltar-escalacao-selecao-rodada");
+  if (btnVoltarEscalacaoSelecaoRodada) btnVoltarEscalacaoSelecaoRodada.addEventListener("click", abrirTelaEscalacao);
+
+  const selectDivisaoSelecaoRodada = document.getElementById("select-divisao-selecao-rodada");
+  if (selectDivisaoSelecaoRodada) {
+    selectDivisaoSelecaoRodada.addEventListener("change", function () {
+      divisaoSelecaoRodadaAtual = selectDivisaoSelecaoRodada.value;
+      rodadaSelecaoRodadaAtual = null;
+      montarFiltrosSelecaoRodada(dadosSelecaoRodadaCache);
+      renderizarSelecaoRodada();
+    });
+  }
+
+  const selectRodadaSelecaoRodada = document.getElementById("select-rodada-selecao-rodada");
+  if (selectRodadaSelecaoRodada) {
+    selectRodadaSelecaoRodada.addEventListener("change", function () {
+      rodadaSelecaoRodadaAtual = Number(selectRodadaSelecaoRodada.value);
+      renderizarSelecaoRodada();
+    });
+  }
 
   const btnVoltarEscalacaoTabela = document.getElementById("btn-voltar-escalacao-tabela");
   if (btnVoltarEscalacaoTabela) btnVoltarEscalacaoTabela.addEventListener("click", abrirTelaEscalacao);
