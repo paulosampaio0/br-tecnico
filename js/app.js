@@ -266,20 +266,21 @@ function abrirTelaNovoJogoConfig() {
   atualizarEstadoCheckboxAleatorio();
 }
 
-/** "Iniciar com um time aleatório" marcado: esconde a escolha manual de divisão (não há mais nada pra escolher). */
+/**
+ * "Iniciar com um time aleatório" marcado: esconde a escolha manual de divisão/time (não há
+ * mais nada pra escolher) e troca qual botão fica disponível — "Escolher time" só faz sentido
+ * no fluxo manual; o CTA de baixo ("Sortear e Iniciar Jogo") só no aleatório.
+ */
 function atualizarEstadoCheckboxAleatorio() {
   const marcado = document.getElementById("check-time-aleatorio").checked;
   const grupoDivisao = document.getElementById("grupo-divisao-config");
   grupoDivisao.classList.toggle("campo-config-desabilitado", marcado);
   document.getElementById("select-divisao-config").disabled = marcado;
+  document.getElementById("btn-iniciar-config-jogo").hidden = !marcado;
 }
 
-/**
- * Botão "Iniciar Jogo": valida o nome do técnico, guarda a configuração e segue pro fluxo
- * de sempre — manual (abre a lista de times já filtrada pela divisão escolhida) ou aleatório
- * (sorteia divisão + time e vai direto pra escalação, sem passar pela tela de elenco).
- */
-async function iniciarNovoJogoConfig() {
+/** Valida o Nome do Técnico e guarda a configuração da tela em `estado.tecnico`. */
+function validarESalvarConfigTecnico() {
   const inputNome = document.getElementById("input-nome-tecnico");
   const nome = inputNome.value.trim();
   const erroEl = document.getElementById("erro-nome-tecnico");
@@ -288,7 +289,7 @@ async function iniciarNovoJogoConfig() {
     erroEl.hidden = false;
     inputNome.classList.add("campo-invalido");
     inputNome.focus();
-    return;
+    return false;
   }
   erroEl.hidden = true;
   inputNome.classList.remove("campo-invalido");
@@ -297,20 +298,26 @@ async function iniciarNovoJogoConfig() {
     nome: nome,
     nacionalidade: document.getElementById("select-nacionalidade-tecnico").value,
   };
+  return true;
+}
 
-  const aleatorio = document.getElementById("check-time-aleatorio").checked;
+/** Botão "Escolher time ▶" (abaixo da Divisão): fluxo manual — abre a lista já filtrada. */
+function escolherTimeConfig() {
+  if (!validarESalvarConfigTecnico()) return;
+  divisaoAtual = document.getElementById("select-divisao-config").value;
+  abrirTelaTimes();
+}
+
+/** Botão "🎲 Sortear e Iniciar Jogo" (só visível com "time aleatório" marcado). */
+async function iniciarNovoJogoConfig() {
+  if (!validarESalvarConfigTecnico()) return;
+
   const dados = await carregarDados();
-
-  if (aleatorio) {
-    const divisoes = listarDivisoes(dados);
-    const divisaoSorteada = divisoes[Math.floor(Math.random() * divisoes.length)];
-    const timeSorteado = divisaoSorteada.times[Math.floor(Math.random() * divisaoSorteada.times.length)];
-    divisaoAtual = divisaoSorteada.chave;
-    await escalarEsteTime(timeSorteado);
-  } else {
-    divisaoAtual = document.getElementById("select-divisao-config").value;
-    abrirTelaTimes();
-  }
+  const divisoes = listarDivisoes(dados);
+  const divisaoSorteada = divisoes[Math.floor(Math.random() * divisoes.length)];
+  const timeSorteado = divisaoSorteada.times[Math.floor(Math.random() * divisaoSorteada.times.length)];
+  divisaoAtual = divisaoSorteada.chave;
+  await escalarEsteTime(timeSorteado);
 }
 
 /* ---------- Tela: escolher time ---------- */
@@ -5466,6 +5473,9 @@ function ligarBotoes() {
 
   const btnIniciarConfig = document.getElementById("btn-iniciar-config-jogo");
   if (btnIniciarConfig) btnIniciarConfig.addEventListener("click", iniciarNovoJogoConfig);
+
+  const btnEscolherTimeConfig = document.getElementById("btn-escolher-time-config");
+  if (btnEscolherTimeConfig) btnEscolherTimeConfig.addEventListener("click", escolherTimeConfig);
 
   // "←" da lista de times volta pra tela de configuração do técnico (não direto pro título) —
   // preserva o que já foi preenchido lá (nome, nacionalidade), já que a tela só fica escondida.

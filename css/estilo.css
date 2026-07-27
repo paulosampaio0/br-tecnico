@@ -3146,6 +3146,31 @@ body::before {
   pointer-events: none;
 }
 
+/* Botão "Escolher time" — logo abaixo do select de Divisão, leva pra lista de times já
+   filtrada. Mesmo visual dos campos do formulário (select/input), só que clicável. */
+.btn-escolher-time-config {
+  width: 100%;
+  min-height: 48px;
+  margin-top: 10px;
+  padding: 0 14px;
+  border-radius: 12px;
+  border: 1px solid var(--navy-borda);
+  background: rgba(255, 255, 255, 0.07);
+  color: var(--branco);
+  font-size: 15px;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
+}
+
+.btn-escolher-time-config:active {
+  border-color: var(--neon-verde);
+  background: rgba(255, 255, 255, 0.11);
+  box-shadow: 0 0 0 3px rgba(57, 255, 136, 0.22), 0 0 16px rgba(57, 255, 136, 0.22);
+}
+
 .erro-campo-config {
   font-size: 12px;
   font-weight: 600;
