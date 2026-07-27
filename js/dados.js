@@ -9,7 +9,7 @@
 const CAMINHO_DADOS = "dados/elencos_2026.json";
 
 // Ordem "de campo" das posições, usada para listar o elenco.
-const ORDEM_POSICOES = ["GOL", "ZAG", "LAT.D", "LAT.E", "VOL", "MEI", "PD", "PE", "ATA"];
+const ORDEM_POSICOES = ["GOL", "ZAG", "LAT.D", "LAT.E", "VOL", "MEI", "ATD", "ATE", "ATA"];
 
 let cacheDados = null;
 

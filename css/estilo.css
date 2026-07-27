@@ -23,6 +23,7 @@
   --navy-borda: rgba(255, 255, 255, 0.1);
   --neon-verde: #39ff88;
   --neon-verde-escuro: #14c96a;
+  --azul-neon: #4d8bff; /* glow do botão "Editor" na Home */
 }
 
 /* Reset simples */
@@ -110,39 +111,7 @@ body::before {
   gap: 10px;
 }
 
-.escudo {
-  font-size: 64px;
-  line-height: 1;
-  filter: drop-shadow(0 4px 10px rgba(0, 0, 0, 0.4));
-}
-
-.titulo {
-  font-size: clamp(38px, 12vw, 56px);
-  font-weight: 800;
-  letter-spacing: 1px;
-  text-shadow: 0 3px 12px rgba(0, 0, 0, 0.45);
-}
-
-.titulo span {
-  color: var(--amarelo);
-}
-
-.subtitulo {
-  color: var(--cinza-texto);
-  font-size: clamp(13px, 4vw, 16px);
-  font-weight: 500;
-  letter-spacing: 0.5px;
-}
-
 /* ---------- Menu / botões ---------- */
-.menu {
-  width: 100%;
-  max-width: 420px;
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-}
-
 .btn {
   width: 100%;
   min-height: var(--toque-min);
@@ -3281,4 +3250,447 @@ body::before {
 
 .btn-iniciar-config:active {
   transform: scale(0.97);
+}
+
+/* ============================================================
+   Tela inicial (Home) — estádio à noite + logo + bandeira + 3 botões
+   Recriado 100% em CSS/SVG (sem foto real — ver nota no chat). A estrutura
+   já fica pronta pra trocar o fundo/logo por assets de verdade depois: basta
+   trocar o `background` de `.tela-inicio::before`/`::after` por uma imagem.
+   ============================================================ */
+
+.tela-inicio {
+  position: relative;
+  overflow: hidden;
+  justify-content: space-between;
+  padding-top: calc(env(safe-area-inset-top) + 32px);
+}
+
+/* Céu noturno + refletores nos dois cantos + brilho do gramado subindo de baixo. */
+.tela-inicio::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -2;
+  background:
+    radial-gradient(ellipse 65% 40% at 8% -8%, rgba(255, 255, 255, 0.28), transparent 58%),
+    radial-gradient(ellipse 65% 40% at 92% -8%, rgba(255, 255, 255, 0.28), transparent 58%),
+    radial-gradient(ellipse 110% 60% at 50% 118%, rgba(20, 110, 66, 0.55), transparent 62%),
+    linear-gradient(180deg, #050b16 0%, #0a2036 32%, #0b3d24 78%, #124a2c 100%);
+}
+
+/* "Arquibancada" estilizada: arcos concêntricos translúcidos sugerindo as fileiras do estádio. */
+.tela-inicio::after {
+  content: "";
+  position: fixed;
+  left: 50%;
+  top: -60%;
+  width: 220%;
+  aspect-ratio: 1 / 1;
+  transform: translateX(-50%);
+  border-radius: 50%;
+  background:
+    repeating-radial-gradient(
+      circle at 50% 50%,
+      rgba(255, 255, 255, 0.05) 0px, rgba(255, 255, 255, 0.05) 2px,
+      transparent 2px, transparent 26px
+    );
+  -webkit-mask-image: radial-gradient(circle at 50% 50%, black 55%, transparent 72%);
+  mask-image: radial-gradient(circle at 50% 50%, black 55%, transparent 72%);
+  z-index: -1;
+  opacity: 0.8;
+  pointer-events: none;
+}
+
+.cabecalho-logo-inicio {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 18px;
+}
+
+.logo-br-tecnico {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: nowrap;
+  gap: 6px;
+  padding: 10px 16px;
+  max-width: 100%;
+  background: rgba(6, 14, 24, 0.4);
+  border-radius: 18px;
+}
+
+.icone-logo-prancheta {
+  flex: 0 0 auto;
+  width: clamp(20px, 6.5vw, 30px);
+  height: clamp(24px, 7.5vw, 35px);
+  filter: drop-shadow(0 2px 6px rgba(0, 0, 0, 0.5));
+}
+
+.titulo-logo-inicio {
+  font-size: clamp(22px, 8vw, 40px);
+  font-weight: 900;
+  letter-spacing: 0.5px;
+  white-space: nowrap;
+  color: #f4ecd8;
+  text-shadow:
+    0 2px 0 #7a5a1f,
+    0 4px 14px rgba(0, 0, 0, 0.55);
+}
+
+.titulo-logo-inicio span {
+  color: #f4ecd8;
+}
+
+.bandeira-brasil {
+  width: min(58vw, 220px);
+  filter: drop-shadow(0 8px 20px rgba(0, 0, 0, 0.5));
+  border-radius: 4px;
+}
+
+.menu-inicio {
+  width: 100%;
+  max-width: 420px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.btn-inicio {
+  width: 100%;
+  min-height: 64px;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 0 22px;
+  border-radius: 16px;
+  background: linear-gradient(160deg, var(--navy-glass-1), var(--navy-glass-2));
+  backdrop-filter: blur(14px) saturate(140%);
+  -webkit-backdrop-filter: blur(14px) saturate(140%);
+  color: var(--branco);
+  font-size: 19px;
+  font-weight: 800;
+  letter-spacing: 0.2px;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  transition: transform 0.08s ease, filter 0.15s ease, opacity 0.15s ease;
+}
+
+.btn-inicio:active:not([disabled]) {
+  transform: scale(0.97);
+}
+
+.btn-inicio[disabled] {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.btn-inicio-verde {
+  border: 1.5px solid var(--neon-verde);
+  box-shadow: 0 0 0 1px rgba(57, 255, 136, 0.15), 0 0 22px rgba(57, 255, 136, 0.35), 0 8px 20px rgba(0, 0, 0, 0.4);
+}
+
+.btn-inicio-dourado {
+  border: 1.5px solid var(--amarelo);
+  box-shadow: 0 0 0 1px rgba(255, 210, 63, 0.15), 0 0 22px rgba(255, 210, 63, 0.35), 0 8px 20px rgba(0, 0, 0, 0.4);
+}
+
+.btn-inicio-azul {
+  border: 1.5px solid var(--azul-neon);
+  box-shadow: 0 0 0 1px rgba(77, 139, 255, 0.15), 0 0 22px rgba(77, 139, 255, 0.35), 0 8px 20px rgba(0, 0, 0, 0.4);
+}
+
+.icone-btn-inicio {
+  flex: 0 0 auto;
+  width: 26px;
+  height: 26px;
+}
+
+.btn-inicio-verde .icone-btn-inicio { color: var(--neon-verde); }
+.btn-inicio-dourado .icone-btn-inicio { color: var(--amarelo); }
+.btn-inicio-azul .icone-btn-inicio { color: var(--azul-neon); }
+
+.texto-btn-inicio {
+  flex: 1;
+  text-align: left;
+}
+
+/* ---------- Tela Editor (placeholder) ---------- */
+.tela-editor {
+  justify-content: flex-start;
+  align-items: stretch;
+  text-align: left;
+}
+
+.mensagem-editor-em-breve {
+  margin-top: 40px;
+  text-align: center;
+  color: var(--cinza-texto);
+  font-size: 15px;
+}
+
+/* ============================================================
+   Perfil do Atleta — folha que sobe de baixo (mesmo padrão do seletor de
+   jogador), abre ao clicar em qualquer jogador (meu elenco, contratos, mercado)
+   ============================================================ */
+
+.folha-perfil-atleta {
+  width: 100%;
+  max-height: 88vh;
+  background: var(--verde-escuro);
+  border-radius: 18px 18px 0 0;
+  padding: 10px 16px calc(env(safe-area-inset-bottom) + 16px);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  box-shadow: 0 -10px 30px rgba(0, 0, 0, 0.5);
+  animation: subir-folha-perfil 0.25s cubic-bezier(0.2, 0.8, 0.3, 1);
+}
+
+@keyframes subir-folha-perfil {
+  from { transform: translateY(100%); }
+  to { transform: translateY(0); }
+}
+
+.alca-folha-perfil {
+  width: 40px;
+  height: 4px;
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.25);
+  margin: 2px auto 0;
+}
+
+.cabecalho-perfil-atleta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.cabecalho-perfil-atleta h2 {
+  flex: 1;
+  text-align: center;
+  font-size: 19px;
+  font-weight: 800;
+  color: var(--amarelo);
+  text-shadow: 0 2px 10px rgba(255, 210, 63, 0.3);
+}
+
+.conteudo-rolavel-perfil {
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.perfil-posicao-nacionalidade {
+  text-align: center;
+  color: var(--branco);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.grade-atributos-perfil {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+
+.atributo-perfil {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 4px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.05);
+  text-align: center;
+}
+
+.atributo-perfil[hidden] {
+  display: none;
+}
+
+.atributo-perfil-largo {
+  grid-column: 1 / -1;
+}
+
+.rotulo-atributo-perfil {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  color: var(--cinza-texto);
+}
+
+.valor-atributo-perfil {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--branco);
+}
+
+.abas-perfil-atleta {
+  margin-top: 4px;
+}
+
+.conteudo-aba-perfil {
+  min-height: 80px;
+}
+
+.tabela-carreira-perfil th,
+.tabela-carreira-perfil td {
+  padding: 6px 5px;
+}
+
+.lista-jogos-temporada-perfil {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.item-jogo-temporada-perfil {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.05);
+  font-size: 12px;
+}
+
+.item-jogo-temporada-perfil .confronto-jogo-temporada-perfil {
+  flex: 1;
+  color: var(--branco);
+  font-weight: 600;
+}
+
+.item-jogo-temporada-perfil .rodada-jogo-temporada-perfil {
+  color: var(--cinza-texto);
+}
+
+.item-jogo-temporada-perfil .nota-jogo-temporada-perfil {
+  min-width: 34px;
+  text-align: center;
+  border-radius: 6px;
+  padding: 2px 6px;
+  font-weight: 800;
+}
+
+.mensagem-vazia-perfil {
+  text-align: center;
+  color: var(--cinza-texto);
+  font-size: 12px;
+  padding: 16px 0;
+}
+
+.perfil-contrato-rodape {
+  text-align: center;
+  font-size: 12px;
+  color: var(--cinza-texto);
+  padding-top: 4px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.subform-acao-perfil {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px;
+  border-radius: 12px;
+  background: rgba(255, 210, 63, 0.08);
+  border: 1px solid rgba(255, 210, 63, 0.3);
+}
+
+.subform-acao-perfil[hidden] {
+  display: none;
+}
+
+.subform-acao-perfil label {
+  font-size: 11px;
+  color: var(--amarelo);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+}
+
+.linha-subform-venda-perfil {
+  display: flex;
+  gap: 8px;
+}
+
+.linha-subform-venda-perfil input {
+  flex: 1;
+  min-height: 40px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--branco);
+  padding: 0 10px;
+  font-size: 14px;
+}
+
+.btn-confirmar-subform-perfil {
+  min-height: 40px;
+  padding: 0 14px;
+  border-radius: 8px;
+  border: none;
+  background: var(--amarelo);
+  color: #3a2b00;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.barra-acoes-perfil {
+  display: flex;
+  gap: 8px;
+}
+
+.barra-acoes-perfil[hidden] {
+  display: none;
+}
+
+.btn-acao-perfil {
+  flex: 1;
+  min-height: 52px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--branco);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.btn-acao-perfil .icone-acao-perfil {
+  font-size: 18px;
+  line-height: 1;
+}
+
+.btn-acao-perfil:active {
+  transform: scale(0.97);
+}
+
+.btn-acao-perfil.acao-perfil-destaque {
+  background: rgba(255, 210, 63, 0.15);
+  border-color: rgba(255, 210, 63, 0.4);
+  color: var(--amarelo);
+}
+
+/* Torna qualquer linha de jogador clicável (elenco/contratos/mercado) — cursor + leve destaque. */
+.item-jogador.aberto-perfil,
+.item-contrato.aberto-perfil {
+  cursor: pointer;
+}
+
+.item-jogador.aberto-perfil:active,
+.item-contrato.aberto-perfil:active {
+  background: rgba(255, 255, 255, 0.05);
 }

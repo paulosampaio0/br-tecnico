@@ -13,7 +13,7 @@
 const SETOR_POR_POSICAO = {
   ZAG: "defesa", "LAT.D": "defesa", "LAT.E": "defesa",
   VOL: "meio", MEI: "meio",
-  PD: "ataque", PE: "ataque", ATA: "ataque",
+  ATD: "ataque", ATE: "ataque", ATA: "ataque",
 };
 
 const AJUSTE_ESTILO_TATICA = {
@@ -172,8 +172,11 @@ const PENALIDADE_NUMERICA_POR_EXPULSO = { ataque: -2.2, defesa: -2.5, meio: -2.8
    natural dele, e esse multiplicador entra tanto na força do setor
    quanto nos sorteios individuais (finalização, defesa improvisada).
    ============================================================ */
+// Ataque (Atacante / Atacante D / Atacante E): 100% de afinidade entre si — pra esse trio,
+// jogar em qualquer uma das 3 vagas rende igual à posição natural, sem penalidade nenhuma.
+const GRUPO_ATAQUE_AFINIDADE_TOTAL = ["ATA", "ATD", "ATE"];
+
 const GRUPOS_POSICAO_SIMILAR = [
-  ["PD", "PE", "ATA"], // pontas e centroavante trocam entre si sem perda grande
   ["VOL", "MEI"],
   ["LAT.D", "LAT.E"],
 ];
@@ -190,6 +193,10 @@ function calcularEficienciaPosicional(posNatural, posVaga) {
   if (posVaga === "GOL") return posNatural === "GOL" ? 1.0 : EFICIENCIA_GOLEIRO_IMPROVISADO;
   if (posNatural === "GOL") return EFICIENCIA_GOLEIRO_IMPROVISADO; // goleiro escalado na linha (caso raro)
   if (posNatural === posVaga) return 1.0;
+
+  if (GRUPO_ATAQUE_AFINIDADE_TOTAL.indexOf(posNatural) !== -1 && GRUPO_ATAQUE_AFINIDADE_TOTAL.indexOf(posVaga) !== -1) {
+    return 1.0; // ATA/ATD/ATE entre si: nenhuma penalidade
+  }
 
   const mesmoGrupo = GRUPOS_POSICAO_SIMILAR.some(function (grupo) {
     return grupo.indexOf(posNatural) !== -1 && grupo.indexOf(posVaga) !== -1;

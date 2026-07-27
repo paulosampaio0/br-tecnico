@@ -254,7 +254,7 @@
       },
       {
        "nome": "Felipe Anderson",
-       "pos": "PE",
+       "pos": "ATE",
        "idade": 33,
        "nac": "BRA",
        "pe": "direito",
@@ -265,7 +265,7 @@
       },
       {
        "nome": "Riquelme Fillipi",
-       "pos": "PE",
+       "pos": "ATE",
        "idade": 19,
        "nac": "BRA",
        "pe": "direito",
@@ -277,7 +277,7 @@
       },
       {
        "nome": "Allan",
-       "pos": "PD",
+       "pos": "ATD",
        "idade": 22,
        "nac": "BRA",
        "pe": "esquerdo",
@@ -288,7 +288,7 @@
       },
       {
        "nome": "Jhon Arias",
-       "pos": "PD",
+       "pos": "ATD",
        "idade": 28,
        "nac": "COL",
        "pe": "direito",
@@ -593,7 +593,7 @@
       },
       {
        "nome": "Samuel Lino",
-       "pos": "PE",
+       "pos": "ATE",
        "idade": 26,
        "nac": "BRA",
        "pe": "direito",
@@ -604,7 +604,7 @@
       },
       {
        "nome": "Everton",
-       "pos": "PE",
+       "pos": "ATE",
        "idade": 30,
        "nac": "BRA",
        "pe": "direito",
@@ -615,7 +615,7 @@
       },
       {
        "nome": "Gonzalo Plata",
-       "pos": "PD",
+       "pos": "ATD",
        "idade": 25,
        "nac": "ECU",
        "pe": "esquerdo",
@@ -626,7 +626,7 @@
       },
       {
        "nome": "Luiz Araújo",
-       "pos": "PD",
+       "pos": "ATD",
        "idade": 30,
        "nac": "BRA",
        "pe": "esquerdo",
@@ -940,7 +940,7 @@
       },
       {
        "nome": "Yeferson Soteldo",
-       "pos": "PE",
+       "pos": "ATE",
        "idade": 29,
        "nac": "VEN",
        "pe": "direito",
@@ -951,7 +951,7 @@
       },
       {
        "nome": "Matheus Reis",
-       "pos": "PE",
+       "pos": "ATE",
        "idade": 19,
        "nac": "BRA",
        "pe": "direito",
@@ -962,7 +962,7 @@
       },
       {
        "nome": "Agustín Canobbio",
-       "pos": "PD",
+       "pos": "ATD",
        "idade": 27,
        "nac": "URU",
        "pe": "direito",
@@ -973,7 +973,7 @@
       },
       {
        "nome": "Riquelme",
-       "pos": "PD",
+       "pos": "ATD",
        "idade": 19,
        "nac": "BRA",
        "pe": "esquerdo",
@@ -985,7 +985,7 @@
       },
       {
        "nome": "Kevin Serna",
-       "pos": "PD",
+       "pos": "ATD",
        "idade": 28,
        "nac": "COL",
        "pe": "direito",
@@ -1310,7 +1310,7 @@
       },
       {
        "nome": "Henry Mosquera",
-       "pos": "PE",
+       "pos": "ATE",
        "idade": 24,
        "nac": "COL",
        "pe": "direito",
@@ -1321,7 +1321,7 @@
       },
       {
        "nome": "Vinicinho",
-       "pos": "PE",
+       "pos": "ATE",
        "idade": 22,
        "nac": "BRA",
        "pe": "direito",
@@ -1332,7 +1332,7 @@
       },
       {
        "nome": "Davi Gomes",
-       "pos": "PE",
+       "pos": "ATE",
        "idade": 21,
        "nac": "BRA",
        "pe": "direito",
@@ -1343,7 +1343,7 @@
       },
       {
        "nome": "Lucas Barbosa",
-       "pos": "PD",
+       "pos": "ATD",
        "idade": 25,
        "nac": "BRA",
        "pe": "esquerdo",
@@ -1354,7 +1354,7 @@
       },
       {
        "nome": "José Herrera",
-       "pos": "PD",
+       "pos": "ATD",
        "idade": 23,
        "nac": "ARG",
        "pe": "esquerdo",
@@ -1365,7 +1365,7 @@
       },
       {
        "nome": "Ignacio Laquintana",
-       "pos": "PD",
+       "pos": "ATD",
        "idade": 27,
        "nac": "URU",
        "pe": "direito",
@@ -1706,7 +1706,7 @@
       },
       {
        "nome": "Isaac",
-       "pos": "PE",
+       "pos": "ATE",
        "idade": 22,
        "nac": "BRA",
        "pe": "direito",
@@ -1717,7 +1717,7 @@
       },
       {
        "nome": "Stiven Mendoza",
-       "pos": "PE",
+       "pos": "ATE",
        "idade": 34,
        "nac": "COL",
        "pe": "esquerdo",
@@ -1728,7 +1728,7 @@
       },
       {
        "nome": "Daniel Aguilar",
-       "pos": "PE",
+       "pos": "ATE",
        "idade": 22,
        "nac": "COL",
        "pe": "esquerdo",
@@ -1739,7 +1739,7 @@
       },
       {
        "nome": "Bruninho",
-       "pos": "PD",
+       "pos": "ATD",
        "idade": 17,
        "nac": "BRA",
        "pe": "esquerdo",
@@ -1751,7 +1751,7 @@
       },
       {
        "nome": "Leozinho",
-       "pos": "PD",
+       "pos": "ATD",
        "idade": 27,
        "nac": "BRA",
        "pe": "esquerdo",
@@ -2053,7 +2053,7 @@
       },
       {
        "nome": "Erick Pulga",
-       "pos": "PE",
+       "pos": "ATE",
        "idade": 25,
        "nac": "BRA",
        "pe": "direito",
@@ -2064,7 +2064,7 @@
       },
       {
        "nome": "Ruan Pablo",
-       "pos": "PE",
+       "pos": "ATE",
        "idade": 17,
        "nac": "BRA",
        "pe": "ambidestro",
@@ -2076,7 +2076,7 @@
       },
       {
        "nome": "Mateo Sanabria",
-       "pos": "PE",
+       "pos": "ATE",
        "idade": 22,
        "nac": "ARG",
        "pe": "direito",
@@ -2087,7 +2087,7 @@
       },
       {
        "nome": "Cristian Olivera",
-       "pos": "PD",
+       "pos": "ATD",
        "idade": 24,
        "nac": "URU",
        "pe": "direito",
@@ -2098,7 +2098,7 @@
       },
       {
        "nome": "Michel Araújo",
-       "pos": "PD",
+       "pos": "ATD",
        "idade": 29,
        "nac": "URU",
        "pe": "esquerdo",
@@ -2109,7 +2109,7 @@
       },
       {
        "nome": "Ademir",
-       "pos": "PD",
+       "pos": "ATD",
        "idade": 31,
        "nac": "BRA",
        "pe": "esquerdo",
@@ -2413,7 +2413,7 @@
       },
       {
        "nome": "Joaquín Lavega",
-       "pos": "PE",
+       "pos": "ATE",
        "idade": 21,
        "nac": "URU",
        "pe": "esquerdo",
@@ -2425,7 +2425,7 @@
       },
       {
        "nome": "Breno Lopes",
-       "pos": "PE",
+       "pos": "ATE",
        "idade": 30,
        "nac": "BRA",
        "pe": "direito",
@@ -2436,7 +2436,7 @@
       },
       {
        "nome": "Brian Ocampo",
-       "pos": "PE",
+       "pos": "ATE",
        "idade": 27,
        "nac": "URU",
        "pe": "direito",
@@ -2447,7 +2447,7 @@
       },
       {
        "nome": "Keno",
-       "pos": "PE",
+       "pos": "ATE",
        "idade": 36,
        "nac": "BRA",
        "pe": "direito",
@@ -2458,7 +2458,7 @@
       },
       {
        "nome": "Lucas Ronier",
-       "pos": "PD",
+       "pos": "ATD",
        "idade": 21,
        "nac": "BRA",
        "pe": "esquerdo",
@@ -2470,7 +2470,7 @@
       },
       {
        "nome": "Fabinho",
-       "pos": "PD",
+       "pos": "ATD",
        "idade": 26,
        "nac": "BRA",
        "pe": "esquerdo",
@@ -2773,7 +2773,7 @@
       },
       {
        "nome": "Ferreirinha",
-       "pos": "PE",
+       "pos": "ATE",
        "idade": 28,
        "nac": "BRA",
        "pe": "direito",
@@ -2784,7 +2784,7 @@
       },
       {
        "nome": "Lucca",
-       "pos": "PE",
+       "pos": "ATE",
        "idade": 19,
        "nac": "BRA",
        "pe": "direito",
@@ -2796,7 +2796,7 @@
       },
       {
        "nome": "Victor Sá",
-       "pos": "PE",
+       "pos": "ATE",
        "idade": 32,
        "nac": "BRA",
        "pe": "ambidestro",
@@ -2807,7 +2807,7 @@
       },
       {
        "nome": "Tetê",
-       "pos": "PE",
+       "pos": "ATE",
        "idade": 19,
        "nac": "BRA",
        "pe": "ambidestro",
@@ -2819,7 +2819,7 @@
       },
       {
        "nome": "Artur",
-       "pos": "PD",
+       "pos": "ATD",
        "idade": 28,
        "nac": "BRA",
        "pe": "esquerdo",
@@ -2830,7 +2830,7 @@
       },
       {
        "nome": "Lucas Moura",
-       "pos": "PD",
+       "pos": "ATD",
        "idade": 33,
        "nac": "BRA",
        "pe": "direito",
@@ -3157,7 +3157,7 @@
       },
       {
        "nome": "Álvaro Montoro",
-       "pos": "PE",
+       "pos": "ATE",
        "idade": 19,
        "nac": "ARG",
        "pe": "direito",
@@ -3169,7 +3169,7 @@
       },
       {
        "nome": "Matheus Martins",
-       "pos": "PE",
+       "pos": "ATE",
        "idade": 23,
        "nac": "BRA",
        "pe": "direito",
@@ -3180,7 +3180,7 @@
       },
       {
        "nome": "Nathan Fernandes",
-       "pos": "PD",
+       "pos": "ATD",
        "idade": 21,
        "nac": "BRA",
        "pe": "direito",
@@ -3192,7 +3192,7 @@
       },
       {
        "nome": "Júnior Santos",
-       "pos": "PD",
+       "pos": "ATD",
        "idade": 31,
        "nac": "BRA",
        "pe": "direito",
@@ -3203,7 +3203,7 @@
       },
       {
        "nome": "Lucas Villalba",
-       "pos": "PD",
+       "pos": "ATD",
        "idade": 25,
        "nac": "ITA",
        "pe": "direito",
@@ -3572,7 +3572,7 @@
       },
       {
        "nome": "Diego Tarzia",
-       "pos": "PE",
+       "pos": "ATE",
        "idade": 23,
        "nac": "BRA",
        "pe": "esquerdo",
@@ -3583,7 +3583,7 @@
       },
       {
        "nome": "Renê",
-       "pos": "PE",
+       "pos": "ATE",
        "idade": 22,
        "nac": "BRA",
        "pe": "direito",
@@ -3594,7 +3594,7 @@
       },
       {
        "nome": "Lucas Braga",
-       "pos": "PE",
+       "pos": "ATE",
        "idade": 29,
        "nac": "BRA",
        "pe": "direito",
@@ -3605,7 +3605,7 @@
       },
       {
        "nome": "Anderson Pato",
-       "pos": "PE",
+       "pos": "ATE",
        "idade": 23,
        "nac": "BRA",
        "pe": "direito",
@@ -3616,7 +3616,7 @@
       },
       {
        "nome": "Erick",
-       "pos": "PD",
+       "pos": "ATD",
        "idade": 28,
        "nac": "BRA",
        "pe": "esquerdo",
@@ -3627,7 +3627,7 @@
       },
       {
        "nome": "Lucas Silva",
-       "pos": "PD",
+       "pos": "ATD",
        "idade": 26,
        "nac": "BRA",
        "pe": "direito",
@@ -3638,7 +3638,7 @@
       },
       {
        "nome": "Marinho",
-       "pos": "PD",
+       "pos": "ATD",
        "idade": 36,
        "nac": "BRA",
        "pe": "esquerdo",
@@ -3649,7 +3649,7 @@
       },
       {
        "nome": "Osvaldo",
-       "pos": "PD",
+       "pos": "ATD",
        "idade": 39,
        "nac": "BRA",
        "pe": "direito",
@@ -3976,7 +3976,7 @@
       },
       {
        "nome": "Tomás Cuello",
-       "pos": "PE",
+       "pos": "ATE",
        "idade": 26,
        "nac": "ARG",
        "pe": "direito",
@@ -3987,7 +3987,7 @@
       },
       {
        "nome": "Dudu",
-       "pos": "PE",
+       "pos": "ATE",
        "idade": 34,
        "nac": "BRA",
        "pe": "direito",
@@ -3998,7 +3998,7 @@
       },
       {
        "nome": "Bernard",
-       "pos": "PE",
+       "pos": "ATE",
        "idade": 33,
        "nac": "BRA",
        "pe": "direito",
@@ -4009,7 +4009,7 @@
       },
       {
        "nome": "Alan Minda",
-       "pos": "PD",
+       "pos": "ATD",
        "idade": 23,
        "nac": "ECU",
        "pe": "direito",
@@ -4335,7 +4335,7 @@
       },
       {
        "nome": "Kayke",
-       "pos": "PE",
+       "pos": "ATE",
        "idade": 22,
        "nac": "BRA",
        "pe": "direito",
@@ -4346,7 +4346,7 @@
       },
       {
        "nome": "Vitinho",
-       "pos": "PE",
+       "pos": "ATE",
        "idade": 32,
        "nac": "BRA",
        "pe": "direito",
@@ -4357,7 +4357,7 @@
       },
       {
        "nome": "Kaio César",
-       "pos": "PD",
+       "pos": "ATD",
        "idade": 22,
        "nac": "BRA",
        "pe": "esquerdo",
@@ -4368,7 +4368,7 @@
       },
       {
        "nome": "Dieguinho",
-       "pos": "PD",
+       "pos": "ATD",
        "idade": 18,
        "nac": "BRA",
        "pe": "esquerdo",
@@ -4663,7 +4663,7 @@
       },
       {
        "nome": "Luis Sinisterra",
-       "pos": "PE",
+       "pos": "ATE",
        "idade": 27,
        "nac": "COL",
        "pe": "direito",
@@ -4674,7 +4674,7 @@
       },
       {
        "nome": "Kaique Kenji",
-       "pos": "PE",
+       "pos": "ATE",
        "idade": 20,
        "nac": "BRA",
        "pe": "direito",
@@ -4686,7 +4686,7 @@
       },
       {
        "nome": "Wanderson",
-       "pos": "PE",
+       "pos": "ATE",
        "idade": 31,
        "nac": "BRA",
        "pe": "direito",
@@ -4697,7 +4697,7 @@
       },
       {
        "nome": "Bruno Rodrigues",
-       "pos": "PE",
+       "pos": "ATE",
        "idade": 29,
        "nac": "BRA",
        "pe": "direito",
@@ -4708,7 +4708,7 @@
       },
       {
        "nome": "Keny Arroyo",
-       "pos": "PD",
+       "pos": "ATD",
        "idade": 20,
        "nac": "ECU",
        "pe": "esquerdo",
@@ -4720,7 +4720,7 @@
       },
       {
        "nome": "Gabriel Pec",
-       "pos": "PD",
+       "pos": "ATD",
        "idade": 25,
        "nac": "BRA",
        "pe": "esquerdo",
@@ -4731,7 +4731,7 @@
       },
       {
        "nome": "Marquinhos",
-       "pos": "PD",
+       "pos": "ATD",
        "idade": 23,
        "nac": "BRA",
        "pe": "esquerdo",
@@ -5091,7 +5091,7 @@
       },
       {
        "nome": "Johan Carbonero",
-       "pos": "PE",
+       "pos": "ATE",
        "idade": 27,
        "nac": "COL",
        "pe": "direito",
@@ -5102,7 +5102,7 @@
       },
       {
        "nome": "Vitinho",
-       "pos": "PE",
+       "pos": "ATE",
        "idade": 27,
        "nac": "BRA",
        "pe": "direito",
@@ -5113,7 +5113,7 @@
       },
       {
        "nome": "Kayky",
-       "pos": "PD",
+       "pos": "ATD",
        "idade": 23,
        "nac": "BRA",
        "pe": "esquerdo",
@@ -5124,7 +5124,7 @@
       },
       {
        "nome": "Bruno Tabata",
-       "pos": "PD",
+       "pos": "ATD",
        "idade": 29,
        "nac": "BRA",
        "pe": "esquerdo",
@@ -5462,7 +5462,7 @@
       },
       {
        "nome": "Álvaro Barreal",
-       "pos": "PE",
+       "pos": "ATE",
        "idade": 25,
        "nac": "ARG",
        "pe": "esquerdo",
@@ -5473,7 +5473,7 @@
       },
       {
        "nome": "Moisés",
-       "pos": "PE",
+       "pos": "ATE",
        "idade": 29,
        "nac": "BRA",
        "pe": "direito",
@@ -5484,7 +5484,7 @@
       },
       {
        "nome": "Gustavo Caballero",
-       "pos": "PE",
+       "pos": "ATE",
        "idade": 24,
        "nac": "PAR",
        "pe": "direito",
@@ -5495,7 +5495,7 @@
       },
       {
        "nome": "Mateus Xavier",
-       "pos": "PE",
+       "pos": "ATE",
        "idade": 19,
        "nac": "BRA",
        "pe": "esquerdo",
@@ -5506,7 +5506,7 @@
       },
       {
        "nome": "Benjamín Rollheiser",
-       "pos": "PD",
+       "pos": "ATD",
        "idade": 26,
        "nac": "ARG",
        "pe": "esquerdo",
@@ -5517,7 +5517,7 @@
       },
       {
        "nome": "Robinho Junior",
-       "pos": "PD",
+       "pos": "ATD",
        "idade": 18,
        "nac": "BRA",
        "pe": "ambidestro",
@@ -5529,7 +5529,7 @@
       },
       {
        "nome": "Enzo Boer",
-       "pos": "PD",
+       "pos": "ATD",
        "idade": 21,
        "nac": "BRA",
        "pe": "esquerdo",
@@ -5846,7 +5846,7 @@
       },
       {
        "nome": "Francis Amuzu",
-       "pos": "PE",
+       "pos": "ATE",
        "idade": 26,
        "nac": "BEL",
        "pe": "direito",
@@ -5857,7 +5857,7 @@
       },
       {
        "nome": "Willian",
-       "pos": "PE",
+       "pos": "ATE",
        "idade": 37,
        "nac": "BRA",
        "pe": "direito",
@@ -5868,7 +5868,7 @@
       },
       {
        "nome": "Tetê",
-       "pos": "PD",
+       "pos": "ATD",
        "idade": 26,
        "nac": "BRA",
        "pe": "esquerdo",
@@ -5879,7 +5879,7 @@
       },
       {
        "nome": "José Enamorado",
-       "pos": "PD",
+       "pos": "ATD",
        "idade": 27,
        "nac": "COL",
        "pe": "direito",
@@ -5890,7 +5890,7 @@
       },
       {
        "nome": "Roger",
-       "pos": "PD",
+       "pos": "ATD",
        "idade": 18,
        "nac": "BRA",
        "pe": "esquerdo",
@@ -6216,7 +6216,7 @@
       },
       {
        "nome": "Andrés Gómez",
-       "pos": "PE",
+       "pos": "ATE",
        "idade": 23,
        "nac": "COL",
        "pe": "direito",
@@ -6227,7 +6227,7 @@
       },
       {
        "nome": "David",
-       "pos": "PE",
+       "pos": "ATE",
        "idade": 30,
        "nac": "BRA",
        "pe": "direito",
@@ -6238,7 +6238,7 @@
       },
       {
        "nome": "Nuno Moreira",
-       "pos": "PD",
+       "pos": "ATD",
        "idade": 27,
        "nac": "POR",
        "pe": "direito",
@@ -6249,7 +6249,7 @@
       },
       {
        "nome": "Marino Hinestroza",
-       "pos": "PD",
+       "pos": "ATD",
        "idade": 24,
        "nac": "COL",
        "pe": "direito",
@@ -6260,7 +6260,7 @@
       },
       {
        "nome": "Adson",
-       "pos": "PD",
+       "pos": "ATD",
        "idade": 25,
        "nac": "BRA",
        "pe": "esquerdo",
@@ -6271,7 +6271,7 @@
       },
       {
        "nome": "Loide Augusto",
-       "pos": "PD",
+       "pos": "ATD",
        "idade": 26,
        "nac": "ANG",
        "pe": "direito",
@@ -6562,7 +6562,7 @@
       },
       {
        "nome": "Alesson",
-       "pos": "PE",
+       "pos": "ATE",
        "idade": 27,
        "nac": "BRA",
        "pe": "direito",
@@ -6573,7 +6573,7 @@
       },
       {
        "nome": "Fernandinho",
-       "pos": "PE",
+       "pos": "ATE",
        "idade": 29,
        "nac": "BRA",
        "pe": "direito",
@@ -6584,7 +6584,7 @@
       },
       {
        "nome": "Antonio Galeano",
-       "pos": "PD",
+       "pos": "ATD",
        "idade": 26,
        "nac": "PAR",
        "pe": "direito",
@@ -6595,7 +6595,7 @@
       },
       {
        "nome": "Negueba",
-       "pos": "PD",
+       "pos": "ATD",
        "idade": 26,
        "nac": "BRA",
        "pe": "direito",
@@ -6606,7 +6606,7 @@
       },
       {
        "nome": "Everton Galdino",
-       "pos": "PD",
+       "pos": "ATD",
        "idade": 29,
        "nac": "BRA",
        "pe": "esquerdo",
@@ -6617,7 +6617,7 @@
       },
       {
        "nome": "Carlos Eduardo",
-       "pos": "PD",
+       "pos": "ATD",
        "idade": 29,
        "nac": "BRA",
        "pe": "direito",
@@ -6628,7 +6628,7 @@
       },
       {
        "nome": "Luiz Filipe",
-       "pos": "PD",
+       "pos": "ATD",
        "idade": 25,
        "nac": "BRA",
        "pe": "direito",
@@ -6941,7 +6941,7 @@
       },
       {
        "nome": "Jajá",
-       "pos": "PE",
+       "pos": "ATE",
        "idade": 27,
        "nac": "BRA",
        "pe": "direito",
@@ -6952,7 +6952,7 @@
       },
       {
        "nome": "Jáderson",
-       "pos": "PE",
+       "pos": "ATE",
        "idade": 25,
        "nac": "BRA",
        "pe": "esquerdo",
@@ -6963,7 +6963,7 @@
       },
       {
        "nome": "Alef Manga",
-       "pos": "PE",
+       "pos": "ATE",
        "idade": 31,
        "nac": "BRA",
        "pe": "direito",
@@ -6974,7 +6974,7 @@
       },
       {
        "nome": "Yago Pikachu",
-       "pos": "PD",
+       "pos": "ATD",
        "idade": 34,
        "nac": "BRA",
        "pe": "direito",
@@ -6985,7 +6985,7 @@
       },
       {
        "nome": "Tico",
-       "pos": "PD",
+       "pos": "ATD",
        "idade": 19,
        "nac": "BRA",
        "pe": "esquerdo",
@@ -7309,7 +7309,7 @@
       },
       {
        "nome": "Italo Vargas",
-       "pos": "PE",
+       "pos": "ATE",
        "idade": 23,
        "nac": "BRA",
        "pe": "direito",
@@ -7320,7 +7320,7 @@
       },
       {
        "nome": "Maurício Garcez",
-       "pos": "PE",
+       "pos": "ATE",
        "idade": 29,
        "nac": "BRA",
        "pe": "direito",
@@ -7331,7 +7331,7 @@
       },
       {
        "nome": "Ênio",
-       "pos": "PE",
+       "pos": "ATE",
        "idade": 25,
        "nac": "BRA",
        "pe": "direito",
@@ -7342,7 +7342,7 @@
       },
       {
        "nome": "Kevin Ramírez",
-       "pos": "PE",
+       "pos": "ATE",
        "idade": 32,
        "nac": "URU",
        "pe": "esquerdo",
@@ -7353,7 +7353,7 @@
       },
       {
        "nome": "Kaíque Maciel",
-       "pos": "PE",
+       "pos": "ATE",
        "idade": 25,
        "nac": "BRA",
        "pe": "direito",
@@ -7364,7 +7364,7 @@
       },
       {
        "nome": "Marcinho",
-       "pos": "PD",
+       "pos": "ATD",
        "idade": 31,
        "nac": "BRA",
        "pe": "direito",
@@ -7375,7 +7375,7 @@
       },
       {
        "nome": "Rubens",
-       "pos": "PD",
+       "pos": "ATD",
        "idade": 23,
        "nac": "BRA",
        "pe": "esquerdo",
@@ -7704,7 +7704,7 @@
       },
       {
        "nome": "Diego Gonçalves",
-       "pos": "PE",
+       "pos": "ATE",
        "idade": 31,
        "nac": "BRA",
        "pe": "direito",
@@ -7715,7 +7715,7 @@
       },
       {
        "nome": "Waguininho",
-       "pos": "PE",
+       "pos": "ATE",
        "idade": 36,
        "nac": "BRA",
        "pe": "direito",
@@ -7726,7 +7726,7 @@
       },
       {
        "nome": "Jhonata Robert",
-       "pos": "PD",
+       "pos": "ATD",
        "idade": 26,
        "nac": "BRA",
        "pe": "direito",
@@ -7737,7 +7737,7 @@
       },
       {
        "nome": "Romarinho",
-       "pos": "PD",
+       "pos": "ATD",
        "idade": 32,
        "nac": "BRA",
        "pe": "direito",
@@ -7748,7 +7748,7 @@
       },
       {
        "nome": "João Carlos",
-       "pos": "PD",
+       "pos": "ATD",
        "idade": 25,
        "nac": "BRA",
        "pe": "direito",
@@ -8083,7 +8083,7 @@
       },
       {
        "nome": "Marcos Paulo",
-       "pos": "PE",
+       "pos": "ATE",
        "idade": 25,
        "nac": "BRA",
        "pe": "direito",
@@ -8094,7 +8094,7 @@
       },
       {
        "nome": "Allanzinho",
-       "pos": "PE",
+       "pos": "ATE",
        "idade": 26,
        "nac": "BRA",
        "pe": "direito",
@@ -8105,7 +8105,7 @@
       },
       {
        "nome": "Fábio Lima",
-       "pos": "PE",
+       "pos": "ATE",
        "idade": 29,
        "nac": "BRA",
        "pe": "esquerdo",
@@ -8116,7 +8116,7 @@
       },
       {
        "nome": "Manuel Castro",
-       "pos": "PD",
+       "pos": "ATD",
        "idade": 30,
        "nac": "URU",
        "pe": "direito",
@@ -8418,7 +8418,7 @@
       },
       {
        "nome": "Maxwell",
-       "pos": "PE",
+       "pos": "ATE",
        "idade": 31,
        "nac": "BRA",
        "pe": "direito",
@@ -8429,7 +8429,7 @@
       },
       {
        "nome": "Berto",
-       "pos": "PD",
+       "pos": "ATD",
        "idade": 30,
        "nac": "BRA",
        "pe": "direito",
@@ -8440,7 +8440,7 @@
       },
       {
        "nome": "Felipe Augusto",
-       "pos": "PD",
+       "pos": "ATD",
        "idade": 34,
        "nac": "BRA",
        "pe": "direito",
@@ -8720,7 +8720,7 @@
       },
       {
        "nome": "Ryan",
-       "pos": "PE",
+       "pos": "ATE",
        "idade": 25,
        "nac": "BRA",
        "pe": "esquerdo",
@@ -8731,7 +8731,7 @@
       },
       {
        "nome": "Emerson Urso",
-       "pos": "PE",
+       "pos": "ATE",
        "idade": 25,
        "nac": "BRA",
        "pe": "direito",
@@ -8742,7 +8742,7 @@
       },
       {
        "nome": "Dodô",
-       "pos": "PE",
+       "pos": "ATE",
        "idade": 31,
        "nac": "BRA",
        "pe": "direito",
@@ -8753,7 +8753,7 @@
       },
       {
        "nome": "Janderson",
-       "pos": "PD",
+       "pos": "ATD",
        "idade": 27,
        "nac": "BRA",
        "pe": "direito",
@@ -8764,7 +8764,7 @@
       },
       {
        "nome": "André Luis",
-       "pos": "PD",
+       "pos": "ATD",
        "idade": 29,
        "nac": "BRA",
        "pe": "esquerdo",
@@ -9077,7 +9077,7 @@
       },
       {
        "nome": "Luiz Fernando",
-       "pos": "PE",
+       "pos": "ATE",
        "idade": 29,
        "nac": "BRA",
        "pe": "direito",
@@ -9088,7 +9088,7 @@
       },
       {
        "nome": "Rodriguinho",
-       "pos": "PE",
+       "pos": "ATE",
        "idade": 23,
        "nac": "BRA",
        "pe": "esquerdo",
@@ -9099,7 +9099,7 @@
       },
       {
        "nome": "Paulo Baya",
-       "pos": "PE",
+       "pos": "ATE",
        "idade": 26,
        "nac": "BRA",
        "pe": "direito",
@@ -9110,7 +9110,7 @@
       },
       {
        "nome": "Vitinho",
-       "pos": "PD",
+       "pos": "ATD",
        "idade": 25,
        "nac": "BRA",
        "pe": "esquerdo",
@@ -9121,7 +9121,7 @@
       },
       {
        "nome": "Welliton",
-       "pos": "PD",
+       "pos": "ATD",
        "idade": 26,
        "nac": "BRA",
        "pe": "direito",
@@ -9132,7 +9132,7 @@
       },
       {
        "nome": "Pedro Henrique",
-       "pos": "PD",
+       "pos": "ATD",
        "idade": 36,
        "nac": "BRA",
        "pe": "direito",
@@ -9468,7 +9468,7 @@
       },
       {
        "nome": "Vinícius Paiva",
-       "pos": "PD",
+       "pos": "ATD",
        "idade": 25,
        "nac": "BRA",
        "pe": "direito",
@@ -9479,7 +9479,7 @@
       },
       {
        "nome": "Robson",
-       "pos": "PD",
+       "pos": "ATD",
        "idade": 35,
        "nac": "BRA",
        "pe": "direito",
@@ -9490,7 +9490,7 @@
       },
       {
        "nome": "Ronald Barcellos",
-       "pos": "PD",
+       "pos": "ATD",
        "idade": 24,
        "nac": "BRA",
        "pe": "esquerdo",
@@ -9501,7 +9501,7 @@
       },
       {
        "nome": "Hélio Borges",
-       "pos": "PD",
+       "pos": "ATD",
        "idade": 26,
        "nac": "BRA",
        "pe": "direito",
@@ -9512,7 +9512,7 @@
       },
       {
        "nome": "Hector Bianchi",
-       "pos": "PD",
+       "pos": "ATD",
        "idade": 21,
        "nac": "BRA",
        "pe": "esquerdo",
@@ -9814,7 +9814,7 @@
       },
       {
        "nome": "Esli García",
-       "pos": "PE",
+       "pos": "ATE",
        "idade": 26,
        "nac": "VEN",
        "pe": "direito",
@@ -9825,7 +9825,7 @@
       },
       {
        "nome": "Kadu",
-       "pos": "PE",
+       "pos": "ATE",
        "idade": 24,
        "nac": "BRA",
        "pe": "direito",
@@ -9836,7 +9836,7 @@
       },
       {
        "nome": "Pedrinho",
-       "pos": "PD",
+       "pos": "ATD",
        "idade": 22,
        "nac": "BRA",
        "pe": "direito",
@@ -9847,7 +9847,7 @@
       },
       {
        "nome": "Wellington Rato",
-       "pos": "PD",
+       "pos": "ATD",
        "idade": 34,
        "nac": "BRA",
        "pe": "esquerdo",
@@ -9858,7 +9858,7 @@
       },
       {
        "nome": "Halerrandro",
-       "pos": "PD",
+       "pos": "ATD",
        "idade": 20,
        "nac": "BRA",
        "pe": "direito",
@@ -10138,7 +10138,7 @@
       },
       {
        "nome": "Pedrinho",
-       "pos": "PE",
+       "pos": "ATE",
        "idade": 26,
        "nac": "BRA",
        "pe": "direito",
@@ -10149,7 +10149,7 @@
       },
       {
        "nome": "Pedro Vitor",
-       "pos": "PE",
+       "pos": "ATE",
        "idade": 28,
        "nac": "BRA",
        "pe": "esquerdo",
@@ -10160,7 +10160,7 @@
       },
       {
        "nome": "Echaporã",
-       "pos": "PE",
+       "pos": "ATE",
        "idade": 26,
        "nac": "BRA",
        "pe": "direito",
@@ -10171,7 +10171,7 @@
       },
       {
        "nome": "Fabrício Daniel",
-       "pos": "PD",
+       "pos": "ATD",
        "idade": 28,
        "nac": "BRA",
        "pe": "esquerdo",
@@ -10182,7 +10182,7 @@
       },
       {
        "nome": "Felipe Garcia",
-       "pos": "PD",
+       "pos": "ATD",
        "idade": 35,
        "nac": "BRA",
        "pe": "direito",
@@ -10487,7 +10487,7 @@
       },
       {
        "nome": "Diego Hernández",
-       "pos": "PE",
+       "pos": "ATE",
        "idade": 26,
        "nac": "URU",
        "pe": "esquerdo",
@@ -10498,7 +10498,7 @@
       },
       {
        "nome": "Carlos de Pena",
-       "pos": "PE",
+       "pos": "ATE",
        "idade": 34,
        "nac": "URU",
        "pe": "esquerdo",
@@ -10509,7 +10509,7 @@
       },
       {
        "nome": "Clayson",
-       "pos": "PE",
+       "pos": "ATE",
        "idade": 31,
        "nac": "BRA",
        "pe": "direito",
@@ -10520,7 +10520,7 @@
       },
       {
        "nome": "Gustavo Maia",
-       "pos": "PE",
+       "pos": "ATE",
        "idade": 25,
        "nac": "BRA",
        "pe": "direito",
@@ -10531,7 +10531,7 @@
       },
       {
        "nome": "Marlon",
-       "pos": "PE",
+       "pos": "ATE",
        "idade": 28,
        "nac": "BRA",
        "pe": "direito",
@@ -10542,7 +10542,7 @@
       },
       {
        "nome": "Chrystian Barletta",
-       "pos": "PD",
+       "pos": "ATD",
        "idade": 25,
        "nac": "BRA",
        "pe": "esquerdo",
@@ -10833,7 +10833,7 @@
       },
       {
        "nome": "Guilherme Henrique",
-       "pos": "PE",
+       "pos": "ATE",
        "idade": 19,
        "nac": "BRA",
        "pe": "direito",
@@ -10844,7 +10844,7 @@
       },
       {
        "nome": "Marrony",
-       "pos": "PD",
+       "pos": "ATD",
        "idade": 27,
        "nac": "BRA",
        "pe": "esquerdo",
@@ -10855,7 +10855,7 @@
       },
       {
        "nome": "Bruno José",
-       "pos": "PD",
+       "pos": "ATD",
        "idade": 28,
        "nac": "BRA",
        "pe": "direito",
@@ -10866,7 +10866,7 @@
       },
       {
        "nome": "Léo Tocantins",
-       "pos": "PD",
+       "pos": "ATD",
        "idade": 27,
        "nac": "BRA",
        "pe": "esquerdo",
@@ -10877,7 +10877,7 @@
       },
       {
        "nome": "Lima",
-       "pos": "PD",
+       "pos": "ATD",
        "idade": 21,
        "nac": "BRA",
        "pe": "esquerdo",
@@ -11179,7 +11179,7 @@
       },
       {
        "nome": "Eliel",
-       "pos": "PE",
+       "pos": "ATE",
        "idade": 23,
        "nac": "BRA",
        "pe": "direito",
@@ -11190,7 +11190,7 @@
       },
       {
        "nome": "Kauan Cristtyan",
-       "pos": "PE",
+       "pos": "ATE",
        "idade": 20,
        "nac": "BRA",
        "pe": "direito",
@@ -11201,7 +11201,7 @@
       },
       {
        "nome": "Gabriel Mineiro",
-       "pos": "PE",
+       "pos": "ATE",
        "idade": 21,
        "nac": "BRA",
        "pe": "direito",
@@ -11212,7 +11212,7 @@
       },
       {
        "nome": "Victor Barbara",
-       "pos": "PE",
+       "pos": "ATE",
        "idade": 22,
        "nac": "BRA",
        "pe": "direito",
@@ -11223,7 +11223,7 @@
       },
       {
        "nome": "Mateus Santos",
-       "pos": "PD",
+       "pos": "ATD",
        "idade": 27,
        "nac": "BRA",
        "pe": "esquerdo",
@@ -11234,7 +11234,7 @@
       },
       {
        "nome": "Jadson",
-       "pos": "PD",
+       "pos": "ATD",
        "idade": 20,
        "nac": "BRA",
        "pe": "direito",
@@ -11245,7 +11245,7 @@
       },
       {
        "nome": "Jean Dias",
-       "pos": "PD",
+       "pos": "ATD",
        "idade": 35,
        "nac": "BRA",
        "pe": "direito",
@@ -11327,7 +11327,7 @@
       },
       {
        "nome": "Léo Chú",
-       "pos": "PE",
+       "pos": "ATE",
        "idade": 26,
        "nac": "BRA",
        "pe": "esquerdo",
@@ -11372,7 +11372,7 @@
       },
       {
        "nome": "Dixon Vera",
-       "pos": "PE",
+       "pos": "ATE",
        "idade": 23,
        "nac": "ECU",
        "pe": "direito",
@@ -11460,7 +11460,7 @@
       },
       {
        "nome": "Ruan Assis",
-       "pos": "PD",
+       "pos": "ATD",
        "idade": 22,
        "nac": "BRA",
        "pe": "direito",
@@ -11548,7 +11548,7 @@
       },
       {
        "nome": "João Adriano",
-       "pos": "PD",
+       "pos": "ATD",
        "idade": 23,
        "nac": "BRA",
        "pe": "esquerdo",
@@ -11570,7 +11570,7 @@
       },
       {
        "nome": "Max",
-       "pos": "PD",
+       "pos": "ATD",
        "idade": 24,
        "nac": "BRA",
        "pe": "direito",
@@ -11625,7 +11625,7 @@
       },
       {
        "nome": "Leandro Alves",
-       "pos": "PD",
+       "pos": "ATD",
        "idade": 27,
        "nac": "BRA",
        "pe": "esquerdo",
@@ -11894,7 +11894,7 @@
       },
       {
        "nome": "Guilherme Pato",
-       "pos": "PE",
+       "pos": "ATE",
        "idade": 25,
        "nac": "BRA",
        "pe": "direito",
@@ -11905,7 +11905,7 @@
       },
       {
        "nome": "Thiaguinho",
-       "pos": "PD",
+       "pos": "ATD",
        "idade": 25,
        "nac": "BRA",
        "pe": "esquerdo",
@@ -11916,7 +11916,7 @@
       },
       {
        "nome": "Douglas Baggio",
-       "pos": "PD",
+       "pos": "ATD",
        "idade": 31,
        "nac": "BRA",
        "pe": "direito",
@@ -11927,7 +11927,7 @@
       },
       {
        "nome": "Dadá Belmonte",
-       "pos": "PD",
+       "pos": "ATD",
        "idade": 29,
        "nac": "BRA",
        "pe": "direito",
@@ -11938,7 +11938,7 @@
       },
       {
        "nome": "Vinícius Barata",
-       "pos": "PD",
+       "pos": "ATD",
        "idade": 27,
        "nac": "BRA",
        "pe": "esquerdo",
@@ -12273,7 +12273,7 @@
       },
       {
        "nome": "Vinícius",
-       "pos": "PE",
+       "pos": "ATE",
        "idade": 32,
        "nac": "BRA",
        "pe": "direito",
@@ -12284,7 +12284,7 @@
       },
       {
        "nome": "Victor Andrade",
-       "pos": "PE",
+       "pos": "ATE",
        "idade": 30,
        "nac": "BRA",
        "pe": "direito",
@@ -12295,7 +12295,7 @@
       },
       {
        "nome": "Benjamín Borasi",
-       "pos": "PD",
+       "pos": "ATD",
        "idade": 28,
        "nac": "ARG",
        "pe": "direito",
@@ -12619,7 +12619,7 @@
       },
       {
        "nome": "Arthur Caíke",
-       "pos": "PE",
+       "pos": "ATE",
        "idade": 34,
        "nac": "BRA",
        "pe": "direito",
@@ -12630,7 +12630,7 @@
       },
       {
        "nome": "Zé Hugo",
-       "pos": "PE",
+       "pos": "ATE",
        "idade": 26,
        "nac": "BRA",
        "pe": "direito",
@@ -12641,7 +12641,7 @@
       },
       {
        "nome": "Jefferson Nem",
-       "pos": "PE",
+       "pos": "ATE",
        "idade": 30,
        "nac": "BRA",
        "pe": "direito",
@@ -12652,7 +12652,7 @@
       },
       {
        "nome": "Márcio Maranhão",
-       "pos": "PE",
+       "pos": "ATE",
        "idade": 27,
        "nac": "BRA",
        "pe": "direito",
@@ -12663,7 +12663,7 @@
       },
       {
        "nome": "Wesley Santos",
-       "pos": "PE",
+       "pos": "ATE",
        "idade": 25,
        "nac": "BRA",
        "pe": "ambidestro",
@@ -12674,7 +12674,7 @@
       },
       {
        "nome": "Kelvin",
-       "pos": "PD",
+       "pos": "ATD",
        "idade": 28,
        "nac": "BRA",
        "pe": "direito",
@@ -13042,7 +13042,7 @@
       },
       {
        "nome": "Paulinho Moccelin",
-       "pos": "PE",
+       "pos": "ATE",
        "idade": 32,
        "nac": "BRA",
        "pe": "direito",
@@ -13053,7 +13053,7 @@
       },
       {
        "nome": "Caio Maia",
-       "pos": "PE",
+       "pos": "ATE",
        "idade": 21,
        "nac": "BRA",
        "pe": "direito",
@@ -13064,7 +13064,7 @@
       },
       {
        "nome": "Juninho",
-       "pos": "PE",
+       "pos": "ATE",
        "idade": 20,
        "nac": "BRA",
        "pe": "direito",
@@ -13075,7 +13075,7 @@
       },
       {
        "nome": "Raí Nascimento",
-       "pos": "PE",
+       "pos": "ATE",
        "idade": 28,
        "nac": "BRA",
        "pe": "direito",
@@ -13086,7 +13086,7 @@
       },
       {
        "nome": "Athyrson",
-       "pos": "PE",
+       "pos": "ATE",
        "idade": 22,
        "nac": "BRA",
        "pe": "direito",
@@ -13097,7 +13097,7 @@
       },
       {
        "nome": "Fabrício",
-       "pos": "PE",
+       "pos": "ATE",
        "idade": 22,
        "nac": "BRA",
        "pe": "esquerdo",
@@ -13108,7 +13108,7 @@
       },
       {
        "nome": "Vitor Jacaré",
-       "pos": "PD",
+       "pos": "ATD",
        "idade": 26,
        "nac": "BRA",
        "pe": "direito",
@@ -13119,7 +13119,7 @@
       },
       {
        "nome": "Vitinho Mota",
-       "pos": "PD",
+       "pos": "ATD",
        "idade": 22,
        "nac": "BRA",
        "pe": "esquerdo",
@@ -13130,7 +13130,7 @@
       },
       {
        "nome": "Pablo Dyego",
-       "pos": "PD",
+       "pos": "ATD",
        "idade": 32,
        "nac": "BRA",
        "pe": "direito",
@@ -13432,7 +13432,7 @@
       },
       {
        "nome": "Giulio",
-       "pos": "PE",
+       "pos": "ATE",
        "idade": 21,
        "nac": "BRA",
        "pe": "direito",
@@ -13443,7 +13443,7 @@
       },
       {
        "nome": "Gustavo Prado",
-       "pos": "PD",
+       "pos": "ATD",
        "idade": 21,
        "nac": "BRA",
        "pe": "direito",
@@ -13758,7 +13758,7 @@
       },
       {
        "nome": "Sorriso",
-       "pos": "PE",
+       "pos": "ATE",
        "idade": 21,
        "nac": "BRA",
        "pe": "direito",
@@ -13769,7 +13769,7 @@
       },
       {
        "nome": "Juan Rocha",
-       "pos": "PE",
+       "pos": "ATE",
        "idade": 21,
        "nac": "BRA",
        "pe": "direito",
@@ -13780,7 +13780,7 @@
       },
       {
        "nome": "Isaías",
-       "pos": "PE",
+       "pos": "ATE",
        "idade": 21,
        "nac": "BRA",
        "pe": "direito",
@@ -13791,7 +13791,7 @@
       },
       {
        "nome": "Thayllon",
-       "pos": "PD",
+       "pos": "ATD",
        "idade": 19,
        "nac": "BRA",
        "pe": "esquerdo",
@@ -13803,7 +13803,7 @@
       },
       {
        "nome": "Renanzinho",
-       "pos": "PD",
+       "pos": "ATD",
        "idade": 22,
        "nac": "BRA",
        "pe": "direito",
@@ -14029,7 +14029,7 @@
       },
       {
        "nome": "David da Hora",
-       "pos": "PE",
+       "pos": "ATE",
        "idade": 26,
        "nac": "BRA",
        "pe": "direito",
@@ -14040,7 +14040,7 @@
       },
       {
        "nome": "Daniel Baianinho",
-       "pos": "PE",
+       "pos": "ATE",
        "idade": 26,
        "nac": "BRA",
        "pe": "direito",
@@ -14051,7 +14051,7 @@
       },
       {
        "nome": "Jonathan Cafu",
-       "pos": "PD",
+       "pos": "ATD",
        "idade": 35,
        "nac": "BRA",
        "pe": "direito",
@@ -14409,7 +14409,7 @@
       },
       {
        "nome": "Paulo Victor",
-       "pos": "PE",
+       "pos": "ATE",
        "idade": 25,
        "nac": "BRA",
        "pe": "esquerdo",
@@ -14420,7 +14420,7 @@
       },
       {
        "nome": "Yarlen",
-       "pos": "PD",
+       "pos": "ATD",
        "idade": 20,
        "nac": "BRA",
        "pe": "ambidestro",
@@ -14432,7 +14432,7 @@
       },
       {
        "nome": "Matías Segovia",
-       "pos": "PD",
+       "pos": "ATD",
        "idade": 23,
        "nac": "PAR",
        "pe": "esquerdo",
@@ -14443,7 +14443,7 @@
       },
       {
        "nome": "Rodrigo Piñeiro",
-       "pos": "PD",
+       "pos": "ATD",
        "idade": 27,
        "nac": "URU",
        "pe": "direito",
@@ -14454,7 +14454,7 @@
       },
       {
        "nome": "Gabriel Barros",
-       "pos": "PD",
+       "pos": "ATD",
        "idade": 24,
        "nac": "BRA",
        "pe": "esquerdo",
@@ -14465,7 +14465,7 @@
       },
       {
        "nome": "Thauan",
-       "pos": "PD",
+       "pos": "ATD",
        "idade": 22,
        "nac": "BRA",
        "pe": "esquerdo",
@@ -14476,7 +14476,7 @@
       },
       {
        "nome": "Guilherme Parede",
-       "pos": "PD",
+       "pos": "ATD",
        "idade": 30,
        "nac": "BRA",
        "pe": "direito",

@@ -134,6 +134,13 @@ const estado = {
   // retrato da escalação pra restaurar quando o técnico volta pra essa formação depois
   // de ter passado por outra. null até a primeira vez que o técnico seleciona "Personalizada".
   formacaoPersonalizada: null,
+  // Perfil do Atleta: histórico de carreira e de jogos — só do MEU elenco (os outros ~39
+  // clubes da liga não têm partida a partida simulada em detalhe, só o placar agregado).
+  carreiraPorJogador: {}, // { _id: [{ ano, clube, jogos, gols, assistencias, amarelos, vermelhos, lesoes }] } — 1 linha por temporada encerrada
+  jogosTemporadaPorJogador: {}, // { _id: [{ rodada, confronto, nota }] } — só da temporada ATUAL, zera na virada
+  statsTemporadaAtualPorJogador: {}, // { _id: { jogos, gols, assistencias, amarelos, vermelhos } } — acumulador em andamento
+  jogadoresParaEmprestimo: {}, // { _id: true } — marcados como disponíveis pra empréstimo, via Perfil do Atleta
+  precoPedidoVenda: {}, // { _id: valor em €mi } — preço pedido customizado ao colocar à venda pelo Perfil do Atleta
 };
 
 // Filtros e resultado da busca no Mercado, e proposta em andamento (Fase 12).
@@ -214,6 +221,11 @@ function salvarProgresso() {
     historicoTemporadas: estado.historicoTemporadas,
     formacaoPersonalizada: estado.formacaoPersonalizada,
     tecnico: estado.tecnico,
+    carreiraPorJogador: estado.carreiraPorJogador,
+    jogosTemporadaPorJogador: estado.jogosTemporadaPorJogador,
+    statsTemporadaAtualPorJogador: estado.statsTemporadaAtualPorJogador,
+    jogadoresParaEmprestimo: estado.jogadoresParaEmprestimo,
+    precoPedidoVenda: estado.precoPedidoVenda,
     atualizadoEm: new Date().toISOString(),
   };
   try {
@@ -234,17 +246,19 @@ function carregarRegistroSalvo() {
   }
 }
 
-/** Ajusta o botão "Continuar" da tela inicial conforme exista ou não um jogo salvo. */
+/** Ajusta o botão "Carregar salvo" da tela inicial conforme exista ou não um jogo salvo. */
 function atualizarBotaoContinuar() {
   const btn = document.getElementById("btn-continuar");
   if (!btn) return;
+  // O botão tem ícone + texto (ver index.html) — só o span de texto muda, nunca o botão inteiro.
+  const textoEl = btn.querySelector(".texto-btn-inicio") || btn;
   const registro = carregarRegistroSalvo();
   if (registro) {
     btn.disabled = false;
-    btn.textContent = "Continuar — " + registro.nomeTime;
+    textoEl.textContent = "Carregar salvo — " + registro.nomeTime;
   } else {
     btn.disabled = true;
-    btn.textContent = "Continuar";
+    textoEl.textContent = "Carregar salvo";
   }
 }
 
@@ -400,7 +414,14 @@ function abrirTelaElenco(time) {
   const souGerente = !!(estado.timeAtual && estado.timeAtual.nome === time.nome);
 
   ordenarElenco(time.jogadores).forEach(function (jogador) {
-    listaEl.appendChild(criarItemJogador(jogador, souGerente));
+    const item = criarItemJogador(jogador, souGerente);
+    item.classList.add("aberto-perfil");
+    item.addEventListener("click", function () {
+      abrirPerfilAtleta(jogador, souGerente
+        ? { meu: true, nomeTime: time.nome }
+        : { meu: false, nomeTime: time.nome, divisaoChave: divisaoAtual });
+    });
+    listaEl.appendChild(item);
   });
 }
 
@@ -475,6 +496,11 @@ async function escalarEsteTime(time) {
   estado.timeAtual = { divisaoChave: divisaoAtual, nome: time.nome, jogadores: time.jogadores };
   estado.formacaoId = "4-4-2";
   estado.formacaoPersonalizada = null;
+  estado.carreiraPorJogador = {};
+  estado.jogosTemporadaPorJogador = {};
+  estado.statsTemporadaAtualPorJogador = {};
+  estado.jogadoresParaEmprestimo = {};
+  estado.precoPedidoVenda = {};
   estado.titulares = autoEscalarMelhores(time.jogadores, estado.formacaoId);
   // Banco relacionado (Gestão de elenco): semeado 1x aqui com os melhores reservas por força —
   // dali em diante é 100% manual, o técnico reorganiza pelo tap-to-swap.
@@ -2679,6 +2705,71 @@ function calcularNotasPosJogo() {
   return notas;
 }
 
+/**
+ * Perfil do Atleta — "Jogos na Temporada": grava a nota/confronto desta rodada oficial pra
+ * cada jogador que jogou, e soma gols/cartões no acumulador da temporada em andamento (fechado
+ * em carreira só no fim da temporada, ver `fecharTemporadaNoHistoricoDosJogadores`). Reaproveita
+ * `calcularNotasPosJogo()` (mesma nota que já aparece na tela de pós-jogo) — só amistoso NÃO
+ * entra aqui, igual estatística de carreira de verdade não conta jogo de treino.
+ */
+function registrarHistoricoPartidaOficial() {
+  if (!partidaAtual || !estado.timeAtual) return;
+
+  const meuPlacar = meuLadoNaPartida === "casa" ? partidaAtual.placarCasa : partidaAtual.placarFora;
+  const placarAdversario = meuLadoNaPartida === "casa" ? partidaAtual.placarFora : partidaAtual.placarCasa;
+  const nomeAdversario = meuLadoNaPartida === "casa" ? timeForaSimulado.nome : timeCasaSimulado.nome;
+  const confronto = (meuLadoNaPartida === "casa" ? "🏠 x " : "✈️ x ") + nomeAdversario + " (" + meuPlacar + "-" + placarAdversario + ")";
+  const numeroRodada = partidaAtual.numeroRodadaOficial;
+
+  estado.jogosTemporadaPorJogador = estado.jogosTemporadaPorJogador || {};
+  estado.statsTemporadaAtualPorJogador = estado.statsTemporadaAtualPorJogador || {};
+
+  calcularNotasPosJogo().forEach(function (entrada) {
+    const idJogador = entrada.idJogador;
+
+    const jogosDaTemporada = estado.jogosTemporadaPorJogador[idJogador] = estado.jogosTemporadaPorJogador[idJogador] || [];
+    jogosDaTemporada.push({ rodada: numeroRodada, confronto: confronto, nota: entrada.nota });
+
+    const stats = estado.statsTemporadaAtualPorJogador[idJogador] = estado.statsTemporadaAtualPorJogador[idJogador] ||
+      { jogos: 0, gols: 0, assistencias: 0, amarelos: 0, vermelhos: 0 };
+    stats.jogos++;
+    partidaAtual.eventos.forEach(function (evento) {
+      if (evento.idJogador !== idJogador || evento.lado !== meuLadoNaPartida) return;
+      if (evento.tipo === "gol") stats.gols++;
+      else if (evento.tipo === "cartao-amarelo") stats.amarelos++;
+      else if (evento.tipo === "cartao-vermelho") stats.vermelhos++;
+    });
+  });
+}
+
+/**
+ * Perfil do Atleta — "Histórico da Carreira": fecha a temporada que está terminando como 1
+ * linha por jogador (lesões sempre 0 — não existe sistema de lesão no jogo, mesma simplificação
+ * documentada do Departamento Médico), e zera os acumuladores pra próxima temporada começar do zero.
+ */
+function fecharTemporadaNoHistoricoDosJogadores() {
+  const ano = estado.temporada.ano;
+  const clube = estado.timeAtual.nome;
+  estado.statsTemporadaAtualPorJogador = estado.statsTemporadaAtualPorJogador || {};
+  estado.carreiraPorJogador = estado.carreiraPorJogador || {};
+
+  Object.keys(estado.statsTemporadaAtualPorJogador).forEach(function (idJogadorTexto) {
+    const idJogador = Number(idJogadorTexto);
+    const stats = estado.statsTemporadaAtualPorJogador[idJogador];
+    if (!stats || stats.jogos === 0) return;
+
+    const historico = estado.carreiraPorJogador[idJogador] = estado.carreiraPorJogador[idJogador] || [];
+    historico.push({
+      ano: ano, clube: clube, jogos: stats.jogos, gols: stats.gols,
+      assistencias: stats.assistencias, amarelos: stats.amarelos, vermelhos: stats.vermelhos, lesoes: 0,
+    });
+    if (historico.length > 20) historico.shift();
+  });
+
+  estado.statsTemporadaAtualPorJogador = {};
+  estado.jogosTemporadaPorJogador = {};
+}
+
 function criarItemNotaPosJogo(entrada) {
   const li = document.createElement("li");
   li.className = "item-nota-posjogo";
@@ -3165,6 +3256,7 @@ async function concluirRodadaOficial() {
   aplicarDesgastePosPartida();
   aplicarCartoesPosPartida();
   aplicarMoralPosRodada();
+  registrarHistoricoPartidaOficial(); // Perfil do Atleta: guarda a nota/confronto e soma gols/cartões da temporada
   // A escalação titular volta a ser a de saída — trocas feitas "mexendo no
   // time" durante a partida valem só pra essa partida, não pra próxima rodada.
   if (partidaAtual.escalacaoInicial) estado.titulares = partidaAtual.escalacaoInicial;
@@ -3380,6 +3472,10 @@ async function processarFimDeTemporada() {
       ? CONFIG_FINANCEIRO.torcidaAjusteConfiancaMetaCumprida : CONFIG_FINANCEIRO.torcidaAjusteConfiancaMetaFalhada;
     estado.torcida.confianca = ajustarConfiancaTorcida(estado.torcida.confianca, deltaConfiancaMeta);
   }
+
+  // Perfil do Atleta: fecha a temporada que está terminando como 1 linha de carreira por
+  // jogador (jogos/gols/cartões acumulados), antes do ano virar — e zera os acumuladores.
+  fecharTemporadaNoHistoricoDosJogadores();
 
   // Evolução do MEU elenco: todo mundo fica 1 ano mais velho, a força sobe ou cai.
   // Nível do Centro de Treinamento (Fase 18) amplia o ganho — ou reduz a perda dos veteranos.
@@ -3645,7 +3741,11 @@ function renderizarContratos() {
     const vencendo = !contrato.emprestimo && contrato.anosRestantes <= CONFIG_FINANCEIRO.anosParaAlertaVencimento;
 
     const li = document.createElement("li");
-    li.className = "item-contrato" + (vencendo ? " item-contrato-vencendo" : "");
+    li.className = "item-contrato aberto-perfil" + (vencendo ? " item-contrato-vencendo" : "");
+    li.addEventListener("click", function (evento) {
+      if (evento.target.tagName === "BUTTON") return; // os botões de ação já cuidam de si mesmos
+      abrirPerfilAtleta(jogador, { meu: true, nomeTime: estado.timeAtual.nome });
+    });
 
     if (contrato.emprestimo) {
       // Jogador emprestado (Fase 17): não é seu de verdade — sem renovar/dispensar, só devolver ou exercer a opção de compra.
@@ -3830,7 +3930,11 @@ function renderizarMercado() {
     const jogador = item.jogador;
     const estrelas = calcularEstrelasPotencial(jogador);
     const li = document.createElement("li");
-    li.className = "item-contrato";
+    li.className = "item-contrato aberto-perfil";
+    li.addEventListener("click", function (evento) {
+      if (evento.target.tagName === "BUTTON") return; // os botões de ação já cuidam de si mesmos
+      abrirPerfilAtleta(jogador, { meu: false, nomeTime: item.nomeTime, divisaoChave: item.divisaoChave });
+    });
     li.innerHTML =
       "<span class=\"pos\">" + escaparHtml(jogador.pos) + "</span>" +
       "<span class=\"info-contrato\">" +
@@ -5331,6 +5435,12 @@ async function continuarJogoSalvo() {
     estado.formacaoPersonalizada = registro.formacaoPersonalizada || null;
     // Saves de antes da tela "Novo Jogo" (config. do técnico) não têm esse campo.
     estado.tecnico = registro.tecnico || null;
+    // Saves de antes do Perfil do Atleta não têm esses campos.
+    estado.carreiraPorJogador = registro.carreiraPorJogador || {};
+    estado.jogosTemporadaPorJogador = registro.jogosTemporadaPorJogador || {};
+    estado.statsTemporadaAtualPorJogador = registro.statsTemporadaAtualPorJogador || {};
+    estado.jogadoresParaEmprestimo = registro.jogadoresParaEmprestimo || {};
+    estado.precoPedidoVenda = registro.precoPedidoVenda || {};
     estado.tatica = registro.tatica || taticaPadrao();
     estado.setas = registro.setas || {};
     estado.temporada = registro.temporada || null;
@@ -5433,6 +5543,243 @@ function escaparHtml(texto) {
   return div.innerHTML;
 }
 
+/* ============================================================
+   Perfil do Atleta — folha de detalhes aberta ao clicar em qualquer jogador
+   (meu elenco, tela de Contratos ou Mercado). Reaproveita as ações já
+   existentes (renovar contrato, colocar à venda, propor compra, propor
+   empréstimo) em vez de duplicar essas regras de negócio.
+   ============================================================ */
+
+const ROTULO_POSICAO_COMPLETO = {
+  GOL: "Goleiro", ZAG: "Zagueiro", "LAT.D": "Lateral Direito", "LAT.E": "Lateral Esquerdo",
+  VOL: "Volante", MEI: "Meia", ATD: "Atacante Direito", ATE: "Atacante Esquerdo", ATA: "Atacante",
+};
+
+const MAPA_NACIONALIDADE = {
+  BRA: "🇧🇷 Brasil", ARG: "🇦🇷 Argentina", URU: "🇺🇾 Uruguai", PAR: "🇵🇾 Paraguai",
+  CHI: "🇨🇱 Chile", COL: "🇨🇴 Colômbia", POR: "🇵🇹 Portugal", ESP: "🇪🇸 Espanha",
+  ITA: "🇮🇹 Itália", ENG: "🇬🇧 Inglaterra", NED: "🇳🇱 Holanda", ANG: "🇦🇴 Angola",
+  BEL: "🇧🇪 Bélgica", BOL: "🇧🇴 Bolívia", COD: "🇨🇩 R. D. Congo", DEN: "🇩🇰 Dinamarca",
+  ECU: "🇪🇨 Equador", MAR: "🇲🇦 Marrocos", MLI: "🇲🇱 Mali", PAN: "🇵🇦 Panamá",
+  PER: "🇵🇪 Peru", VEN: "🇻🇪 Venezuela",
+};
+
+// Contexto do perfil aberto no momento — null quando fechado.
+// { jogador, meu: bool, nomeTime, divisaoChave (só se !meu) }
+let perfilAtletaAberto = null;
+
+/** Abre o Perfil do Atleta. `contexto = { meu, nomeTime, divisaoChave }` — ver call sites. */
+function abrirPerfilAtleta(jogador, contexto) {
+  perfilAtletaAberto = Object.assign({ jogador: jogador }, contexto);
+
+  document.getElementById("perfil-nome-jogador").textContent = jogador.nome;
+  document.getElementById("perfil-posicao").textContent = ROTULO_POSICAO_COMPLETO[jogador.pos] || jogador.pos;
+  document.getElementById("perfil-nacionalidade").textContent = MAPA_NACIONALIDADE[jogador.nac] || jogador.nac;
+  document.getElementById("perfil-forca").textContent = jogador.forca;
+  document.getElementById("perfil-idade").textContent = jogador.idade + " anos";
+  document.getElementById("perfil-valor").textContent = "€" + calcularValorMercado(jogador) + "mi";
+  document.getElementById("perfil-caracteristicas").textContent =
+    [jogador.caracteristica_1, jogador.caracteristica_2].filter(Boolean).join(" / ") || "—";
+
+  // Energia/salário/contrato só existem de verdade pro MEU elenco — os outros ~39 clubes da
+  // liga não têm economia interna simulada (mesma simplificação já documentada em outras fases).
+  const energiaEl = document.getElementById("atributo-energia-perfil");
+  const salarioEl = document.getElementById("atributo-salario-perfil");
+  const rodapeContratoEl = document.getElementById("perfil-contrato-rodape");
+  if (contexto.meu) {
+    energiaEl.hidden = false;
+    document.getElementById("perfil-energia").textContent = obterEnergiaJogador(jogador._id) + "%";
+    const contrato = estado.contratos[jogador._id] || criarContratoInicial(jogador);
+    salarioEl.hidden = false;
+    document.getElementById("perfil-salario").textContent =
+      formatarReais(converterEuroParaReal(calcularSalarioEfetivoMensal(jogador, contrato))) + "/mês";
+    rodapeContratoEl.hidden = false;
+    rodapeContratoEl.textContent = contrato.emprestimo
+      ? "Emprestado de " + contrato.emprestimo.timeOrigem + " — " + contrato.emprestimo.rodadasRestantes + " rodada(s) restantes"
+      : "Contrato até: fim da temporada " + (estado.temporada.ano + contrato.anosRestantes);
+  } else {
+    energiaEl.hidden = true;
+    salarioEl.hidden = true;
+    rodapeContratoEl.hidden = true;
+  }
+
+  trocarAbaPerfil("carreira");
+  montarBarraAcoesPerfil();
+  document.getElementById("subform-venda-perfil").hidden = true;
+  document.getElementById("sobreposicao-perfil-atleta").hidden = false;
+}
+
+function fecharPerfilAtleta() {
+  document.getElementById("sobreposicao-perfil-atleta").hidden = true;
+  perfilAtletaAberto = null;
+}
+
+function trocarAbaPerfil(nomeAba) {
+  document.getElementById("aba-perfil-carreira").classList.toggle("ativa", nomeAba === "carreira");
+  document.getElementById("aba-perfil-temporada").classList.toggle("ativa", nomeAba === "temporada");
+  document.getElementById("conteudo-aba-carreira-perfil").hidden = nomeAba !== "carreira";
+  document.getElementById("conteudo-aba-temporada-perfil").hidden = nomeAba !== "temporada";
+
+  if (!perfilAtletaAberto) return;
+  if (nomeAba === "carreira") renderizarAbaCarreiraPerfil();
+  else renderizarAbaTemporadaPerfil();
+}
+
+function renderizarAbaCarreiraPerfil() {
+  const corpoEl = document.getElementById("corpo-tabela-carreira-perfil");
+  corpoEl.innerHTML = "";
+  const idJogador = perfilAtletaAberto.jogador._id;
+  const historico = perfilAtletaAberto.meu ? (estado.carreiraPorJogador[idJogador] || []) : [];
+
+  if (historico.length === 0) {
+    corpoEl.innerHTML = "<tr><td colspan=\"8\" class=\"mensagem-vazia-perfil\">" +
+      (perfilAtletaAberto.meu ? "Ainda não fechou nenhuma temporada com esse elenco." : "Sem dados — só o seu elenco tem histórico acompanhado.") +
+      "</td></tr>";
+    return;
+  }
+
+  historico.slice().reverse().forEach(function (linha) {
+    const tr = document.createElement("tr");
+    tr.innerHTML =
+      "<td>" + linha.ano + "</td>" +
+      "<td>" + escaparHtml(linha.clube) + "</td>" +
+      "<td>" + linha.jogos + "</td>" +
+      "<td>" + linha.gols + "</td>" +
+      "<td>" + linha.assistencias + "</td>" +
+      "<td>" + linha.amarelos + "</td>" +
+      "<td>" + linha.vermelhos + "</td>" +
+      "<td>" + linha.lesoes + "</td>";
+    corpoEl.appendChild(tr);
+  });
+}
+
+function renderizarAbaTemporadaPerfil() {
+  const listaEl = document.getElementById("lista-jogos-temporada-perfil");
+  listaEl.innerHTML = "";
+  const idJogador = perfilAtletaAberto.jogador._id;
+  const jogos = perfilAtletaAberto.meu ? (estado.jogosTemporadaPorJogador[idJogador] || []) : [];
+
+  if (jogos.length === 0) {
+    listaEl.innerHTML = "<li class=\"mensagem-vazia-perfil\">" +
+      (perfilAtletaAberto.meu ? "Ainda não jogou nenhuma rodada oficial nesta temporada." : "Sem dados — só o seu elenco tem histórico acompanhado.") +
+      "</li>";
+    return;
+  }
+
+  jogos.slice().reverse().forEach(function (jogo) {
+    const corNota = jogo.nota >= 7 ? "nota-boa" : jogo.nota <= 5 ? "nota-ruim" : "nota-media";
+    const li = document.createElement("li");
+    li.className = "item-jogo-temporada-perfil";
+    li.innerHTML =
+      "<span class=\"rodada-jogo-temporada-perfil\">R" + jogo.rodada + "</span>" +
+      "<span class=\"confronto-jogo-temporada-perfil\">" + escaparHtml(jogo.confronto) + "</span>" +
+      "<span class=\"nota-jogo-temporada-perfil " + corNota + "\">" + jogo.nota.toFixed(1) + "</span>";
+    listaEl.appendChild(li);
+  });
+}
+
+/** Monta a barra de ações do rodapé — muda totalmente conforme o jogador é meu ou adversário. */
+function montarBarraAcoesPerfil() {
+  const barraEl = document.getElementById("barra-acoes-perfil");
+  barraEl.innerHTML = "";
+
+  // Ações econômicas não fazem sentido com uma partida rolando, nem antes de escalar um
+  // time de verdade (ex.: navegando os elencos na tela de escolha do time, pré-jogo).
+  if (estaEmPartidaAtiva() || !estado.timeAtual) {
+    barraEl.hidden = true;
+    return;
+  }
+  barraEl.hidden = false;
+
+  const jogador = perfilAtletaAberto.jogador;
+
+  if (perfilAtletaAberto.meu) {
+    const naEmprestimo = !!estado.jogadoresParaEmprestimo[jogador._id];
+    barraEl.innerHTML =
+      "<button class=\"btn-acao-perfil\" id=\"btn-acao-vender-perfil\" type=\"button\"><span class=\"icone-acao-perfil\">💰</span>Vender</button>" +
+      "<button class=\"btn-acao-perfil" + (naEmprestimo ? " acao-perfil-destaque" : "") + "\" id=\"btn-acao-emprestar-perfil\" type=\"button\">" +
+        "<span class=\"icone-acao-perfil\">🔄</span>" + (naEmprestimo ? "Na lista" : "Emprestar") + "</button>" +
+      "<button class=\"btn-acao-perfil\" id=\"btn-acao-renovar-perfil\" type=\"button\"><span class=\"icone-acao-perfil\">📄</span>Renovar</button>";
+
+    document.getElementById("btn-acao-vender-perfil").addEventListener("click", abrirSubformVendaPerfil);
+    document.getElementById("btn-acao-emprestar-perfil").addEventListener("click", alternarEmprestimoPerfil);
+    document.getElementById("btn-acao-renovar-perfil").addEventListener("click", renovarContratoPeloPerfil);
+    return;
+  }
+
+  // Adversário: preço calculado na hora com a MESMA fórmula do Mercado (Fase 12/16), pra
+  // funcionar mesmo quando o perfil foi aberto pelo Elenco de outro time, não só pelo Mercado.
+  const anosContratoRestante = calcularDuracaoContratoInicial(jogador);
+  const item = {
+    jogador: jogador, nomeTime: perfilAtletaAberto.nomeTime, divisaoChave: perfilAtletaAberto.divisaoChave,
+    preco: calcularPrecoTransferencia(jogador, anosContratoRestante, perfilAtletaAberto.divisaoChave),
+  };
+
+  const podeEmprestar = jogador.idade <= CONFIG_FINANCEIRO.emprestimoIdadeMaxima;
+  barraEl.innerHTML =
+    "<button class=\"btn-acao-perfil acao-perfil-destaque\" id=\"btn-acao-propor-perfil\" type=\"button\">" +
+      "<span class=\"icone-acao-perfil\">🤝</span>Propor compra</button>" +
+    (podeEmprestar
+      ? "<button class=\"btn-acao-perfil\" id=\"btn-acao-emprestimo-perfil\" type=\"button\"><span class=\"icone-acao-perfil\">🔄</span>Empréstimo</button>"
+      : "");
+
+  document.getElementById("btn-acao-propor-perfil").addEventListener("click", function () {
+    fecharPerfilAtleta();
+    abrirPropostaMercado(item);
+  });
+  const btnEmprestimo = document.getElementById("btn-acao-emprestimo-perfil");
+  if (btnEmprestimo) {
+    btnEmprestimo.addEventListener("click", function () {
+      fecharPerfilAtleta();
+      abrirPropostaEmprestimo(item);
+    });
+  }
+}
+
+/** Botão "Vender" (meu jogador): mostra o campo de preço pedido, pré-preenchido com o valor de mercado. */
+function abrirSubformVendaPerfil() {
+  const jogador = perfilAtletaAberto.jogador;
+  const precoAtual = estado.precoPedidoVenda[jogador._id] || calcularValorMercado(jogador);
+  document.getElementById("input-preco-venda-perfil").value = precoAtual;
+  document.getElementById("subform-venda-perfil").hidden = false;
+}
+
+/** Confirma o preço pedido e coloca o jogador na lista de vendas (mesma mecânica da tela de Contratos). */
+function confirmarVendaPerfil() {
+  const jogador = perfilAtletaAberto.jogador;
+  const preco = Number(document.getElementById("input-preco-venda-perfil").value);
+  if (!(preco > 0)) {
+    alert("Digite um preço pedido válido.");
+    return;
+  }
+  estado.precoPedidoVenda[jogador._id] = Math.round(preco * 100) / 100;
+  if (!estado.jogadoresAVenda[jogador._id]) alternarJogadorAVenda(jogador._id); // já salva e re-renderiza Contratos
+  else salvarProgresso();
+  document.getElementById("subform-venda-perfil").hidden = true;
+  alert(jogador.nome + " colocado à venda por €" + estado.precoPedidoVenda[jogador._id] + "mi.");
+}
+
+/** Botão "Emprestar" (meu jogador): liga/desliga a marcação "disponível pra empréstimo". */
+function alternarEmprestimoPerfil() {
+  const jogador = perfilAtletaAberto.jogador;
+  if (estado.jogadoresParaEmprestimo[jogador._id]) {
+    delete estado.jogadoresParaEmprestimo[jogador._id];
+  } else {
+    estado.jogadoresParaEmprestimo[jogador._id] = true;
+  }
+  salvarProgresso();
+  montarBarraAcoesPerfil();
+}
+
+/** Botão "Renovar" (meu jogador): mesma renovação instantânea já usada na tela de Contratos. */
+function renovarContratoPeloPerfil() {
+  const jogador = perfilAtletaAberto.jogador;
+  const confirmar = window.confirm("Propor renovação de contrato pra " + jogador.nome + "?");
+  if (!confirmar) return;
+  renovarContrato(jogador._id); // já valida moral crítica, salva e re-renderiza Contratos
+  if (perfilAtletaAberto) abrirPerfilAtleta(jogador, { meu: true, nomeTime: perfilAtletaAberto.nomeTime }); // atualiza o rodapé de contrato na hora
+}
+
 /* ---------- Ligações dos botões ---------- */
 
 function ligarBotoes() {
@@ -5451,6 +5798,13 @@ function ligarBotoes() {
 
   const btnContinuar = document.getElementById("btn-continuar");
   if (btnContinuar) btnContinuar.addEventListener("click", continuarJogoSalvo);
+
+  // Editor: só a tela-placeholder por enquanto — as ferramentas de verdade entram depois.
+  const btnEditor = document.getElementById("btn-editor");
+  if (btnEditor) btnEditor.addEventListener("click", function () { mostrarTela("tela-editor"); });
+
+  const btnVoltarEditor = document.getElementById("btn-voltar-editor");
+  if (btnVoltarEditor) btnVoltarEditor.addEventListener("click", function () { mostrarTela("tela-inicio"); });
 
   const btnVoltarNovoJogo = document.getElementById("btn-voltar-novo-jogo");
   if (btnVoltarNovoJogo) {
@@ -5665,6 +6019,24 @@ function ligarBotoes() {
       if (evento.target === sobreposicao) fecharSeletorJogador();
     });
   }
+
+  const btnFecharPerfil = document.getElementById("btn-fechar-perfil-atleta");
+  if (btnFecharPerfil) btnFecharPerfil.addEventListener("click", fecharPerfilAtleta);
+
+  const sobreposicaoPerfil = document.getElementById("sobreposicao-perfil-atleta");
+  if (sobreposicaoPerfil) {
+    sobreposicaoPerfil.addEventListener("click", function (evento) {
+      if (evento.target === sobreposicaoPerfil) fecharPerfilAtleta();
+    });
+  }
+
+  const abaPerfilCarreira = document.getElementById("aba-perfil-carreira");
+  if (abaPerfilCarreira) abaPerfilCarreira.addEventListener("click", function () { trocarAbaPerfil("carreira"); });
+  const abaPerfilTemporada = document.getElementById("aba-perfil-temporada");
+  if (abaPerfilTemporada) abaPerfilTemporada.addEventListener("click", function () { trocarAbaPerfil("temporada"); });
+
+  const btnConfirmarVendaPerfil = document.getElementById("btn-confirmar-venda-perfil");
+  if (btnConfirmarVendaPerfil) btnConfirmarVendaPerfil.addEventListener("click", confirmarVendaPerfil);
 }
 
 document.addEventListener("DOMContentLoaded", function () {
