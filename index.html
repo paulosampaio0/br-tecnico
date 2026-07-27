@@ -341,6 +341,12 @@
       <h2 class="titulo-lista">Tabela</h2>
     </header>
 
+    <section class="secao-relatorio-rodada" id="secao-relatorio-rodada" hidden>
+      <h3>🏁 Fim da Rodada</h3>
+      <p class="linha-relatorio" id="texto-relatorio-rodada-placar"></p>
+      <p class="linha-relatorio linha-relatorio-saldo" id="texto-relatorio-rodada-premiacao"></p>
+    </section>
+
     <section class="secao-relatorio-temporada" id="secao-relatorio-temporada" hidden>
       <h3 id="titulo-relatorio-temporada">Fim de temporada</h3>
       <p class="linha-relatorio" id="texto-relatorio-acesso"></p>
@@ -359,7 +365,11 @@
       </section>
     </section>
 
-    <div class="abas" id="abas-tabela-divisao" role="tablist"></div>
+    <div class="nav-divisao-setas" id="nav-divisao-setas">
+      <button class="btn-seta-divisao" id="btn-divisao-anterior" type="button" aria-label="Divisão anterior">‹</button>
+      <span class="rotulo-divisao-atual" id="rotulo-divisao-atual">1ª Divisão</span>
+      <button class="btn-seta-divisao" id="btn-divisao-seguinte" type="button" aria-label="Próxima divisão">›</button>
+    </div>
 
     <div class="tabela-classificacao-wrap">
       <table class="tabela-classificacao">
@@ -377,10 +387,42 @@
     <section class="secao-resultados-rodada">
       <div class="cabecalho-resultados">
         <button class="btn-navegar-rodada" id="btn-rodada-anterior" type="button" aria-label="Rodada anterior">‹</button>
-        <h3 id="titulo-resultados-rodada">Rodada 1</h3>
+        <h3 id="titulo-resultados-rodada">1ª Rodada - Brasileirão</h3>
         <button class="btn-navegar-rodada" id="btn-rodada-seguinte" type="button" aria-label="Próxima rodada">›</button>
       </div>
       <ul class="lista lista-resultados-rodada" id="lista-resultados-rodada"></ul>
+    </section>
+
+    <section class="secao-detalhe-jogo-rodada" id="secao-detalhe-jogo-rodada" hidden>
+      <div class="abas abas-detalhe-jogo" id="abas-detalhe-jogo" role="tablist">
+        <button class="aba ativa" id="aba-detalhe-escalacoes" type="button">Escalações e Notas</button>
+        <button class="aba" id="aba-detalhe-info" type="button">Info da Partida</button>
+      </div>
+
+      <p class="mensagem-vazia-detalhe-jogo" id="mensagem-vazia-detalhe-jogo" hidden></p>
+
+      <div class="conteudo-aba-detalhe-jogo" id="conteudo-detalhe-escalacoes">
+        <div class="colunas-escalacoes-detalhe">
+          <div class="coluna-escalacao-detalhe">
+            <p class="nome-time-escalacao-detalhe" id="detalhe-nome-casa">Mandante</p>
+            <ul class="lista lista-notas-detalhe" id="lista-notas-casa-detalhe"></ul>
+          </div>
+          <div class="coluna-escalacao-detalhe">
+            <p class="nome-time-escalacao-detalhe" id="detalhe-nome-fora">Visitante</p>
+            <ul class="lista lista-notas-detalhe" id="lista-notas-fora-detalhe"></ul>
+          </div>
+        </div>
+      </div>
+
+      <div class="conteudo-aba-detalhe-jogo" id="conteudo-detalhe-info" hidden>
+        <div class="cartao-estatisticas-comparativas">
+          <div class="cabecalho-estatisticas-comparativas">
+            <span class="time-estatisticas-comparativas" id="detalhe-info-nome-casa">Mandante</span>
+            <span class="time-estatisticas-comparativas time-estatisticas-comparativas-visitante" id="detalhe-info-nome-fora">Visitante</span>
+          </div>
+          <div id="detalhe-info-linhas-estatisticas"></div>
+        </div>
+      </div>
     </section>
 
   </main>
@@ -750,11 +792,6 @@
         </div>
         <div id="lista-estatisticas-comparativas"></div>
       </div>
-    </section>
-
-    <section class="secao-todas-notas-posjogo">
-      <h3>Notas de todos os jogadores</h3>
-      <ul class="lista lista-notas-posjogo" id="lista-todas-notas-posjogo"></ul>
     </section>
 
     <button class="btn btn-primario" id="btn-continuar-posjogo" type="button">Continuar ▶</button>

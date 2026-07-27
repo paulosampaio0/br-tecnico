@@ -141,6 +141,11 @@ const estado = {
   statsTemporadaAtualPorJogador: {}, // { _id: { jogos, gols, assistencias, amarelos, vermelhos } } — acumulador em andamento
   jogadoresParaEmprestimo: {}, // { _id: true } — marcados como disponíveis pra empréstimo, via Perfil do Atleta
   precoPedidoVenda: {}, // { _id: valor em €mi } — preço pedido customizado ao colocar à venda pelo Perfil do Atleta
+  // Detalhe (escalação+notas+estatísticas) de rodadas oficiais — só do jogo que o USUÁRIO
+  // jogou (os outros ~19 confrontos da rodada são só placar agregado, sem simulação minuto a
+  // minuto). { divisaoChave: { numeroRodada: detalhe } } — a chave de rodada se sobrescreve
+  // sozinha a cada temporada nova (rodadaAtual sempre recomeça em 1), sem crescer sem limite.
+  detalhesPartidaPorRodada: {},
 };
 
 // Filtros e resultado da busca no Mercado, e proposta em andamento (Fase 12).
@@ -226,6 +231,7 @@ function salvarProgresso() {
     statsTemporadaAtualPorJogador: estado.statsTemporadaAtualPorJogador,
     jogadoresParaEmprestimo: estado.jogadoresParaEmprestimo,
     precoPedidoVenda: estado.precoPedidoVenda,
+    detalhesPartidaPorRodada: estado.detalhesPartidaPorRodada,
     atualizadoEm: new Date().toISOString(),
   };
   try {
@@ -501,6 +507,7 @@ async function escalarEsteTime(time) {
   estado.statsTemporadaAtualPorJogador = {};
   estado.jogadoresParaEmprestimo = {};
   estado.precoPedidoVenda = {};
+  estado.detalhesPartidaPorRodada = {};
   estado.titulares = autoEscalarMelhores(time.jogadores, estado.formacaoId);
   // Banco relacionado (Gestão de elenco): semeado 1x aqui com os melhores reservas por força —
   // dali em diante é 100% manual, o técnico reorganiza pelo tap-to-swap.
@@ -2743,6 +2750,73 @@ function registrarHistoricoPartidaOficial() {
 }
 
 /**
+ * Notas de TODOS os titulares de um lado da partida (mandante OU visitante, qualquer um dos
+ * dois — ao contrário de `calcularNotasPosJogo`, que só calcula pro MEU time). Usada pra
+ * montar a aba "Escalações e Notas" da tela Tabela, onde os dois lados aparecem lado a lado.
+ * Mesma fórmula de nota de sempre (base + resultado + eventos + variação aleatória).
+ */
+function calcularNotasLadoPartida(lado) {
+  const timeSimulado = lado === "casa" ? timeCasaSimulado : timeForaSimulado;
+  const placarLado = lado === "casa" ? partidaAtual.placarCasa : partidaAtual.placarFora;
+  const placarAdversario = lado === "casa" ? partidaAtual.placarFora : partidaAtual.placarCasa;
+  const resultado = placarLado > placarAdversario ? 1 : placarLado < placarAdversario ? -1 : 0;
+
+  const idsQueEntraram = new Set(
+    partidaAtual.eventos
+      .filter(function (e) { return e.tipo === "substituicao" && e.lado === lado; })
+      .map(function (e) { return e.idJogadorEntra; })
+  );
+
+  const notas = (timeSimulado.titulares || []).map(function (item) {
+    const jogador = item.jogador;
+    let nota = 6.2 + resultado * 0.3;
+    partidaAtual.eventos.forEach(function (evento) {
+      if (evento.idJogador !== jogador._id || evento.lado !== lado) return;
+      if (evento.tipo === "gol") nota += 1.4;
+      else if (evento.tipo === "cartao-amarelo") nota -= 0.5;
+      else if (evento.tipo === "cartao-vermelho") nota -= 2.2;
+    });
+    nota += (Math.random() - 0.5) * 0.6;
+    nota = clamp(nota, 3, 10);
+
+    return { pos: item.vaga.pos, nome: jogador.nome, nota: Math.round(nota * 10) / 10, entrou: idsQueEntraram.has(jogador._id) };
+  });
+
+  notas.sort(function (a, b) { return b.nota - a.nota; });
+  return notas;
+}
+
+/**
+ * Tela Tabela — "Escalações e Notas" / "Info da Partida": guarda um retrato completo só da
+ * partida que o USUÁRIO jogou nesta rodada oficial (os outros ~19 confrontos da rodada são só
+ * placar agregado via `simularJogoCompleto`, sem minuto a minuto — não dá pra mostrar
+ * escalação/nota de um jogo que nunca foi simulado em detalhe). Chamada de dentro de
+ * `concluirRodadaOficial`, ANTES de `partidaAtual` ser descartado.
+ */
+function registrarDetalhePartidaOficial() {
+  if (!partidaAtual || !estado.timeAtual) return;
+
+  const divisaoChave = estado.timeAtual.divisaoChave;
+  const numeroRodada = partidaAtual.numeroRodadaOficial;
+
+  const notasCasa = calcularNotasLadoPartida("casa");
+  const notasFora = calcularNotasLadoPartida("fora");
+  let craque = null;
+  notasCasa.concat(notasFora).forEach(function (n) {
+    if (!craque || n.nota > craque.nota) craque = n;
+  });
+  if (craque) craque.craque = true;
+
+  estado.detalhesPartidaPorRodada[divisaoChave] = estado.detalhesPartidaPorRodada[divisaoChave] || {};
+  estado.detalhesPartidaPorRodada[divisaoChave][numeroRodada] = {
+    casa: timeCasaSimulado.nome, fora: timeForaSimulado.nome,
+    notasCasa: notasCasa, notasFora: notasFora,
+    estatisticasCasa: montarDadosEstatisticasComparativas("casa"),
+    estatisticasFora: montarDadosEstatisticasComparativas("fora"),
+  };
+}
+
+/**
  * Perfil do Atleta — "Histórico da Carreira": fecha a temporada que está terminando como 1
  * linha por jogador (lesões sempre 0 — não existe sistema de lesão no jogo, mesma simplificação
  * documentada do Departamento Médico), e zera os acumuladores pra próxima temporada começar do zero.
@@ -2798,10 +2872,6 @@ function abrirTelaPosJogo() {
   listaPiores.innerHTML = "";
   notas.slice(0, 3).forEach(function (e) { listaMelhores.appendChild(criarItemNotaPosJogo(e)); });
   notas.slice(-3).reverse().forEach(function (e) { listaPiores.appendChild(criarItemNotaPosJogo(e)); });
-
-  const listaTodas = document.getElementById("lista-todas-notas-posjogo");
-  listaTodas.innerHTML = "";
-  notas.forEach(function (e) { listaTodas.appendChild(criarItemNotaPosJogo(e)); });
 
   document.getElementById("estatisticas-nome-casa").textContent = nomeCasa;
   document.getElementById("estatisticas-nome-fora").textContent = nomeFora;
@@ -3257,6 +3327,7 @@ async function concluirRodadaOficial() {
   aplicarCartoesPosPartida();
   aplicarMoralPosRodada();
   registrarHistoricoPartidaOficial(); // Perfil do Atleta: guarda a nota/confronto e soma gols/cartões da temporada
+  registrarDetalhePartidaOficial(); // Tela Tabela: guarda escalação/notas/estatísticas pra revisitar depois
   // A escalação titular volta a ser a de saída — trocas feitas "mexendo no
   // time" durante a partida valem só pra essa partida, não pra próxima rodada.
   if (partidaAtual.escalacaoInicial) estado.titulares = partidaAtual.escalacaoInicial;
@@ -5032,10 +5103,37 @@ function abrirTelaTabela() {
   divisaoTabelaAtual = estado.timeAtual.divisaoChave;
   rodadaResultadosExibida = Math.max(1, estado.temporada.rodadaAtual - 1);
 
+  renderizarRelatorioRodada();
   renderizarRelatorioTemporada();
-  montarAbasTabela();
+  montarNavDivisaoTabela();
   renderizarTabelaClassificacao();
   renderizarResultadosRodada();
+}
+
+/**
+ * "🏁 Fim da Rodada": banner mostrado ao chegar na tela Tabela logo depois de concluir uma
+ * rodada oficial — só aparece quando a rodada exibida é exatamente a última jogada (navegando
+ * pra rodadas antigas, some). Reaproveita `financas.historico` (já tem o saldo daquela rodada,
+ * calculado em `aplicarFinancasDaRodada`) — "Premiação de fim de rodada" aqui é esse saldo líquido.
+ */
+function renderizarRelatorioRodada() {
+  const secao = document.getElementById("secao-relatorio-rodada");
+  if (!secao) return;
+
+  const historico = estado.financas && estado.financas.historico;
+  const ultimo = historico && historico.length > 0 ? historico[historico.length - 1] : null;
+  const souEuNaDivisaoExibida = divisaoTabelaAtual === estado.timeAtual.divisaoChave;
+
+  if (!ultimo || !souEuNaDivisaoExibida || ultimo.rodada !== rodadaResultadosExibida) {
+    secao.hidden = true;
+    return;
+  }
+
+  secao.hidden = false;
+  document.getElementById("texto-relatorio-rodada-placar").textContent =
+    rodadaResultadosExibida + "ª Rodada concluída — " + (ROTULO_DIVISAO_ORDINAL[divisaoTabelaAtual] || "");
+  document.getElementById("texto-relatorio-rodada-premiacao").textContent =
+    "💰 Premiação de fim de rodada: " + formatarReais(ultimo.saldo);
 }
 
 /**
@@ -5135,24 +5233,23 @@ function renderizarRelatorioTemporada() {
   }
 }
 
-function montarAbasTabela() {
-  const abasEl = document.getElementById("abas-tabela-divisao");
-  abasEl.innerHTML = "";
+// Só 2 divisões existem de verdade — as setas ‹ › ciclam entre elas (mesmo rótulo da tela "Novo Jogo").
+const ORDEM_DIVISOES_TABELA = ["serie_a", "serie_b"];
+const ROTULO_DIVISAO_ORDINAL = { serie_a: "1ª Divisão", serie_b: "2ª Divisão" };
 
-  [{ chave: "serie_a", rotulo: "Série A" }, { chave: "serie_b", rotulo: "Série B" }].forEach(function (d) {
-    const botao = document.createElement("button");
-    botao.type = "button";
-    botao.className = "aba" + (d.chave === divisaoTabelaAtual ? " ativa" : "");
-    botao.textContent = d.rotulo;
-    botao.addEventListener("click", function () {
-      divisaoTabelaAtual = d.chave;
-      rodadaResultadosExibida = Math.max(1, estado.temporada.rodadaAtual - 1);
-      montarAbasTabela();
-      renderizarTabelaClassificacao();
-      renderizarResultadosRodada();
-    });
-    abasEl.appendChild(botao);
-  });
+function montarNavDivisaoTabela() {
+  const rotuloEl = document.getElementById("rotulo-divisao-atual");
+  if (rotuloEl) rotuloEl.textContent = ROTULO_DIVISAO_ORDINAL[divisaoTabelaAtual] || divisaoTabelaAtual;
+}
+
+/** Botões ‹ › da tela Tabela: troca a divisão exibida (classificação + resultados da rodada juntos). */
+function navegarDivisaoTabela(delta) {
+  const indiceAtual = ORDEM_DIVISOES_TABELA.indexOf(divisaoTabelaAtual);
+  divisaoTabelaAtual = ORDEM_DIVISOES_TABELA[(indiceAtual + delta + ORDEM_DIVISOES_TABELA.length) % ORDEM_DIVISOES_TABELA.length];
+  rodadaResultadosExibida = Math.max(1, estado.temporada.rodadaAtual - 1);
+  montarNavDivisaoTabela();
+  renderizarTabelaClassificacao();
+  renderizarResultadosRodada();
 }
 
 function renderizarTabelaClassificacao() {
@@ -5184,17 +5281,21 @@ function renderizarTabelaClassificacao() {
   });
 }
 
+// Jogo selecionado na lista de resultados da rodada (pra saber qual destacar e detalhar embaixo).
+let jogoRodadaSelecionado = null; // { casa, fora, golsCasa, golsFora } ou null
+
 function renderizarResultadosRodada() {
   const temporadaDivisao = estado.temporada[divisaoTabelaAtual];
   const totalRodadas = temporadaDivisao.calendario.length;
   rodadaResultadosExibida = Math.max(1, Math.min(rodadaResultadosExibida, totalRodadas));
 
-  document.getElementById("titulo-resultados-rodada").textContent = "Rodada " + rodadaResultadosExibida;
+  document.getElementById("titulo-resultados-rodada").textContent = rodadaResultadosExibida + "ª Rodada - Brasileirão";
   document.getElementById("btn-rodada-anterior").disabled = rodadaResultadosExibida <= 1;
   document.getElementById("btn-rodada-seguinte").disabled = rodadaResultadosExibida >= totalRodadas;
 
   const listaEl = document.getElementById("lista-resultados-rodada");
   listaEl.innerHTML = "";
+  jogoRodadaSelecionado = null;
 
   const resultados = temporadaDivisao.resultadosPorRodada[rodadaResultadosExibida];
   if (!resultados) {
@@ -5202,18 +5303,110 @@ function renderizarResultadosRodada() {
     vazio.className = "item-jogo-rodada";
     vazio.textContent = "Essa rodada ainda não foi jogada.";
     listaEl.appendChild(vazio);
+    document.getElementById("secao-detalhe-jogo-rodada").hidden = true;
     return;
   }
 
+  const meuNome = estado.timeAtual.nome;
   resultados.forEach(function (res) {
+    const ehMeuJogo = res.casa === meuNome || res.fora === meuNome;
     const li = document.createElement("li");
-    li.className = "item-jogo-rodada encerrado";
+    li.className = "item-jogo-rodada encerrado selecionavel-jogo-rodada" + (ehMeuJogo ? " meu-jogo-rodada" : "");
     li.innerHTML =
       "<span class=\"time-rodada\">" + escaparHtml(res.casa) + "</span>" +
       "<span class=\"placar-rodada\">" + res.golsCasa + " x " + res.golsFora + "</span>" +
       "<span class=\"time-rodada\">" + escaparHtml(res.fora) + "</span>" +
       "<span class=\"minuto-rodada\">Fim</span>";
+    li.addEventListener("click", function () { selecionarJogoRodada(res, li); });
     listaEl.appendChild(li);
+
+    // O jogo do meu time vem selecionado por padrão.
+    if (ehMeuJogo && !jogoRodadaSelecionado) jogoRodadaSelecionado = { res: res, elemento: li };
+  });
+
+  // Sem jogo meu nessa rodada+divisão (ex.: olhando a outra divisão) — seleciona o primeiro da lista.
+  if (!jogoRodadaSelecionado && resultados.length > 0) {
+    jogoRodadaSelecionado = { res: resultados[0], elemento: listaEl.firstElementChild };
+  }
+
+  if (jogoRodadaSelecionado) {
+    selecionarJogoRodada(jogoRodadaSelecionado.res, jogoRodadaSelecionado.elemento);
+  } else {
+    document.getElementById("secao-detalhe-jogo-rodada").hidden = true;
+  }
+}
+
+/** Destaca o card clicado e atualiza o painel de detalhes (Escalações e Notas / Info da Partida). */
+function selecionarJogoRodada(res, elemento) {
+  document.querySelectorAll(".selecionavel-jogo-rodada").forEach(function (el) {
+    el.classList.toggle("jogo-rodada-selecionado", el === elemento);
+  });
+  jogoRodadaSelecionado = { res: res, elemento: elemento };
+  renderizarDetalheJogoRodada(res);
+}
+
+// Qual aba do painel de detalhes está aberta agora ("escalacoes" ou "info").
+let abaDetalheJogoAtual = "escalacoes";
+
+function trocarAbaDetalheJogo(nomeAba) {
+  abaDetalheJogoAtual = nomeAba;
+  document.getElementById("aba-detalhe-escalacoes").classList.toggle("ativa", nomeAba === "escalacoes");
+  document.getElementById("aba-detalhe-info").classList.toggle("ativa", nomeAba === "info");
+  document.getElementById("conteudo-detalhe-escalacoes").hidden = nomeAba !== "escalacoes";
+  document.getElementById("conteudo-detalhe-info").hidden = nomeAba !== "info";
+}
+
+/**
+ * Painel inferior da tela Tabela: mostra escalação+notas e estatísticas do jogo selecionado —
+ * só existe detalhe de verdade pro jogo que o USUÁRIO jogou (ver `registrarDetalhePartidaOficial`);
+ * os outros confrontos da rodada só têm o placar agregado, então mostram um aviso em vez de dados inventados.
+ */
+function renderizarDetalheJogoRodada(res) {
+  const secaoEl = document.getElementById("secao-detalhe-jogo-rodada");
+  secaoEl.hidden = false;
+
+  const detalhesDaDivisao = estado.detalhesPartidaPorRodada[divisaoTabelaAtual] || {};
+  const detalhe = detalhesDaDivisao[rodadaResultadosExibida];
+  const temDetalhe = !!(detalhe && detalhe.casa === res.casa && detalhe.fora === res.fora);
+
+  const abasEl = document.getElementById("abas-detalhe-jogo");
+  const mensagemEl = document.getElementById("mensagem-vazia-detalhe-jogo");
+
+  if (!temDetalhe) {
+    abasEl.hidden = true;
+    document.getElementById("conteudo-detalhe-escalacoes").hidden = true;
+    document.getElementById("conteudo-detalhe-info").hidden = true;
+    mensagemEl.hidden = false;
+    mensagemEl.textContent = "Detalhes não disponíveis — só a partida do seu time é acompanhada minuto a minuto.";
+    return;
+  }
+
+  abasEl.hidden = false;
+  mensagemEl.hidden = true;
+  trocarAbaDetalheJogo(abaDetalheJogoAtual);
+
+  document.getElementById("detalhe-nome-casa").textContent = detalhe.casa;
+  document.getElementById("detalhe-nome-fora").textContent = detalhe.fora;
+  renderizarListaNotasDetalhe("lista-notas-casa-detalhe", detalhe.notasCasa);
+  renderizarListaNotasDetalhe("lista-notas-fora-detalhe", detalhe.notasFora);
+
+  document.getElementById("detalhe-info-nome-casa").textContent = detalhe.casa;
+  document.getElementById("detalhe-info-nome-fora").textContent = detalhe.fora;
+  renderizarQuadroEstatisticasComparativas("detalhe-info-linhas-estatisticas", detalhe.estatisticasCasa, detalhe.estatisticasFora);
+}
+
+function renderizarListaNotasDetalhe(containerId, notas) {
+  const el = document.getElementById(containerId);
+  el.innerHTML = "";
+  notas.forEach(function (n) {
+    const corNota = n.nota >= 7 ? "nota-boa" : n.nota <= 5 ? "nota-ruim" : "nota-media";
+    const li = document.createElement("li");
+    li.className = "item-nota-detalhe" + (n.craque ? " craque-do-jogo" : "");
+    li.innerHTML =
+      "<span class=\"pos\">" + escaparHtml(n.pos) + "</span>" +
+      "<span class=\"nome-nota-detalhe\">" + escaparHtml(n.nome) + (n.entrou ? " 🔄" : "") + (n.craque ? " ⭐" : "") + "</span>" +
+      "<span class=\"valor-nota-posjogo " + corNota + "\">" + n.nota.toFixed(1) + "</span>";
+    el.appendChild(li);
   });
 }
 
@@ -5441,6 +5634,7 @@ async function continuarJogoSalvo() {
     estado.statsTemporadaAtualPorJogador = registro.statsTemporadaAtualPorJogador || {};
     estado.jogadoresParaEmprestimo = registro.jogadoresParaEmprestimo || {};
     estado.precoPedidoVenda = registro.precoPedidoVenda || {};
+    estado.detalhesPartidaPorRodada = registro.detalhesPartidaPorRodada || {};
     estado.tatica = registro.tatica || taticaPadrao();
     estado.setas = registro.setas || {};
     estado.temporada = registro.temporada || null;
@@ -5983,6 +6177,18 @@ function ligarBotoes() {
       renderizarResultadosRodada();
     });
   }
+
+  const btnDivisaoAnterior = document.getElementById("btn-divisao-anterior");
+  if (btnDivisaoAnterior) btnDivisaoAnterior.addEventListener("click", function () { navegarDivisaoTabela(-1); });
+
+  const btnDivisaoSeguinte = document.getElementById("btn-divisao-seguinte");
+  if (btnDivisaoSeguinte) btnDivisaoSeguinte.addEventListener("click", function () { navegarDivisaoTabela(1); });
+
+  const abaDetalheEscalacoes = document.getElementById("aba-detalhe-escalacoes");
+  if (abaDetalheEscalacoes) abaDetalheEscalacoes.addEventListener("click", function () { trocarAbaDetalheJogo("escalacoes"); });
+
+  const abaDetalheInfo = document.getElementById("aba-detalhe-info");
+  if (abaDetalheInfo) abaDetalheInfo.addEventListener("click", function () { trocarAbaDetalheJogo("info"); });
 
   const btnPausarPartida = document.getElementById("btn-pausar-partida");
   if (btnPausarPartida) btnPausarPartida.addEventListener("click", alternarPausaPartida);
