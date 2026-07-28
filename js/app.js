@@ -2141,8 +2141,8 @@ function abrirTelaPartida() {
   document.getElementById("partida-nome-fora").textContent = timeForaSimulado.nome;
   document.getElementById("partida-escudo-casa").innerHTML = montarEscudoClube(timeCasaSimulado.nome);
   document.getElementById("partida-escudo-fora").innerHTML = montarEscudoClube(timeForaSimulado.nome);
-  document.getElementById("estatisticas-partida-nome-casa").textContent = timeCasaSimulado.nome;
-  document.getElementById("estatisticas-partida-nome-fora").textContent = timeForaSimulado.nome;
+  document.getElementById("estatisticas-partida-nome-casa").innerHTML = montarNomeComEscudo(timeCasaSimulado.nome);
+  document.getElementById("estatisticas-partida-nome-fora").innerHTML = montarNomeComEscudo(timeForaSimulado.nome);
   auxiliarEstado = { ultimoMinutoPorChave: {}, textoAtual: "", urgenciaAtual: "neutro", acaoAtual: null };
   renderizarPartida();
   renderizarRodadaParalela();
@@ -5674,13 +5674,13 @@ function renderizarDetalheJogoRodada(res) {
   mensagemEl.hidden = true;
   trocarAbaDetalheJogo(abaDetalheJogoAtual);
 
-  document.getElementById("detalhe-nome-casa").textContent = detalhe.casa;
-  document.getElementById("detalhe-nome-fora").textContent = detalhe.fora;
+  document.getElementById("detalhe-nome-casa").innerHTML = montarNomeComEscudo(detalhe.casa);
+  document.getElementById("detalhe-nome-fora").innerHTML = montarNomeComEscudo(detalhe.fora);
   renderizarListaNotasDetalhe("lista-notas-casa-detalhe", detalhe.notasCasa);
   renderizarListaNotasDetalhe("lista-notas-fora-detalhe", detalhe.notasFora);
 
-  document.getElementById("detalhe-info-nome-casa").textContent = detalhe.casa;
-  document.getElementById("detalhe-info-nome-fora").textContent = detalhe.fora;
+  document.getElementById("detalhe-info-nome-casa").innerHTML = montarNomeComEscudo(detalhe.casa);
+  document.getElementById("detalhe-info-nome-fora").innerHTML = montarNomeComEscudo(detalhe.fora);
   renderizarQuadroEstatisticasComparativas("detalhe-info-linhas-estatisticas", detalhe.estatisticasCasa, detalhe.estatisticasFora);
 }
 

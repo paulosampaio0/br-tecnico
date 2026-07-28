@@ -2147,13 +2147,18 @@ body::before {
   display: flex;
   justify-content: space-between;
   margin-bottom: 10px;
+  font-family: var(--fonte-titulo);
   font-size: 12px;
-  font-weight: 800;
+  font-weight: 700;
   color: var(--amarelo);
 }
 
 .time-estatisticas-comparativas-visitante {
   text-align: right;
+}
+
+.time-estatisticas-comparativas-visitante .nome-time-com-escudo {
+  flex-direction: row-reverse;
 }
 
 .linha-estatistica-comparativa {
@@ -2232,6 +2237,8 @@ body::before {
 }
 
 .item-jogo-rodada .time-rodada {
+  font-family: var(--fonte-titulo);
+  font-weight: 600;
   color: var(--branco);
   overflow: hidden;
   text-overflow: ellipsis;
@@ -2243,7 +2250,9 @@ body::before {
 }
 
 .item-jogo-rodada .placar-rodada {
-  font-weight: 800;
+  font-family: var(--fonte-titulo);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
   color: var(--amarelo);
   white-space: nowrap;
 }
@@ -2297,6 +2306,7 @@ body::before {
   border-collapse: collapse;
   font-size: 12px;
   white-space: nowrap;
+  font-variant-numeric: tabular-nums;
 }
 
 .tabela-classificacao th,
@@ -2318,6 +2328,8 @@ body::before {
 }
 
 .tabela-classificacao .col-time {
+  font-family: var(--fonte-titulo);
+  font-weight: 600;
   text-align: left;
   min-width: 120px;
 }
@@ -4007,8 +4019,9 @@ body::before {
 }
 
 .nome-time-escalacao-detalhe {
+  font-family: var(--fonte-titulo);
   font-size: 11px;
-  font-weight: 800;
+  font-weight: 700;
   color: var(--cinza-texto);
   text-transform: uppercase;
   letter-spacing: 0.4px;
