@@ -24,6 +24,9 @@
   --neon-verde: #39ff88;
   --neon-verde-escuro: #14c96a;
   --azul-neon: #4d8bff; /* glow do botão "Editor" na Home */
+
+  --fonte-titulo: "Oswald", "Segoe UI Condensed", -apple-system, BlinkMacSystemFont, sans-serif;
+  --fonte-corpo: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
 }
 
 /* Reset simples */
@@ -38,7 +41,7 @@ html, body {
 }
 
 body {
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  font-family: var(--fonte-corpo);
   color: var(--branco);
   background:
     radial-gradient(circle at 50% 0%, var(--verde-claro) 0%, var(--verde-campo) 45%, var(--verde-escuro) 100%);
@@ -228,8 +231,9 @@ body::before {
 .titulo-lista {
   flex: 1;
   min-width: 0;
+  font-family: var(--fonte-titulo);
   font-size: clamp(20px, 6vw, 26px);
-  font-weight: 800;
+  font-weight: 700;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -527,14 +531,22 @@ body::before {
 }
 
 .topo-hub-escudo {
-  font-size: 22px;
+  display: inline-flex;
   flex-shrink: 0;
+  width: 26px;
+  height: 26px;
   filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.4));
 }
 
+.topo-hub-escudo svg {
+  width: 100%;
+  height: 100%;
+}
+
 .topo-hub-nome {
+  font-family: var(--fonte-titulo);
   font-size: 16px;
-  font-weight: 800;
+  font-weight: 700;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -545,8 +557,10 @@ body::before {
   display: flex;
   align-items: center;
   gap: 10px;
+  font-family: var(--fonte-titulo);
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
 }
 
 .topo-hub-stat {
@@ -554,6 +568,21 @@ body::before {
   align-items: center;
   gap: 3px;
   white-space: nowrap;
+  color: var(--amarelo);
+}
+
+.icone-svg {
+  width: 15px;
+  height: 15px;
+  vertical-align: -3px;
+  color: var(--amarelo);
+}
+
+.hub-nav-item .hub-nav-icone .icone-svg {
+  width: 18px;
+  height: 18px;
+  color: inherit;
+  vertical-align: middle;
 }
 
 /* Menu principal horizontal, com rolagem suave e sem barra de rolagem visível */
@@ -584,8 +613,9 @@ body::before {
   border: 1px solid rgba(255, 255, 255, 0.12);
   background: rgba(255, 255, 255, 0.05);
   color: var(--cinza-texto);
+  font-family: var(--fonte-titulo);
   font-size: 11px;
-  font-weight: 700;
+  font-weight: 600;
   cursor: pointer;
   -webkit-tap-highlight-color: transparent;
   transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease, transform 0.08s ease;
@@ -664,8 +694,9 @@ body::before {
 }
 
 .titulo-secao-escalacao {
+  font-family: var(--fonte-titulo);
   font-size: 15px;
-  font-weight: 800;
+  font-weight: 700;
   color: var(--cinza-texto);
   text-transform: uppercase;
   letter-spacing: 0.5px;
@@ -1083,8 +1114,10 @@ body::before {
   display: inline-block;
   padding: 1px 5px;
   border-radius: 10px;
+  font-family: var(--fonte-titulo);
   font-size: 9px;
-  font-weight: 800;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
   line-height: 1.5;
   color: #0b1f12;
 }
@@ -1471,8 +1504,10 @@ body::before {
   border-radius: 8px;
   background: rgba(255, 255, 255, 0.1);
   color: var(--branco);
+  font-family: var(--fonte-titulo);
   font-size: 9px;
-  font-weight: 800;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
 
@@ -1756,8 +1791,10 @@ body::before {
 
 .numero-placar {
   flex-shrink: 0;
+  font-family: var(--fonte-titulo);
   font-size: 26px;
-  font-weight: 800;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
   color: var(--amarelo);
 }
 
@@ -3441,8 +3478,9 @@ body::before {
 }
 
 .titulo-logo-inicio {
+  font-family: var(--fonte-titulo);
   font-size: clamp(22px, 8vw, 40px);
-  font-weight: 900;
+  font-weight: 700;
   letter-spacing: 0.5px;
   white-space: nowrap;
   color: #f4ecd8;

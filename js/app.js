@@ -559,6 +559,7 @@ async function escalarEsteTime(time) {
 function abrirTelaEscalacao() {
   mostrarTela("tela-escalacao");
   document.getElementById("titulo-escalacao").textContent = estado.timeAtual.nome;
+  document.getElementById("topo-hub-escudo").innerHTML = montarEscudoClube(estado.timeAtual.nome);
   document.getElementById("btn-voltar-partida").hidden = !(partidaAtual && partidaAtual.status !== "fim");
 
   if (!partidaAtual) removerSuspensosDaEscalacao();
@@ -5150,6 +5151,23 @@ function calcularNotaSinteticaRodada(jogador, nomeTime, divisaoChave, numeroRoda
 function siglaTime(nomeTime) {
   const letras = nomeTime.replace(/[^A-Za-zÀ-ú ]/g, "").split(" ").filter(Boolean).map(function (p) { return p[0]; });
   return (letras.join("").slice(0, 3) || nomeTime.slice(0, 3)).toUpperCase();
+}
+
+/** Escudo SVG com iniciais + 2 cores derivadas do nome do clube (mesma cor sempre pro mesmo time). */
+function montarEscudoClube(nomeTime) {
+  const semente = semeanteDeTexto(nomeTime || "");
+  const matiz1 = semente % 360;
+  const matiz2 = (matiz1 + 40) % 360;
+  const cor1 = "hsl(" + matiz1 + ", 55%, 32%)";
+  const cor2 = "hsl(" + matiz2 + ", 60%, 45%)";
+  const iniciais = siglaTime(nomeTime || "?").slice(0, 2);
+  return (
+    '<svg viewBox="0 0 48 54" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">' +
+    '<path d="M24 2 L44 8 V26 C44 40 34 48 24 52 C14 48 4 40 4 26 V8 Z" fill="' + cor1 + '" stroke="rgba(255,255,255,0.4)" stroke-width="1.5"/>' +
+    '<path d="M24 8 L38 12 V26 C38 36 31 42 24 45 C17 42 10 36 10 26 V12 Z" fill="' + cor2 + '"/>' +
+    '<text x="24" y="30" text-anchor="middle" font-size="16" font-weight="800" font-family="Oswald, sans-serif" fill="#fff">' + iniciais + "</text>" +
+    "</svg>"
+  );
 }
 
 /** Monta os 11 melhores da rodada (formação 4-3-3) entre TODOS os times de uma divisão. */
