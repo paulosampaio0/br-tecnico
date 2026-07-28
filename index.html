@@ -273,14 +273,20 @@
       </div>
 
       <aside class="secao-banco coluna-banco-lateral" id="secao-banco">
-        <h3>Banco (<span id="qtd-banco">0</span>/<span id="qtd-banco-maximo">9</span>)</h3>
+        <div class="cabecalho-secao-jogadores">
+          <h3>Banco (<span id="qtd-banco">0</span>/<span id="qtd-banco-maximo">9</span>)</h3>
+          <button class="btn-ordenar-lista" id="btn-ordenar-banco" type="button" aria-label="Mudar ordem">⇅ <span id="rotulo-ordem-banco">Posição</span></button>
+        </div>
         <div class="carrossel-jogadores carrossel-banco-lateral" id="carrossel-banco"></div>
         <p class="dica-troca-jogadores">Toque em 2 jogadores pra trocá-los.</p>
       </aside>
     </div>
 
     <section class="secao-nao-relacionados" id="secao-nao-relacionados">
-      <h3>Não relacionados (<span id="qtd-nao-relacionados">0</span>)</h3>
+      <div class="cabecalho-secao-jogadores">
+        <h3>Não relacionados (<span id="qtd-nao-relacionados">0</span>)</h3>
+        <button class="btn-ordenar-lista" id="btn-ordenar-nao-relacionados" type="button" aria-label="Mudar ordem">⇅ <span id="rotulo-ordem-nao-relacionados">Posição</span></button>
+      </div>
       <div class="carrossel-jogadores" id="carrossel-nao-relacionados"></div>
     </section>
 

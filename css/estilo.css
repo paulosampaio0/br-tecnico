@@ -816,7 +816,11 @@ body::before {
 .coluna-banco-lateral.secao-banco h3 {
   font-size: 11px;
   line-height: 1.25;
-  margin-bottom: 2px;
+  margin-bottom: 0;
+  padding: 0 4px;
+}
+
+.coluna-banco-lateral .cabecalho-secao-jogadores {
   padding: 0 4px;
 }
 
@@ -836,16 +840,16 @@ body::before {
 
 .carrossel-banco-lateral .node-compacto-jogador {
   flex-shrink: 0;
-  width: 64px;
+  width: 76px;
   padding: 4px 2px;
   gap: 2px;
   touch-action: pan-x;
 }
 
 .carrossel-banco-lateral .avatar-compacto-jogador {
-  width: 30px;
-  height: 30px;
-  font-size: 10.5px;
+  width: 32px;
+  height: 32px;
+  font-size: 8px;
 }
 
 .coluna-banco-lateral .dica-troca-jogadores {
@@ -907,6 +911,24 @@ body::before {
   cursor: pointer;
   -webkit-tap-highlight-color: transparent;
   z-index: 1;
+}
+
+/* Mini escudo do clube, sobreposto no canto do card. */
+.mini-escudo-selecao-rodada {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  width: 16px;
+  height: 16px;
+  display: inline-flex;
+  filter: drop-shadow(0 1px 3px rgba(0, 0, 0, 0.6));
+}
+
+.mini-escudo-selecao-rodada svg,
+.mini-escudo-selecao-rodada img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
 }
 
 .no-selecao-rodada .pilula-pos-forca {
@@ -1407,6 +1429,41 @@ body::before {
   margin-bottom: 8px;
 }
 
+/* Cabeçalho do Banco/Não Relacionados: título + botão de ordenação lado a lado. */
+.cabecalho-secao-jogadores {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.cabecalho-secao-jogadores h3 {
+  margin-bottom: 0;
+}
+
+.btn-ordenar-lista {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 3px 8px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--cinza-texto);
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: none;
+  letter-spacing: 0;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.btn-ordenar-lista:active {
+  transform: scale(0.95);
+}
+
 .secao-tatica h3:not(:first-child) {
   margin-top: 14px;
 }
@@ -1447,7 +1504,7 @@ body::before {
 .node-compacto-jogador {
   flex: 0 0 auto;
   scroll-snap-align: start;
-  width: 62px;
+  width: 76px;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -1519,18 +1576,25 @@ body::before {
 }
 
 .avatar-compacto-jogador {
-  width: 34px;
-  height: 34px;
+  width: 36px;
+  height: 36px;
   border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
   background: var(--amarelo);
   color: #3a2b00;
-  font-size: 11px;
+  font-size: 8px;
   font-weight: 800;
   border: 2px solid rgba(255, 255, 255, 0.7);
 }
+
+/* Cor por setor do campo — só usada na rodela dos cards compactos (Banco/Não Relacionados),
+   pra identificar a posição de longe sem precisar ler o texto. */
+.avatar-compacto-jogador.setor-goleiro { background: var(--amarelo); color: #3a2b00; }
+.avatar-compacto-jogador.setor-defesa { background: #3b82f6; color: #fff; }
+.avatar-compacto-jogador.setor-meio { background: var(--neon-verde); color: #04220f; }
+.avatar-compacto-jogador.setor-ataque { background: #ff5a3c; color: #2a0b02; }
 
 .pilula-pos-forca {
   display: inline-block;
@@ -1555,10 +1619,35 @@ body::before {
   text-overflow: ellipsis;
 }
 
-.mini-indicadores-compacto {
-  display: flex;
-  gap: 4px;
-  font-size: 9px;
+/* Força + nome numa linha só (ex.: "35 Benevenuto") — texto principal do card compacto. */
+.forca-nome-compacto {
+  font-size: 9.5px;
+  font-weight: 700;
+  color: var(--branco);
+  max-width: 72px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.forca-compacto {
+  font-family: var(--fonte-titulo);
+  font-weight: 700;
+  color: var(--amarelo);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Características do jogador, texto discreto e curto (ex.: "CAB · DES") embaixo da energia. */
+.caracteristicas-compacto {
+  display: block;
+  font-size: 7.5px;
+  font-weight: 600;
+  color: var(--cinza-texto);
+  letter-spacing: 0.2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 72px;
 }
 
 .tags-compacto-jogador {

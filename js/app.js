@@ -1512,11 +1512,51 @@ function calcularNaoRelacionados() {
   return ordenarElenco(resto);
 }
 
-/** Mini indicador (bolinha colorida + valor) de energia OU moral, compacto pro carrossel de jogadores. */
-function montarMiniIndicadorCompacto(valor, limiarAlta, limiarBaixa, titulo) {
-  const nivel = valor >= limiarAlta ? "alta" : valor >= limiarBaixa ? "media" : "baixa";
-  const bolinha = nivel === "alta" ? "🟢" : nivel === "media" ? "🟡" : "🔴";
-  return "<span title=\"" + titulo + ": " + valor + "\">" + bolinha + "</span>";
+/** Classe de cor do setor do campo pra rodela de posição (goleiro/defesa/meio/ataque). */
+function classeSetorPosicao(pos) {
+  if (pos === "GOL") return "setor-goleiro";
+  if (pos === "ZAG" || pos === "LAT.E" || pos === "LAT.D") return "setor-defesa";
+  if (pos === "VOL" || pos === "MEI") return "setor-meio";
+  return "setor-ataque"; // ATE, ATD, ATA
+}
+
+/** Código curto (3 letras) de uma característica, pro texto compacto do card (ex.: "Cabeceio" -> "CAB"). */
+const CODIGO_CARACTERISTICA = {
+  "Armação": "ARM", "Cabeceio": "CAB", "Colocação": "COL", "Cruzamento": "CRZ",
+  "Defesa de Pênalti": "PEN", "Desarme": "DES", "Drible": "DRI", "Finalização": "FIN",
+  "Marcação": "MAR", "Passe": "PAS", "Reflexo": "REF", "Resistência": "RES",
+  "Saída do gol": "SAI", "Velocidade": "VEL",
+};
+function abreviarCaracteristica(nome) {
+  return CODIGO_CARACTERISTICA[nome] || nome.slice(0, 3).toUpperCase();
+}
+
+/** Ordem escolhida pra exibir o Banco/Não Relacionados: "posicao" (padrão), "forca" ou "energia". */
+let ordemBancoAtual = "posicao";
+let ordemNaoRelacionadosAtual = "posicao";
+
+const ROTULO_ORDEM_LISTA = { posicao: "Posição", forca: "Força", energia: "Energia" };
+const PROXIMA_ORDEM_LISTA = { posicao: "forca", forca: "energia", energia: "posicao" };
+
+/** Aplica a ordenação escolhida por cima da ordem padrão (por posição) já vinda de `ordenarElenco`. */
+function aplicarOrdemLista(jogadores, ordem) {
+  if (ordem === "forca") return [...jogadores].sort(function (a, b) { return b.forca - a.forca; });
+  if (ordem === "energia") {
+    return [...jogadores].sort(function (a, b) { return obterEnergiaJogador(b._id) - obterEnergiaJogador(a._id); });
+  }
+  return jogadores;
+}
+
+function alternarOrdemBanco() {
+  ordemBancoAtual = PROXIMA_ORDEM_LISTA[ordemBancoAtual];
+  document.getElementById("rotulo-ordem-banco").textContent = ROTULO_ORDEM_LISTA[ordemBancoAtual];
+  renderizarBanco();
+}
+
+function alternarOrdemNaoRelacionados() {
+  ordemNaoRelacionadosAtual = PROXIMA_ORDEM_LISTA[ordemNaoRelacionadosAtual];
+  document.getElementById("rotulo-ordem-nao-relacionados").textContent = ROTULO_ORDEM_LISTA[ordemNaoRelacionadosAtual];
+  renderizarNaoRelacionados();
 }
 
 /** O jogador já foi substituído nesta partida (saiu de campo) — não pode voltar (súmula real). */
@@ -1526,9 +1566,10 @@ function jaSaiuDaPartidaAoVivo(idJogador) {
 }
 
 /**
- * Node compacto de um jogador (avatar + posição/força + nome curto + energia/moral) — usado
- * no carrossel do Banco e no de Não Relacionados. `origem` identifica de onde esse jogador
- * vem pro mecanismo de tap-to-swap e de arrastar-e-soltar: { tipo: "banco"|"naoRelacionado", idJogador }.
+ * Node compacto de um jogador (rodela de posição + força/nome + barra de energia +
+ * características) — usado no carrossel do Banco e no de Não Relacionados. `origem` identifica
+ * de onde esse jogador vem pro mecanismo de tap-to-swap e de arrastar-e-soltar:
+ * { tipo: "banco"|"naoRelacionado", idJogador }.
  */
 function criarNodeCompactoJogador(jogador, origem) {
   const botao = document.createElement("button");
@@ -1549,20 +1590,19 @@ function criarNodeCompactoJogador(jogador, origem) {
   }
 
   const energia = obterEnergiaJogador(jogador._id);
-  const moral = estado.moralPorJogador ? obterMoralJogador(estado.moralPorJogador, jogador._id) : 100;
   const tagCapitao = estado.capitaoId === jogador._id ? "<span class=\"tags-compacto-jogador\" title=\"Capitão\">©</span>" : "";
   const tagSuspenso = jogadorEstaSuspenso(jogador._id) ? "<span class=\"tags-compacto-jogador\" title=\"Suspenso\">🚫</span>" : "";
   const tagSaiu = jaSaiu ? "<span class=\"tags-compacto-jogador\" title=\"Já saiu da partida\">🔻</span>" : "";
+  const caracteristicas = [jogador.caracteristica_1, jogador.caracteristica_2]
+    .filter(Boolean).map(abreviarCaracteristica).join(" · ");
 
   botao.innerHTML =
     tagCapitao + tagSuspenso + tagSaiu +
-    "<span class=\"avatar-compacto-jogador\">" + obterNumeroCamisa(jogador) + "</span>" +
-    "<span class=\"pilula-pos-forca\">" + jogador.forca + " " + escaparHtml(jogador.pos) + "</span>" +
-    "<span class=\"nome-compacto-jogador\">" + escaparHtml(sobrenomeCurto(jogador.nome)) + "</span>" +
-    "<span class=\"mini-indicadores-compacto\">" +
-      montarMiniIndicadorCompacto(energia, 70, 40, "Energia") +
-      montarMiniIndicadorCompacto(moral, CONFIG_FINANCEIRO.moralLimiteAlta, CONFIG_FINANCEIRO.moralLimiteBaixa, "Moral") +
-    "</span>";
+    "<span class=\"avatar-compacto-jogador " + classeSetorPosicao(jogador.pos) + "\">" + escaparHtml(jogador.pos) + "</span>" +
+    "<span class=\"forca-nome-compacto\"><span class=\"forca-compacto\">" + jogador.forca + "</span> " +
+      escaparHtml(sobrenomeCurto(jogador.nome)) + "</span>" +
+    montarBarraEnergiaComValor(energia) +
+    (caracteristicas ? "<span class=\"caracteristicas-compacto\">" + escaparHtml(caracteristicas) + "</span>" : "");
 
   botao.addEventListener("click", function () {
     // Um arrasto de verdade que acabou de acontecer NESTE botão não deve
@@ -1585,7 +1625,7 @@ function renderizarBanco() {
   const qtdMaxEl = document.getElementById("qtd-banco-maximo");
   carrosselEl.innerHTML = "";
 
-  const banco = calcularBancoRelacionado();
+  const banco = aplicarOrdemLista(calcularBancoRelacionado(), ordemBancoAtual);
   qtdEl.textContent = banco.length;
   if (qtdMaxEl) qtdMaxEl.textContent = TAMANHO_BANCO_RELACIONADO;
 
@@ -1619,7 +1659,7 @@ function renderizarNaoRelacionados() {
   if (!carrosselEl) return;
   carrosselEl.innerHTML = "";
 
-  const naoRelacionados = calcularNaoRelacionados();
+  const naoRelacionados = aplicarOrdemLista(calcularNaoRelacionados(), ordemNaoRelacionadosAtual);
   if (qtdEl) qtdEl.textContent = naoRelacionados.length;
 
   if (naoRelacionados.length === 0) {
@@ -5288,6 +5328,7 @@ function criarNoSelecaoRodada(item) {
 
   const faixaNota = item.nota >= 7.5 ? "boa" : item.nota >= 6.2 ? "media" : "ruim";
   botao.innerHTML =
+    "<span class=\"mini-escudo-selecao-rodada\">" + montarEscudoClube(item.nomeTime) + "</span>" +
     "<span class=\"pilula-pos-forca\">" + escaparHtml(item.jogador.pos) + "</span>" +
     "<span class=\"nota-partida-badge nota-partida-" + faixaNota + "\">" + item.nota.toFixed(1) + "</span>" +
     "<span class=\"nome-compacto-jogador\">" + escaparHtml(sobrenomeCurto(item.jogador.nome)) + "</span>" +
@@ -6335,6 +6376,12 @@ function ligarBotoes() {
 
   const btnSugerirSubstituicao = document.getElementById("btn-sugerir-substituicao");
   if (btnSugerirSubstituicao) btnSugerirSubstituicao.addEventListener("click", sugerirSubstituicao);
+
+  const btnOrdenarBanco = document.getElementById("btn-ordenar-banco");
+  if (btnOrdenarBanco) btnOrdenarBanco.addEventListener("click", alternarOrdemBanco);
+
+  const btnOrdenarNaoRelacionados = document.getElementById("btn-ordenar-nao-relacionados");
+  if (btnOrdenarNaoRelacionados) btnOrdenarNaoRelacionados.addEventListener("click", alternarOrdemNaoRelacionados);
 
   const btnVoltarPartida = document.getElementById("btn-voltar-partida");
   if (btnVoltarPartida) {
