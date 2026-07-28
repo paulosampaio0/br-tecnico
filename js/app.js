@@ -2452,7 +2452,7 @@ function renderizarRodadaParalela() {
     item.innerHTML =
       "<span class=\"time-rodada\">" + montarNomeComEscudo(jogo.casa.nome) + "</span>" +
       "<span class=\"placar-rodada\">" + jogo.partida.placarCasa + " x " + jogo.partida.placarFora + "</span>" +
-      "<span class=\"time-rodada\">" + montarNomeComEscudo(jogo.fora.nome) + "</span>" +
+      "<span class=\"time-rodada time-rodada-fora\">" + montarNomeComEscudo(jogo.fora.nome) + "</span>" +
       "<span class=\"minuto-rodada\">" + (jogo.partida.minuto >= 90 ? "Fim" : jogo.partida.minuto + "'") + "</span>";
     listaEl.appendChild(item);
   });
@@ -5626,7 +5626,7 @@ function renderizarResultadosRodada() {
     li.innerHTML =
       "<span class=\"time-rodada\">" + montarNomeComEscudo(res.casa) + "</span>" +
       "<span class=\"placar-rodada\">" + res.golsCasa + " x " + res.golsFora + "</span>" +
-      "<span class=\"time-rodada\">" + montarNomeComEscudo(res.fora) + "</span>" +
+      "<span class=\"time-rodada time-rodada-fora\">" + montarNomeComEscudo(res.fora) + "</span>" +
       "<span class=\"minuto-rodada\">Fim</span>";
     li.addEventListener("click", function () { selecionarJogoRodada(res, li); });
     listaEl.appendChild(li);

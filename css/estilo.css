@@ -1134,9 +1134,9 @@ body::before {
   white-space: nowrap;
 }
 
-/* No confronto da rodada, o time visitante fica alinhado à direita — inverte a ordem
-   pra o escudo ficar na ponta de fora, junto do placar no meio. */
-.item-jogo-rodada .time-rodada:last-of-type .nome-time-com-escudo {
+/* No confronto da rodada, o time visitante mostra Nome->Escudo (espelhado do mandante,
+   que é Escudo->Nome) — o escudo de cada lado fica sempre na ponta de fora do card. */
+.item-jogo-rodada .time-rodada-fora .nome-time-com-escudo {
   flex-direction: row-reverse;
 }
 
@@ -2284,7 +2284,7 @@ body::before {
   text-align: right;
 }
 
-.item-jogo-rodada .time-rodada:last-of-type {
+.item-jogo-rodada .time-rodada-fora {
   text-align: left;
 }
 
