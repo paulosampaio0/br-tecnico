@@ -269,12 +269,16 @@
       <div class="coluna-campo">
         <div class="campo" id="campo-titular"></div>
 
-        <!-- Campo tático duplo (Mandante em cima atacando pra baixo, Visitante embaixo atacando
-             pra cima) — só aparece durante uma partida ativa ("Mexer no time"); ver renderizarCampo(). -->
-        <div class="campo campo-duplo" id="campo-duplo-partida" hidden>
-          <span class="rotulo-time-campo-duplo rotulo-time-casa" id="campo-duplo-nome-casa">Mandante</span>
-          <span class="rotulo-time-campo-duplo rotulo-time-fora" id="campo-duplo-nome-fora">Visitante</span>
+        <!-- Campo tático do "Mexer no time" — só aparece durante uma partida ativa. Alterna entre
+             o meu time (interativo, com substituição) e o adversário (só leitura); ver renderizarCampo(). -->
+        <div class="cabecalho-mexer-time" id="cabecalho-mexer-time" hidden>
+          <div class="abas abas-mexer-time" id="abas-mexer-time" role="tablist">
+            <button class="aba ativa" id="aba-mexer-meu-time" type="button">Meu Time</button>
+            <button class="aba" id="aba-mexer-adversario" type="button">Adversário</button>
+          </div>
+          <p class="rotulo-time-mexer" id="rotulo-time-mexer"></p>
         </div>
+        <div class="campo campo-duplo" id="campo-duplo-partida" hidden></div>
 
         <p class="info-substituicoes" id="info-substituicoes" hidden></p>
 
@@ -785,20 +789,25 @@
       <span id="texto-auxiliar">🎧 Observando o jogo…</span>
     </button>
 
-    <section class="secao-estatisticas-partida">
-      <h3>Estatísticas</h3>
-      <div class="cartao-estatisticas-comparativas">
-        <div class="cabecalho-estatisticas-comparativas">
-          <span class="time-estatisticas-comparativas" id="estatisticas-partida-nome-casa">Mandante</span>
-          <span class="time-estatisticas-comparativas time-estatisticas-comparativas-visitante" id="estatisticas-partida-nome-fora">Visitante</span>
-        </div>
-        <div id="linhas-estatisticas-partida"></div>
+    <section class="secao-painel-partida">
+      <div class="abas abas-painel-partida" id="abas-painel-partida" role="tablist">
+        <button class="aba ativa" id="aba-partida-eventos" type="button">Eventos</button>
+        <button class="aba" id="aba-partida-estatisticas" type="button">Estatísticas</button>
       </div>
-    </section>
 
-    <section class="secao-eventos-partida">
-      <h3>Eventos</h3>
-      <ul class="lista lista-eventos-partida" id="lista-eventos-partida"></ul>
+      <div class="conteudo-painel-partida" id="conteudo-painel-eventos">
+        <ul class="lista lista-eventos-partida" id="lista-eventos-partida"></ul>
+      </div>
+
+      <div class="conteudo-painel-partida" id="conteudo-painel-estatisticas" hidden>
+        <div class="cartao-estatisticas-comparativas">
+          <div class="cabecalho-estatisticas-comparativas">
+            <span class="time-estatisticas-comparativas" id="estatisticas-partida-nome-casa">Mandante</span>
+            <span class="time-estatisticas-comparativas time-estatisticas-comparativas-visitante" id="estatisticas-partida-nome-fora">Visitante</span>
+          </div>
+          <div id="linhas-estatisticas-partida"></div>
+        </div>
+      </div>
     </section>
 
     <section class="secao-rodada-paralela">

@@ -797,9 +797,11 @@ function renderizarCampo() {
   // vira o campo duplo (mandante x visitante, estilo Flashscore/Sofascore) com a lista de
   // substituições logo abaixo; fora de partida, continua o editor de escalação de sempre.
   const campoDuploEl = document.getElementById("campo-duplo-partida");
+  const cabecalhoMexerEl = document.getElementById("cabecalho-mexer-time");
   const secaoSubsEl = document.getElementById("secao-substituicoes-partida");
   const campoSimplesEl = document.getElementById("campo-titular");
   if (campoDuploEl) campoDuploEl.hidden = !emPartidaAoVivo;
+  if (cabecalhoMexerEl) cabecalhoMexerEl.hidden = !emPartidaAoVivo;
   if (secaoSubsEl) secaoSubsEl.hidden = !emPartidaAoVivo;
   if (campoSimplesEl) campoSimplesEl.hidden = emPartidaAoVivo;
 
@@ -873,39 +875,52 @@ function renderizarCampo() {
   montarSelectCapitao();
 }
 
+/** Aba ativa do "Mexer no time": "meu" (interativo, com substituição) ou "adversario" (só leitura). */
+let abaMexerTimeAtual = "meu";
+
+function trocarAbaMexerTime(aba) {
+  if (aba === abaMexerTimeAtual) return;
+  abaMexerTimeAtual = aba;
+  document.getElementById("aba-mexer-meu-time").classList.toggle("ativa", aba === "meu");
+  document.getElementById("aba-mexer-adversario").classList.toggle("ativa", aba === "adversario");
+  renderizarCampoDuploPartida();
+  const secaoBancoEl = document.getElementById("secao-banco");
+  if (secaoBancoEl) secaoBancoEl.hidden = aba !== "meu";
+}
+
 /**
- * Campo Tático Duplo (estilo Flashscore/Sofascore): as DUAS equipes no mesmo campo durante o
- * "Mexer no time" — mandante em cima atacando pra baixo, visitante embaixo atacando pra cima.
- * Reaproveita as mesmas vagas/formações da match engine (`obterFormacao`/`resolverTitulares`,
- * partida.js), só comprimindo o Y de cada time na sua metade do campo.
+ * Campo tático do "Mexer no time": mostra só o time da aba selecionada (11 jogadores por vez,
+ * não os 22 juntos). Reaproveita as mesmas vagas/formações da match engine
+ * (`obterFormacao`/`resolverTitulares`, partida.js).
  */
 function renderizarCampoDuploPartida() {
   const campoEl = document.getElementById("campo-duplo-partida");
   if (!campoEl || !partidaAtual) return;
 
-  // Os rótulos dos times ficam fora do innerHTML que é limpo (senão eles somem a cada redesenho).
-  const nomeCasaEl = document.getElementById("campo-duplo-nome-casa");
-  const nomeForaEl = document.getElementById("campo-duplo-nome-fora");
-  if (nomeCasaEl) nomeCasaEl.textContent = timeCasaSimulado.nome;
-  if (nomeForaEl) nomeForaEl.textContent = timeForaSimulado.nome;
+  const ladoMostrado = abaMexerTimeAtual === "meu"
+    ? meuLadoNaPartida
+    : (meuLadoNaPartida === "casa" ? "fora" : "casa");
+  const nomeTimeMostrado = ladoMostrado === "casa" ? timeCasaSimulado.nome : timeForaSimulado.nome;
 
-  Array.from(campoEl.querySelectorAll(".vaga-dupla")).forEach(function (el) { el.remove(); });
+  const rotuloEl = document.getElementById("rotulo-time-mexer");
+  if (rotuloEl) {
+    rotuloEl.textContent = nomeTimeMostrado + (abaMexerTimeAtual === "meu" ? " · meu time" : " · adversário");
+  }
 
-  // Mandante: comprime e INVERTE o Y (a formação normal tem o goleiro em y=92 e o ataque em
-  // y=12, pensada pra atacar "pra cima"; o mandante no campo duplo ataca pra baixo, então
-  // inverte antes de comprimir na metade de cima — goleiro perto do topo, ataque perto do meio).
-  montarMetadeCampoDuplo(campoEl, "casa", function (y) { return (100 - y) * 0.5; });
-  // Visitante: comprime SEM inverter, na metade de baixo — goleiro perto da base, ataque perto do meio.
-  montarMetadeCampoDuplo(campoEl, "fora", function (y) { return 50 + y * 0.5; });
+  const secaoBancoEl = document.getElementById("secao-banco");
+  if (secaoBancoEl) secaoBancoEl.hidden = abaMexerTimeAtual !== "meu";
+
+  campoEl.innerHTML = "";
+  montarLadoCampoDuplo(campoEl, ladoMostrado);
 }
 
 /**
- * Monta as vagas de UM lado (casa/fora) dentro do campo duplo. Só o lado que é o MEU time
+ * Monta as vagas de UM lado (casa/fora) no campo do "Mexer no time". Só o lado que é o MEU time
  * (`meuLadoNaPartida`) fica interativo (tocar pra substituir, arrastar seta) — o adversário
  * é só visualização, os outros ~39 clubes da liga não têm uma escalação "editável" de
  * verdade fora da match engine.
  */
-function montarMetadeCampoDuplo(campoEl, lado, transformarY) {
+function montarLadoCampoDuplo(campoEl, lado) {
   const souEuNesseLado = lado === meuLadoNaPartida;
   const itens = souEuNesseLado
     ? resolverTitulares(estado.timeAtual.jogadores, estado.formacaoId, estado.titulares)
@@ -930,7 +945,7 @@ function montarMetadeCampoDuplo(campoEl, lado, transformarY) {
     // titular durante a partida) descobre em qual vaga a substituição deve entrar.
     if (souEuNesseLado) node.dataset.vagaId = vaga.id;
     node.style.left = vaga.x + "%";
-    node.style.top = transformarY(vaga.y) + "%";
+    node.style.top = vaga.y + "%";
 
     const entrou = idsQueEntraram.has(jogador._id);
     const statusCartao = obterStatusCartaoAoVivo(jogador._id, lado);
@@ -938,6 +953,7 @@ function montarMetadeCampoDuplo(campoEl, lado, transformarY) {
     const icones = montarIconesEventoPartida(entrou, statusCartao, gols);
     const nota = calcularNotaAoVivoJogador(jogador._id, lado);
     const faixaNota = nota >= 7.0 ? "boa" : nota >= 6.0 ? "media" : "ruim";
+    const energia = souEuNesseLado ? obterEnergiaJogador(jogador._id) : obterEnergiaAoVivoOponente(jogador);
 
     node.innerHTML =
       "<span class=\"nota-partida-badge nota-partida-" + faixaNota + "\">" + nota.toFixed(1) + "</span>" +
@@ -949,7 +965,8 @@ function montarMetadeCampoDuplo(campoEl, lado, transformarY) {
         (souEuNesseLado && estado.capitaoId === jogador._id ? "<span class=\"tag-capitao-campo\" title=\"Capitão\">©</span>" : "") +
         escaparHtml(sobrenomeCurto(jogador.nome)) +
       "</span>" +
-      (icones ? "<span class=\"icones-evento-partida-wrap\">" + icones + "</span>" : "");
+      (icones ? "<span class=\"icones-evento-partida-wrap\">" + icones + "</span>" : "") +
+      montarBarraEnergiaComValor(energia);
 
     if (souEuNesseLado) {
       node.addEventListener("click", function () {
@@ -963,6 +980,16 @@ function montarMetadeCampoDuplo(campoEl, lado, transformarY) {
 
     campoEl.appendChild(node);
   });
+}
+
+/** Energia sintética do adversário durante a partida (a CPU não tem energia salva por jogador
+ *  como o meu elenco) — decai com o minuto do jogo e varia por jogador de forma determinística. */
+function obterEnergiaAoVivoOponente(jogador) {
+  const semente = semeanteDeTexto("energia-oponente|" + jogador._id + "|" + (partidaAtual.rodada || 0));
+  const aleatorio = criarRandomSeeded(semente)();
+  const desgaste = (partidaAtual.minuto || 0) * 0.4;
+  const variacao = (aleatorio - 0.5) * 16;
+  return Math.round(clamp(100 - desgaste + variacao, 35, 100));
 }
 
 /** Ícones sobrepostos de eventos (substituição/cartão/gol) — reaproveitado no campo duplo e na lista de substituídos. */
@@ -1074,7 +1101,10 @@ function definirCapitao(valorSelect) {
 
 /** Barrinha de energia (blocos coloridos) embaixo da bolinha, pra ver o cansaço direto no campo (ex.: ao "mexer no time"). */
 function montarBarraEnergiaVaga(jogador) {
-  const energia = obterEnergiaJogador(jogador._id);
+  return montarBarraEnergiaComValor(obterEnergiaJogador(jogador._id));
+}
+
+function montarBarraEnergiaComValor(energia) {
   const nivel = energia > 80 ? "alta" : energia >= 60 ? "media" : "baixa";
   const blocoAceso = nivel === "alta" ? "🟩" : nivel === "media" ? "🟨" : "🟥";
   const TOTAL_BLOCOS = 5;
@@ -1927,6 +1957,7 @@ async function iniciarAmistoso() {
   timeForaSimulado = criarTimeSimuladoAutomatico(oponente, "fora");
 
   partidaAtual = novaPartida(true); // interativa: é a partida que o usuário está de fato jogando
+  reiniciarAbasDaPartida();
   // Amistoso: o usuário sempre manda o jogo — bilheteria com os dados reais do meu clube.
   partidaAtual.bilheteria = calcularBilheteriaExibicao(
     estado.timeAtual.jogadores, estado.timeAtual.divisaoChave,
@@ -2428,6 +2459,35 @@ function renderizarPartida() {
   renderizarPainelAuxiliar();
   renderizarEventosPartida();
   renderizarControlesPartida();
+}
+
+let abaPartidaAtual = "eventos";
+
+/** Volta as abas do "Mexer no time" e do painel de eventos/estatísticas pro estado inicial —
+ *  chamado sempre que uma nova partida começa, pra não herdar a aba deixada na partida anterior. */
+function reiniciarAbasDaPartida() {
+  abaMexerTimeAtual = "meu";
+  abaPartidaAtual = "eventos";
+  const abaMeuTimeEl = document.getElementById("aba-mexer-meu-time");
+  const abaAdversarioEl = document.getElementById("aba-mexer-adversario");
+  if (abaMeuTimeEl) abaMeuTimeEl.classList.add("ativa");
+  if (abaAdversarioEl) abaAdversarioEl.classList.remove("ativa");
+  const abaEventosEl = document.getElementById("aba-partida-eventos");
+  const abaEstatisticasEl = document.getElementById("aba-partida-estatisticas");
+  if (abaEventosEl) abaEventosEl.classList.add("ativa");
+  if (abaEstatisticasEl) abaEstatisticasEl.classList.remove("ativa");
+  const painelEventosEl = document.getElementById("conteudo-painel-eventos");
+  const painelEstatisticasEl = document.getElementById("conteudo-painel-estatisticas");
+  if (painelEventosEl) painelEventosEl.hidden = false;
+  if (painelEstatisticasEl) painelEstatisticasEl.hidden = true;
+}
+
+function trocarAbaPartida(aba) {
+  abaPartidaAtual = aba;
+  document.getElementById("aba-partida-eventos").classList.toggle("ativa", aba === "eventos");
+  document.getElementById("aba-partida-estatisticas").classList.toggle("ativa", aba === "estatisticas");
+  document.getElementById("conteudo-painel-eventos").hidden = aba !== "eventos";
+  document.getElementById("conteudo-painel-estatisticas").hidden = aba !== "estatisticas";
 }
 
 function renderizarEventosPartida() {
@@ -3254,6 +3314,7 @@ async function iniciarRodadaOficial() {
   recalcularForcaUsuario(); // preenche o lado que é o meu
 
   partidaAtual = novaPartida(true); // interativa: é a partida que o usuário está de fato jogando
+  reiniciarAbasDaPartida();
   partidaAtual.ehRodadaOficial = true;
   partidaAtual.numeroRodadaOficial = numeroRodada;
 
@@ -6408,6 +6469,18 @@ function ligarBotoes() {
 
   const abaDetalheInfo = document.getElementById("aba-detalhe-info");
   if (abaDetalheInfo) abaDetalheInfo.addEventListener("click", function () { trocarAbaDetalheJogo("info"); });
+
+  const abaMexerMeuTime = document.getElementById("aba-mexer-meu-time");
+  if (abaMexerMeuTime) abaMexerMeuTime.addEventListener("click", function () { trocarAbaMexerTime("meu"); });
+
+  const abaMexerAdversario = document.getElementById("aba-mexer-adversario");
+  if (abaMexerAdversario) abaMexerAdversario.addEventListener("click", function () { trocarAbaMexerTime("adversario"); });
+
+  const abaPartidaEventos = document.getElementById("aba-partida-eventos");
+  if (abaPartidaEventos) abaPartidaEventos.addEventListener("click", function () { trocarAbaPartida("eventos"); });
+
+  const abaPartidaEstatisticas = document.getElementById("aba-partida-estatisticas");
+  if (abaPartidaEstatisticas) abaPartidaEstatisticas.addEventListener("click", function () { trocarAbaPartida("estatisticas"); });
 
   const btnPausarPartida = document.getElementById("btn-pausar-partida");
   if (btnPausarPartida) btnPausarPartida.addEventListener("click", alternarPausaPartida);
