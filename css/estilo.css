@@ -1066,6 +1066,42 @@ body::before {
   margin-bottom: 0;
 }
 
+/* Nome do clube + escudo, sempre juntos — reaproveitado na tabela, jogos da rodada,
+   "Mexer no time" etc. */
+.nome-time-com-escudo {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  max-width: 100%;
+  vertical-align: middle;
+}
+
+.mini-escudo-time {
+  flex-shrink: 0;
+  width: 16px;
+  height: 16px;
+  display: inline-flex;
+}
+
+.mini-escudo-time svg,
+.mini-escudo-time img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.texto-nome-time {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* No confronto da rodada, o time visitante fica alinhado à direita — inverte a ordem
+   pra o escudo ficar na ponta de fora, junto do placar no meio. */
+.item-jogo-rodada .time-rodada:last-of-type .nome-time-com-escudo {
+  flex-direction: row-reverse;
+}
+
 .rotulo-time-mexer {
   text-align: center;
   font-family: var(--fonte-titulo);

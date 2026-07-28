@@ -904,7 +904,8 @@ function renderizarCampoDuploPartida() {
 
   const rotuloEl = document.getElementById("rotulo-time-mexer");
   if (rotuloEl) {
-    rotuloEl.textContent = nomeTimeMostrado + (abaMexerTimeAtual === "meu" ? " · meu time" : " · adversário");
+    rotuloEl.innerHTML = montarNomeComEscudo(nomeTimeMostrado) +
+      (abaMexerTimeAtual === "meu" ? " · meu time" : " · adversário");
   }
 
   const secaoBancoEl = document.getElementById("secao-banco");
@@ -2409,9 +2410,9 @@ function renderizarRodadaParalela() {
     const item = document.createElement("li");
     item.className = "item-jogo-rodada" + (jogo.partida.minuto >= 90 ? " encerrado" : "");
     item.innerHTML =
-      "<span class=\"time-rodada\">" + escaparHtml(jogo.casa.nome) + "</span>" +
+      "<span class=\"time-rodada\">" + montarNomeComEscudo(jogo.casa.nome) + "</span>" +
       "<span class=\"placar-rodada\">" + jogo.partida.placarCasa + " x " + jogo.partida.placarFora + "</span>" +
-      "<span class=\"time-rodada\">" + escaparHtml(jogo.fora.nome) + "</span>" +
+      "<span class=\"time-rodada\">" + montarNomeComEscudo(jogo.fora.nome) + "</span>" +
       "<span class=\"minuto-rodada\">" + (jogo.partida.minuto >= 90 ? "Fim" : jogo.partida.minuto + "'") + "</span>";
     listaEl.appendChild(item);
   });
@@ -5259,6 +5260,17 @@ function montarEscudoClube(nomeTime) {
   );
 }
 
+/** Nome do clube com o escudo ao lado — padrão reaproveitado em toda lista/placar que mostra
+ *  nome de time (tabela, jogos da rodada, "Mexer no time" etc.), pra sempre vir junto. */
+function montarNomeComEscudo(nomeTime, classeExtra) {
+  return (
+    '<span class="nome-time-com-escudo' + (classeExtra ? " " + classeExtra : "") + '">' +
+      '<span class="mini-escudo-time">' + montarEscudoClube(nomeTime) + "</span>" +
+      '<span class="texto-nome-time">' + escaparHtml(nomeTime) + "</span>" +
+    "</span>"
+  );
+}
+
 /** Monta os 11 melhores da rodada (formação 4-3-3) entre TODOS os times de uma divisão. */
 function montarSelecaoDaRodada(dados, divisaoChave, numeroRodada) {
   const divisao = dados.divisoes[divisaoChave];
@@ -5549,7 +5561,7 @@ function renderizarTabelaClassificacao() {
     tr.className = classes.join(" ");
     tr.innerHTML =
       "<td class=\"col-pos\">" + posicao + "</td>" +
-      "<td class=\"col-time\">" + escaparHtml(time.nome) + "</td>" +
+      "<td class=\"col-time\">" + montarNomeComEscudo(time.nome) + "</td>" +
       "<td class=\"pontos\">" + time.pontos + "</td>" +
       "<td>" + time.jogos + "</td><td>" + time.vitorias + "</td><td>" + time.empates + "</td><td>" + time.derrotas + "</td>" +
       "<td>" + time.golsPro + "</td><td>" + time.golsContra + "</td>" +
@@ -5590,9 +5602,9 @@ function renderizarResultadosRodada() {
     const li = document.createElement("li");
     li.className = "item-jogo-rodada encerrado selecionavel-jogo-rodada" + (ehMeuJogo ? " meu-jogo-rodada" : "");
     li.innerHTML =
-      "<span class=\"time-rodada\">" + escaparHtml(res.casa) + "</span>" +
+      "<span class=\"time-rodada\">" + montarNomeComEscudo(res.casa) + "</span>" +
       "<span class=\"placar-rodada\">" + res.golsCasa + " x " + res.golsFora + "</span>" +
-      "<span class=\"time-rodada\">" + escaparHtml(res.fora) + "</span>" +
+      "<span class=\"time-rodada\">" + montarNomeComEscudo(res.fora) + "</span>" +
       "<span class=\"minuto-rodada\">Fim</span>";
     li.addEventListener("click", function () { selecionarJogoRodada(res, li); });
     listaEl.appendChild(li);
