@@ -464,6 +464,10 @@
       </div>
     </section>
 
+    <!-- Só aparece logo depois de encerrar uma partida de rodada oficial (ver abrirTelaTabela) —
+         essa tela vira o "Fim de jogo": mostra o resultado da rodada e manda direto pro hub. -->
+    <button class="btn btn-primario btn-continuar-pos-rodada" id="btn-continuar-pos-rodada" type="button" hidden>Continuar ▶</button>
+
   </main>
 
   <!-- Tela: finanças do clube -->
@@ -818,36 +822,6 @@
   </main>
 
   <!-- Tela: pós-jogo -->
-  <main class="tela tela-pos-jogo" id="tela-pos-jogo" hidden>
-
-    <header class="cabecalho cabecalho-lista">
-      <h2 class="titulo-lista">Fim de jogo</h2>
-    </header>
-
-    <p class="placar-resumo-posjogo" id="placar-resumo-posjogo"></p>
-
-    <section class="secao-destaques-posjogo">
-      <h3>⭐ Melhores em campo</h3>
-      <ul class="lista lista-notas-posjogo" id="lista-melhores-posjogo"></ul>
-      <h3>👎 Piores em campo</h3>
-      <ul class="lista lista-notas-posjogo" id="lista-piores-posjogo"></ul>
-    </section>
-
-    <section class="secao-estatisticas-posjogo">
-      <h3>📊 Estatísticas</h3>
-      <div class="cartao-estatisticas-comparativas">
-        <div class="cabecalho-estatisticas-comparativas">
-          <span class="time-estatisticas-comparativas" id="estatisticas-nome-casa">Mandante</span>
-          <span class="time-estatisticas-comparativas time-estatisticas-comparativas-visitante" id="estatisticas-nome-fora">Visitante</span>
-        </div>
-        <div id="lista-estatisticas-comparativas"></div>
-      </div>
-    </section>
-
-    <button class="btn btn-primario" id="btn-continuar-posjogo" type="button">Continuar ▶</button>
-
-  </main>
-
   <!-- Pop-up de expulsão (cartão vermelho direto ou 2º amarelo) -->
   <div class="sobreposicao sobreposicao-expulsao" id="sobreposicao-expulsao" hidden>
     <div class="cartao-expulsao">

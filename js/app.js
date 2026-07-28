@@ -85,6 +85,8 @@ let intervaloPartida = null;
 let velocidadePartida = 1; // 1x, 2x ou 3x — acelera o setInterval da simulação
 let partidasRodada = []; // os outros jogos da mesma divisão, simulados em paralelo (Fase 5)
 let meuLadoNaPartida = "casa"; // se o meu time é "casa" ou "fora" na partida atual (Fase 6)
+// A tela Tabela dobra de "Fim de jogo" logo após uma partida de rodada oficial — ver finalizarPartida/abrirTelaTabela.
+let modoPosJogoTabela = false;
 
 // Auxiliar técnico (dicas táticas em tempo real) — guarda a última dica exibida (com cooldown
 // por chave, pra não repetir a mesma frase toda hora) e se ela tem uma ação associada (ex.:
@@ -557,6 +559,7 @@ async function escalarEsteTime(time) {
 /* ---------- Tela: escalação e tática ---------- */
 
 function abrirTelaEscalacao() {
+  modoPosJogoTabela = false; // chegar no hub sempre encerra o modo "Fim de jogo" da tela Tabela
   mostrarTela("tela-escalacao");
   document.getElementById("titulo-escalacao").textContent = estado.timeAtual.nome;
   document.getElementById("topo-hub-escudo").innerHTML = montarEscudoClube(estado.timeAtual.nome);
@@ -2529,7 +2532,7 @@ function renderizarControlesPartida() {
     btnMexer.hidden = true;
     if (btnVelocidade) btnVelocidade.hidden = true;
     btnVoltarFim.hidden = false;
-    btnVoltarFim.textContent = "Ver resumo da partida ▶";
+    btnVoltarFim.textContent = partidaAtual.ehRodadaOficial ? "Ver resultado da rodada ▶" : "Continuar ▶";
     return;
   }
 
@@ -2923,44 +2926,16 @@ function fecharTemporadaNoHistoricoDosJogadores() {
   estado.jogosTemporadaPorJogador = {};
 }
 
-function criarItemNotaPosJogo(entrada) {
-  const li = document.createElement("li");
-  li.className = "item-nota-posjogo";
-  const corNota = entrada.nota >= 7 ? "nota-boa" : entrada.nota <= 5 ? "nota-ruim" : "nota-media";
-  li.innerHTML =
-    "<span class=\"pos\">" + escaparHtml(entrada.pos) + "</span>" +
-    "<span class=\"nome-nota-posjogo\">" + escaparHtml(entrada.nome) + "</span>" +
-    "<span class=\"valor-nota-posjogo " + corNota + "\">" + entrada.nota.toFixed(1) + "</span>";
-  return li;
-}
-
-function abrirTelaPosJogo() {
-  mostrarTela("tela-pos-jogo");
-
-  const meuNome = estado.timeAtual.nome;
-  const nomeCasa = timeCasaSimulado.nome, nomeFora = timeForaSimulado.nome;
-  document.getElementById("placar-resumo-posjogo").textContent =
-    nomeCasa + " " + partidaAtual.placarCasa + " x " + partidaAtual.placarFora + " " + nomeFora +
-    (partidaAtual.ehRodadaOficial ? " · Rodada oficial" : " · Amistoso");
-
-  const notas = calcularNotasPosJogo();
-
-  const listaMelhores = document.getElementById("lista-melhores-posjogo");
-  const listaPiores = document.getElementById("lista-piores-posjogo");
-  listaMelhores.innerHTML = "";
-  listaPiores.innerHTML = "";
-  notas.slice(0, 3).forEach(function (e) { listaMelhores.appendChild(criarItemNotaPosJogo(e)); });
-  notas.slice(-3).reverse().forEach(function (e) { listaPiores.appendChild(criarItemNotaPosJogo(e)); });
-
-  document.getElementById("estatisticas-nome-casa").textContent = nomeCasa;
-  document.getElementById("estatisticas-nome-fora").textContent = nomeFora;
-  renderizarQuadroEstatisticasComparativas("lista-estatisticas-comparativas",
-    montarDadosEstatisticasComparativas("casa"), montarDadosEstatisticasComparativas("fora"));
-}
-
-/** Chamado pelo botão "Continuar" do pós-jogo — só aí de fato fecha a partida. */
-function continuarAposPosJogo() {
+/**
+ * Chamada pelo botão da tela de partida ao terminar o jogo ("Ver resultado da rodada" /
+ * "Continuar"). Rodada oficial: fecha a rodada de verdade e pousa direto na tela Tabela, que
+ * nesse momento vira o "Fim de jogo" (resultados da rodada + Escalações e Notas/Info da
+ * Partida, com um botão "Continuar" pro hub — ver abrirTelaTabela). Amistoso não mexe em
+ * tabela/rodada, então só volta pra escalação, como sempre fez.
+ */
+function finalizarPartida() {
   if (partidaAtual.ehRodadaOficial) {
+    modoPosJogoTabela = true;
     concluirRodadaOficial();
     return;
   }
@@ -5397,6 +5372,13 @@ function abrirTelaTabela() {
   montarNavDivisaoTabela();
   renderizarTabelaClassificacao();
   renderizarResultadosRodada();
+
+  // Logo depois de uma partida de rodada oficial (ver finalizarPartida), essa mesma tela vira
+  // o "Fim de jogo": some o "←" de navegação livre e mostra só o botão "Continuar" pro hub.
+  const btnContinuarPosRodada = document.getElementById("btn-continuar-pos-rodada");
+  const btnVoltarEscalacaoTabela = document.getElementById("btn-voltar-escalacao-tabela");
+  if (btnContinuarPosRodada) btnContinuarPosRodada.hidden = !modoPosJogoTabela;
+  if (btnVoltarEscalacaoTabela) btnVoltarEscalacaoTabela.hidden = modoPosJogoTabela;
 }
 
 /**
@@ -6532,11 +6514,16 @@ function ligarBotoes() {
 
   const btnVoltarEscalacaoFim = document.getElementById("btn-voltar-escalacao-fim");
   if (btnVoltarEscalacaoFim) {
-    btnVoltarEscalacaoFim.addEventListener("click", abrirTelaPosJogo);
+    btnVoltarEscalacaoFim.addEventListener("click", finalizarPartida);
   }
 
-  const btnContinuarPosJogo = document.getElementById("btn-continuar-posjogo");
-  if (btnContinuarPosJogo) btnContinuarPosJogo.addEventListener("click", continuarAposPosJogo);
+  const btnContinuarPosRodada = document.getElementById("btn-continuar-pos-rodada");
+  if (btnContinuarPosRodada) {
+    btnContinuarPosRodada.addEventListener("click", function () {
+      modoPosJogoTabela = false;
+      abrirTelaEscalacao();
+    });
+  }
 
   const btnFecharSeletor = document.getElementById("btn-fechar-seletor");
   if (btnFecharSeletor) btnFecharSeletor.addEventListener("click", fecharSeletorJogador);
