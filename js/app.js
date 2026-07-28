@@ -2107,6 +2107,8 @@ function abrirTelaPartida() {
   mostrarTela("tela-partida");
   document.getElementById("partida-nome-casa").textContent = timeCasaSimulado.nome;
   document.getElementById("partida-nome-fora").textContent = timeForaSimulado.nome;
+  document.getElementById("partida-escudo-casa").innerHTML = montarEscudoClube(timeCasaSimulado.nome);
+  document.getElementById("partida-escudo-fora").innerHTML = montarEscudoClube(timeForaSimulado.nome);
   document.getElementById("estatisticas-partida-nome-casa").textContent = timeCasaSimulado.nome;
   document.getElementById("estatisticas-partida-nome-fora").textContent = timeForaSimulado.nome;
   auxiliarEstado = { ultimoMinutoPorChave: {}, textoAtual: "", urgenciaAtual: "neutro", acaoAtual: null };
@@ -2410,6 +2412,11 @@ function renderizarPartida() {
     elPlacar.classList.remove("placar-gol-anim");
     void elPlacar.offsetWidth; // força o navegador a reiniciar a animação
     elPlacar.classList.add("placar-gol-anim");
+
+    const elCabecalho = document.getElementById("cabecalho-partida");
+    elCabecalho.classList.remove("cabecalho-partida-gol");
+    void elCabecalho.offsetWidth;
+    elCabecalho.classList.add("cabecalho-partida-gol");
   }
   elPlacar.textContent = novoPlacar;
   document.getElementById("partida-minuto").textContent = partidaAtual.minuto + "'";

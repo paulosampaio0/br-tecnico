@@ -754,11 +754,17 @@
 
     <p class="info-bilheteria-partida" id="info-bilheteria-partida" hidden></p>
 
-    <header class="cabecalho-partida">
+    <header class="cabecalho-partida" id="cabecalho-partida">
       <div class="placar-partida">
-        <span class="nome-time-partida" id="partida-nome-casa">Casa</span>
+        <div class="lado-placar-partida">
+          <span class="escudo-time-partida" id="partida-escudo-casa" aria-hidden="true"></span>
+          <span class="nome-time-partida" id="partida-nome-casa">Casa</span>
+        </div>
         <span class="numero-placar" id="partida-placar">0 x 0</span>
-        <span class="nome-time-partida" id="partida-nome-fora">Fora</span>
+        <div class="lado-placar-partida lado-placar-partida-fora">
+          <span class="nome-time-partida" id="partida-nome-fora">Fora</span>
+          <span class="escudo-time-partida" id="partida-escudo-fora" aria-hidden="true"></span>
+        </div>
       </div>
       <div class="relogio-partida">
         <span class="minuto-partida" id="partida-minuto">0'</span>
