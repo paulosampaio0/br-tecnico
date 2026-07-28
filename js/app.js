@@ -398,7 +398,7 @@ function renderizarTimes(dados) {
       item.className = "item-time";
       item.tabIndex = 0;
       item.innerHTML =
-        "<span>" + escaparHtml(time.nome) + "</span>" +
+        montarNomeComEscudo(time.nome) +
         "<span class=\"qtd-jogadores\">" + time.jogadores.length + " jogadores</span>";
       item.addEventListener("click", function () {
         abrirTelaElenco(time);

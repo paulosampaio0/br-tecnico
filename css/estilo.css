@@ -301,16 +301,27 @@ body::before {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  gap: 10px;
   min-height: var(--toque-min);
   padding: 12px 16px;
   border-radius: var(--raio);
   background: rgba(255, 255, 255, 0.06);
   border: 1px solid rgba(255, 255, 255, 0.1);
   color: var(--branco);
+  font-family: var(--fonte-titulo);
   font-size: 16px;
-  font-weight: 700;
+  font-weight: 600;
   cursor: pointer;
   -webkit-tap-highlight-color: transparent;
+}
+
+.item-time .nome-time-com-escudo {
+  min-width: 0;
+}
+
+.item-time .mini-escudo-time {
+  width: 22px;
+  height: 22px;
 }
 
 .item-time:active {
