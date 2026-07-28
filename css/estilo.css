@@ -3434,169 +3434,91 @@ body::before {
 }
 
 /* ============================================================
-   Tela inicial (Home) — estádio à noite + logo + bandeira + 3 botões
-   Recriado 100% em CSS/SVG (sem foto real — ver nota no chat). A estrutura
-   já fica pronta pra trocar o fundo/logo por assets de verdade depois: basta
-   trocar o `background` de `.tela-inicio::before`/`::after` por uma imagem.
+   Tela inicial (Home) — arte única (assets/imagens/menu_bg.png) com o
+   logo, a bandeira e os 3 botões já desenhados na imagem. Aqui só existe
+   a moldura que encaixa a imagem inteira na tela (sem cortar) e os 3
+   botões transparentes por cima, nas mesmas coordenadas do desenho.
    ============================================================ */
 
 .tela-inicio {
   position: relative;
+  display: block;
+  width: 100vw;
+  height: 100dvh;
+  min-height: 100dvh;
+  padding: 0;
+  margin: 0;
   overflow: hidden;
-  justify-content: space-between;
-  padding-top: calc(env(safe-area-inset-top) + 32px);
 }
 
-/* Céu noturno + refletores nos dois cantos + brilho do gramado subindo de baixo. */
-.tela-inicio::before {
-  content: "";
-  position: fixed;
-  inset: 0;
-  z-index: -2;
-  background:
-    radial-gradient(ellipse 65% 40% at 8% -8%, rgba(255, 255, 255, 0.28), transparent 58%),
-    radial-gradient(ellipse 65% 40% at 92% -8%, rgba(255, 255, 255, 0.28), transparent 58%),
-    radial-gradient(ellipse 110% 60% at 50% 118%, rgba(20, 110, 66, 0.55), transparent 62%),
-    linear-gradient(180deg, #050b16 0%, #0a2036 32%, #0b3d24 78%, #124a2c 100%);
-}
-
-/* "Arquibancada" estilizada: arcos concêntricos translúcidos sugerindo as fileiras do estádio. */
-.tela-inicio::after {
-  content: "";
-  position: fixed;
+/* "Letterbox" que encaixa a imagem (842×1867) inteira na tela, sem cortar nem
+   distorcer — largura e altura calculadas a partir da proporção real da arte,
+   como um `object-fit: contain` manual (funciona em qualquer proporção de tela). */
+.moldura-menu-inicio {
+  position: absolute;
+  top: 50%;
   left: 50%;
-  top: -60%;
-  width: 220%;
-  aspect-ratio: 1 / 1;
-  transform: translateX(-50%);
-  border-radius: 50%;
-  background:
-    repeating-radial-gradient(
-      circle at 50% 50%,
-      rgba(255, 255, 255, 0.05) 0px, rgba(255, 255, 255, 0.05) 2px,
-      transparent 2px, transparent 26px
-    );
-  -webkit-mask-image: radial-gradient(circle at 50% 50%, black 55%, transparent 72%);
-  mask-image: radial-gradient(circle at 50% 50%, black 55%, transparent 72%);
-  z-index: -1;
-  opacity: 0.8;
-  pointer-events: none;
+  transform: translate(-50%, -50%);
+  width: min(100vw, calc(100dvh * 0.45099));
+  height: min(100dvh, calc(100vw * 2.21853));
+  background-image: url("../assets/imagens/menu_bg.png");
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
 }
 
-.cabecalho-logo-inicio {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 18px;
-}
-
-.logo-br-tecnico {
-  position: relative;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-wrap: nowrap;
-  gap: 6px;
-  padding: 10px 16px;
-  max-width: 100%;
-  background: rgba(6, 14, 24, 0.4);
-  border-radius: 18px;
-}
-
-.icone-logo-prancheta {
-  flex: 0 0 auto;
-  width: clamp(20px, 6.5vw, 30px);
-  height: clamp(24px, 7.5vw, 35px);
-  filter: drop-shadow(0 2px 6px rgba(0, 0, 0, 0.5));
-}
-
-.titulo-logo-inicio {
-  font-family: var(--fonte-titulo);
-  font-size: clamp(22px, 8vw, 40px);
-  font-weight: 700;
-  letter-spacing: 0.5px;
-  white-space: nowrap;
-  color: #f4ecd8;
-  text-shadow:
-    0 2px 0 #7a5a1f,
-    0 4px 14px rgba(0, 0, 0, 0.55);
-}
-
-.titulo-logo-inicio span {
-  color: #f4ecd8;
-}
-
-.bandeira-brasil {
-  width: min(58vw, 220px);
-  filter: drop-shadow(0 8px 20px rgba(0, 0, 0, 0.5));
-  border-radius: 4px;
-}
-
+/* Botões transparentes, exatamente por cima dos 3 retângulos desenhados na arte
+   (coordenadas medidas na própria imagem — ver conversa). Nada de estilo visual
+   aqui: o desenho já mostra ícone, texto e cor de cada opção. */
 .menu-inicio {
-  width: 100%;
-  max-width: 420px;
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
+  position: absolute;
+  inset: 0;
 }
 
-.btn-inicio {
-  width: 100%;
-  min-height: 64px;
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  padding: 0 22px;
-  border-radius: 16px;
-  background: linear-gradient(160deg, var(--navy-glass-1), var(--navy-glass-2));
-  backdrop-filter: blur(14px) saturate(140%);
-  -webkit-backdrop-filter: blur(14px) saturate(140%);
-  color: var(--branco);
-  font-size: 19px;
-  font-weight: 800;
-  letter-spacing: 0.2px;
+.botao-menu-inicio {
+  position: absolute;
+  left: 17%;
+  width: 66%;
+  background: transparent;
+  border: none;
+  padding: 0;
+  margin: 0;
   cursor: pointer;
   -webkit-tap-highlight-color: transparent;
-  transition: transform 0.08s ease, filter 0.15s ease, opacity 0.15s ease;
 }
 
-.btn-inicio:active:not([disabled]) {
+.botao-menu-inicio:active:not([disabled]) {
   transform: scale(0.97);
 }
 
-.btn-inicio[disabled] {
-  opacity: 0.45;
+.botao-menu-inicio[disabled] {
   cursor: not-allowed;
 }
 
-.btn-inicio-verde {
-  border: 1.5px solid var(--neon-verde);
-  box-shadow: 0 0 0 1px rgba(57, 255, 136, 0.15), 0 0 22px rgba(57, 255, 136, 0.35), 0 8px 20px rgba(0, 0, 0, 0.4);
+.botao-menu-novo-jogo { top: 40.9%; height: 8.2%; }
+.botao-menu-continuar { top: 51.1%; height: 7.9%; }
+.botao-menu-editor { top: 61.1%; height: 8.2%; }
+
+/* Some visualmente mas continua acessível pra leitor de tela — o texto real
+   (ex.: "Carregar salvo — Ceará") é montado em atualizarBotaoContinuar(). */
+.oculto-visualmente {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
 }
 
-.btn-inicio-dourado {
-  border: 1.5px solid var(--amarelo);
-  box-shadow: 0 0 0 1px rgba(255, 210, 63, 0.15), 0 0 22px rgba(255, 210, 63, 0.35), 0 8px 20px rgba(0, 0, 0, 0.4);
-}
-
-.btn-inicio-azul {
-  border: 1.5px solid var(--azul-neon);
-  box-shadow: 0 0 0 1px rgba(77, 139, 255, 0.15), 0 0 22px rgba(77, 139, 255, 0.35), 0 8px 20px rgba(0, 0, 0, 0.4);
-}
-
-.icone-btn-inicio {
-  flex: 0 0 auto;
-  width: 26px;
-  height: 26px;
-}
-
-.btn-inicio-verde .icone-btn-inicio { color: var(--neon-verde); }
-.btn-inicio-dourado .icone-btn-inicio { color: var(--amarelo); }
-.btn-inicio-azul .icone-btn-inicio { color: var(--azul-neon); }
-
-.texto-btn-inicio {
-  flex: 1;
-  text-align: left;
+.rodape-inicio {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: calc(env(safe-area-inset-bottom) + 16px);
+  padding: 0 24px;
 }
 
 /* ---------- Tela Editor (placeholder) ---------- */

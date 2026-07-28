@@ -16,60 +16,25 @@
   <link rel="stylesheet" href="css/estilo.css" />
 </head>
 <body>
-  <!-- Tela inicial do jogo -->
+  <!-- Tela inicial do jogo — o visual inteiro (logo, bandeira, 3 botões) vem da arte
+       assets/imagens/menu_bg.png; aqui só ficam os botões transparentes por cima. -->
   <main class="tela tela-inicio" id="tela-inicio">
 
-    <header class="cabecalho-logo-inicio">
-      <div class="logo-br-tecnico">
-        <svg class="icone-logo-prancheta" viewBox="0 0 48 56" aria-hidden="true">
-          <rect x="4" y="6" width="40" height="46" rx="6" fill="#1b2a3d" stroke="#e9c46a" stroke-width="2.5"/>
-          <rect x="16" y="1" width="16" height="10" rx="3" fill="#e9c46a"/>
-          <path d="M12 22 L20 30 L36 14" stroke="#39ff88" stroke-width="3.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
-          <line x1="11" y1="38" x2="37" y2="38" stroke="#e9c46a" stroke-width="2.5" stroke-linecap="round"/>
-          <line x1="11" y1="45" x2="29" y2="45" stroke="#e9c46a" stroke-width="2.5" stroke-linecap="round"/>
-        </svg>
-        <h1 class="titulo-logo-inicio">BR <span>TÉCNICO</span></h1>
-      </div>
+    <div class="moldura-menu-inicio">
+      <nav class="menu-inicio">
+        <button class="botao-menu-inicio botao-menu-novo-jogo" id="btn-novo-jogo" type="button">
+          <span class="oculto-visualmente texto-btn-inicio">Novo jogo</span>
+        </button>
+        <button class="botao-menu-inicio botao-menu-continuar" id="btn-continuar" type="button" disabled>
+          <span class="oculto-visualmente texto-btn-inicio">Carregar salvo</span>
+        </button>
+        <button class="botao-menu-inicio botao-menu-editor" id="btn-editor" type="button">
+          <span class="oculto-visualmente texto-btn-inicio">Editor</span>
+        </button>
+      </nav>
+    </div>
 
-      <svg class="bandeira-brasil" viewBox="0 0 720 504" role="img" aria-label="Bandeira do Brasil">
-        <rect width="720" height="504" fill="#0b3d24"/>
-        <polygon points="360,42 678,252 360,462 42,252" fill="#ffd23f"/>
-        <circle cx="360" cy="252" r="120" fill="#1a3a8f"/>
-        <path id="arco-faixa-bandeira" d="M 246 268 A 420 420 0 0 1 474 268" fill="none" stroke="#f4f7f5" stroke-width="22"/>
-        <text font-size="16" font-weight="800" fill="#1a3a8f" letter-spacing="1.2">
-          <textPath href="#arco-faixa-bandeira" startOffset="50%" text-anchor="middle">ORDEM E PROGRESSO</textPath>
-        </text>
-      </svg>
-    </header>
-
-    <nav class="menu-inicio">
-      <button class="btn-inicio btn-inicio-verde" id="btn-novo-jogo" type="button">
-        <svg class="icone-btn-inicio" viewBox="0 0 24 24" aria-hidden="true">
-          <rect x="3" y="4" width="18" height="17" rx="2" fill="none" stroke="currentColor" stroke-width="1.8"/>
-          <path d="M7 1.5h10v4H7z" fill="currentColor"/>
-          <path d="M6 9l3 3 5-6" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
-          <path d="M14 15l4-3M14 15l4 3" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round"/>
-        </svg>
-        <span class="texto-btn-inicio">Novo jogo</span>
-      </button>
-      <button class="btn-inicio btn-inicio-dourado" id="btn-continuar" type="button" disabled>
-        <svg class="icone-btn-inicio" viewBox="0 0 24 24" aria-hidden="true">
-          <path d="M3 6.5A1.5 1.5 0 0 1 4.5 5h5l2 2.5h8A1.5 1.5 0 0 1 21 9v9.5A1.5 1.5 0 0 1 19.5 20h-15A1.5 1.5 0 0 1 3 18.5z" fill="currentColor"/>
-        </svg>
-        <span class="texto-btn-inicio">Carregar salvo</span>
-      </button>
-      <button class="btn-inicio btn-inicio-azul" id="btn-editor" type="button">
-        <svg class="icone-btn-inicio" viewBox="0 0 24 24" aria-hidden="true">
-          <path d="M14.7 6.3l3 3-8.4 8.4-3.6.6.6-3.6z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/>
-          <path d="M4 20l2.5-1 1-2.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
-          <path d="M13 8l3 3" stroke="currentColor" stroke-width="1.8"/>
-          <circle cx="18.5" cy="5.5" r="2.3" fill="none" stroke="currentColor" stroke-width="1.8"/>
-        </svg>
-        <span class="texto-btn-inicio">Editor</span>
-      </button>
-    </nav>
-
-    <footer class="rodape">
+    <footer class="rodape rodape-inicio">
       <button class="btn-som" id="btn-alternar-som" type="button">🔊 Som ligado</button>
       <p class="status-salvamento" id="status-salvamento">Verificando salvamento…</p>
       <p class="versao">Fase 8 · Acabamento · v1.0.0</p>
