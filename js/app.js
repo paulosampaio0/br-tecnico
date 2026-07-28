@@ -5221,8 +5221,18 @@ function siglaTime(nomeTime) {
   return (letras.join("").slice(0, 3) || nomeTime.slice(0, 3)).toUpperCase();
 }
 
-/** Escudo SVG com iniciais + 2 cores derivadas do nome do clube (mesma cor sempre pro mesmo time). */
-function montarEscudoClube(nomeTime) {
+/** Slug do nome do clube (mesma regra usada por scripts/baixar-escudos.js pra nomear os PNGs). */
+function slugificarNomeClube(nomeTime) {
+  return (nomeTime || "")
+    .normalize("NFD").replace(/[̀-ͯ]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+}
+
+/** Escudo SVG com iniciais + 2 cores derivadas do nome do clube (mesma cor sempre pro mesmo time)
+ *  — usado como marcador de posição e como reserva pros clubes sem escudo oficial baixado. */
+function montarEscudoGerado(nomeTime) {
   const semente = semeanteDeTexto(nomeTime || "");
   const matiz1 = semente % 360;
   const matiz2 = (matiz1 + 40) % 360;
@@ -5235,6 +5245,17 @@ function montarEscudoClube(nomeTime) {
     '<path d="M24 8 L38 12 V26 C38 36 31 42 24 45 C17 42 10 36 10 26 V12 Z" fill="' + cor2 + '"/>' +
     '<text x="24" y="30" text-anchor="middle" font-size="16" font-weight="800" font-family="Oswald, sans-serif" fill="#fff">' + iniciais + "</text>" +
     "</svg>"
+  );
+}
+
+/** Escudo do clube: tenta o PNG oficial baixado (assets/escudos/<slug>.png) e, se não existir
+ *  (arquivo ausente ou clube sem escudo baixado ainda), cai pro escudo gerado por iniciais+cor. */
+function montarEscudoClube(nomeTime) {
+  const slug = slugificarNomeClube(nomeTime);
+  const svgReserva = montarEscudoGerado(nomeTime).replace(/"/g, "&quot;");
+  return (
+    '<img src="assets/escudos/' + slug + '.png" alt="" loading="lazy" ' +
+    'onerror="this.outerHTML=this.dataset.reserva" data-reserva="' + svgReserva + '" />'
   );
 }
 
