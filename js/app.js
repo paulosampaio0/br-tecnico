@@ -89,7 +89,10 @@ let meuLadoNaPartida = "casa"; // se o meu time é "casa" ou "fora" na partida a
 // Auxiliar técnico (dicas táticas em tempo real) — guarda a última dica exibida (com cooldown
 // por chave, pra não repetir a mesma frase toda hora) e se ela tem uma ação associada (ex.:
 // abrir "Mexer no time" ao tocar na dica de cansaço). Resetado a cada partida em abrirTelaPartida.
-let auxiliarEstado = { ultimoMinutoPorChave: {}, textoAtual: "", urgenciaAtual: "neutro", acaoAtual: null };
+let auxiliarEstado = {
+  ultimoMinutoPorChave: {}, textoAtual: "", urgenciaAtual: "neutro", acaoAtual: null,
+  rotuloAcaoAtual: null, ultimaChaveExibida: null, timeoutBadge: null,
+};
 
 // Tap-to-swap (Gestão de elenco: banco/não relacionados) — guarda a 1ª seleção enquanto o
 // técnico não toca no 2º jogador. { tipo: "titular", vagaId } | { tipo: "banco"|"naoRelacionado", idJogador }.
@@ -570,6 +573,7 @@ function abrirTelaEscalacao() {
   renderizarTatica();
   renderizarBanco();
   atualizarInfoRodada();
+  atualizarRelatorioAdversario();
   atualizarTopoHub();
 
   // Escalação automática só faz sentido pré-jogo; sugestão de substituição só com o jogo rolando.
@@ -2015,11 +2019,33 @@ async function iniciarAmistoso() {
  * Monta um "time simulado" de força automática (escalação e tática padrão), pra CPU.
  * `mando` ("casa"/"fora"/undefined) aplica o bônus/penalidade de jogar em casa/fora (Rebalanceamento
  * 2026-07-23); `bonusExtraIA` soma o reforço extra só quando essa IA manda o jogo contra o usuário visitante.
+ * `classico` (IA dos Clubes Adversários): joga com intensidade extra a partida inteira.
  */
-function criarTimeSimuladoAutomatico(time, mando, bonusExtraIA) {
+function criarTimeSimuladoAutomatico(time, mando, bonusExtraIA, classico) {
   const titularesMap = autoEscalarMelhores(time.jogadores, "4-4-2");
   const titulares = resolverTitulares(time.jogadores, "4-4-2", titularesMap);
-  return criarTimeSimulado(time.nome, titulares, taticaPadrao(), {}, { mando: mando, bonusExtraIA: !!bonusExtraIA });
+  const idsEscalados = new Set(titulares.map(function (item) { return item.jogador._id; }));
+  const reservas = time.jogadores.filter(function (j) { return !idsEscalados.has(j._id); });
+  return criarTimeSimulado(time.nome, titulares, taticaPadrao(), {}, { mando: mando, bonusExtraIA: !!bonusExtraIA }, null,
+    { reservas: reservas, classico: !!classico });
+}
+
+// Clássicos regionais conhecidos (IA dos Clubes Adversários — Fator Clássico/Decisão): a IA joga
+// com intensidade extra quando o confronto é um desses pares, em qualquer ordem.
+const CLASSICOS_CONHECIDOS = [
+  ["Flamengo", "Fluminense"], ["Flamengo", "Vasco da Gama"], ["Flamengo", "Botafogo"],
+  ["Vasco da Gama", "Fluminense"], ["Vasco da Gama", "Botafogo"], ["Fluminense", "Botafogo"],
+  ["Corinthians", "Palmeiras"], ["Corinthians", "São Paulo"], ["Corinthians", "Santos"],
+  ["São Paulo", "Palmeiras"], ["São Paulo", "Santos"], ["Palmeiras", "Santos"],
+  ["Grêmio", "Internacional"], ["Atlético Mineiro", "Cruzeiro"],
+  ["Bahia", "Vitória"], ["Sport", "Náutico"], ["Ceará", "Fortaleza"],
+  ["Atlético Paranaense", "Coritiba"], ["Goiás", "Vila Nova"],
+];
+
+function ehConfrontoClassico(nomeTimeA, nomeTimeB) {
+  return CLASSICOS_CONHECIDOS.some(function (par) {
+    return (par[0] === nomeTimeA && par[1] === nomeTimeB) || (par[0] === nomeTimeB && par[1] === nomeTimeA);
+  });
 }
 
 /**
@@ -2183,7 +2209,10 @@ function abrirTelaPartida() {
   document.getElementById("partida-escudo-fora").innerHTML = montarEscudoClube(timeForaSimulado.nome);
   document.getElementById("estatisticas-partida-nome-casa").innerHTML = montarNomeComEscudo(timeCasaSimulado.nome);
   document.getElementById("estatisticas-partida-nome-fora").innerHTML = montarNomeComEscudo(timeForaSimulado.nome);
-  auxiliarEstado = { ultimoMinutoPorChave: {}, textoAtual: "", urgenciaAtual: "neutro", acaoAtual: null };
+  auxiliarEstado = {
+    ultimoMinutoPorChave: {}, textoAtual: "", urgenciaAtual: "neutro", acaoAtual: null,
+    rotuloAcaoAtual: null, ultimaChaveExibida: null, timeoutBadge: null,
+  };
   renderizarPartida();
   renderizarRodadaParalela();
   atualizarBilheteriaPartida();
@@ -2296,7 +2325,36 @@ function alternarVelocidadePartida() {
   renderizarControlesPartida();
 }
 
+/**
+ * Exploração de brechas (Inteligência Artificial dos Clubes Adversários): a cada minuto, olha
+ * se algum titular meu em campo está com energia baixa (<40%) ou pendurado/amarelado nesta
+ * partida — se sim, a IA passa a mirar ataques naquele setor (pequena penalidade no setor
+ * correspondente do meu time, aplicada em `calcularSetoresEfetivosDoMinuto`).
+ */
+function atualizarBrechaExploradaPelaIA() {
+  const meuTime = meuLadoNaPartida === "casa" ? timeCasaSimulado : timeForaSimulado;
+  meuTime.penalidadeBrechaExterna = null;
+
+  const titularesMeus = resolverTitulares(estado.timeAtual.jogadores, estado.formacaoId, estado.titulares)
+    .filter(function (item) { return item.vaga.pos !== "GOL"; });
+
+  let alvo = null;
+  titularesMeus.forEach(function (item) {
+    const energia = obterEnergiaJogador(item.jogador._id);
+    const amarelado = (partidaAtual.cartoesNoJogoPorJogador[item.jogador._id] || 0) >= 1;
+    if (energia < 40 || amarelado) {
+      if (!alvo || energia < alvo.energia) alvo = { item: item, energia: energia, amarelado: amarelado };
+    }
+  });
+
+  if (alvo) {
+    const setor = SETOR_POR_POSICAO[alvo.item.vaga.pos] || "defesa";
+    meuTime.penalidadeBrechaExterna = { setor: setor, valor: 1.4, jogador: alvo.item.jogador, amarelado: alvo.amarelado };
+  }
+}
+
 function tickPartida() {
+  atualizarBrechaExploradaPelaIA();
   const qtdEventosAntes = partidaAtual.eventos.length;
   simularMinuto(partidaAtual, timeCasaSimulado, timeForaSimulado, meuLadoNaPartida);
   partidaAtual.eventos.slice(qtdEventosAntes).forEach(function (evento) {
@@ -2498,8 +2556,69 @@ function renderizarPartida() {
     montarDadosEstatisticasComparativas("casa"), montarDadosEstatisticasComparativas("fora"));
 
   renderizarPainelAuxiliar();
+  renderizarFluxoPartida();
   renderizarEventosPartida();
   renderizarControlesPartida();
+}
+
+/** Cor sólida derivada do nome do clube (mesma semente do escudo gerado) — usada no Gráfico de Fluxo. */
+function corTimeGerada(nomeTime) {
+  const semente = semeanteDeTexto(nomeTime || "");
+  return "hsl(" + (semente % 360) + ", 65%, 55%)";
+}
+
+/**
+ * Gráfico de Fluxo da Partida (estilo SofaScore/Momentum): 1 barra por minuto já jogado —
+ * pressão do time da casa acima da linha central, do visitante abaixo, com a linha pontilhada
+ * do intervalo e marcadores de gol (⚽)/cartão vermelho (🟥) no minuto exato em que aconteceram.
+ */
+function renderizarFluxoPartida() {
+  const secao = document.getElementById("secao-fluxo-partida");
+  const container = document.getElementById("grafico-fluxo-partida");
+  if (!secao || !container) return;
+
+  if (!partidaAtual || !partidaAtual.interativa || partidaAtual.status === "nao-iniciada" ||
+      !partidaAtual.fluxoMinutos || partidaAtual.fluxoMinutos.length === 0) {
+    secao.hidden = true;
+    return;
+  }
+  secao.hidden = false;
+
+  const largura = 600, altura = 120, meio = altura / 2;
+  const maxMinuto = 90;
+  const larguraBarra = largura / maxMinuto;
+
+  const corCasa = corTimeGerada(timeCasaSimulado.nome);
+  const corFora = corTimeGerada(timeForaSimulado.nome);
+
+  let barras = "";
+  partidaAtual.fluxoMinutos.forEach(function (ponto) {
+    const x = Math.min(maxMinuto - 1, ponto.minuto - 1) * larguraBarra;
+    const h = Math.max(0, Math.min(meio - 4, (Math.abs(ponto.valor) / 14) * (meio - 4)));
+    const y = ponto.valor >= 0 ? meio - h : meio;
+    const cor = ponto.valor >= 0 ? corCasa : corFora;
+    barras += '<rect x="' + x.toFixed(1) + '" y="' + y.toFixed(1) + '" width="' +
+      Math.max(1, larguraBarra - 0.6).toFixed(1) + '" height="' + h.toFixed(1) + '" fill="' + cor + '" />';
+  });
+
+  let marcadores = "";
+  partidaAtual.eventos.forEach(function (evento) {
+    if (evento.tipo !== "gol" && evento.tipo !== "cartao-vermelho") return;
+    const x = (Math.min(maxMinuto - 1, evento.minuto - 1) * larguraBarra) + larguraBarra / 2;
+    const y = evento.lado === "casa" ? 11 : altura - 3;
+    const icone = evento.tipo === "gol" ? "⚽" : "🟥";
+    marcadores += '<text x="' + x.toFixed(1) + '" y="' + y + '" font-size="11" text-anchor="middle">' + icone + "</text>";
+  });
+
+  const xIntervalo = (45 * larguraBarra).toFixed(1);
+  const svg =
+    '<svg viewBox="0 0 ' + largura + ' ' + altura + '" preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg">' +
+    '<line x1="0" y1="' + meio + '" x2="' + largura + '" y2="' + meio + '" stroke="rgba(255,255,255,0.25)" stroke-width="1" />' +
+    '<line x1="' + xIntervalo + '" y1="0" x2="' + xIntervalo + '" y2="' + altura +
+      '" stroke="rgba(255,255,255,0.35)" stroke-width="1" stroke-dasharray="3,3" />' +
+    barras + marcadores +
+    "</svg>";
+  container.innerHTML = svg;
 }
 
 let abaPartidaAtual = "eventos";
@@ -2624,7 +2743,8 @@ function avaliarAuxiliar(partida) {
   const diffMeio = meuTime.setores.meio - advTime.setores.meio;
   if (diffMeio <= -3) {
     candidatos.push({ chave: "meio-perdendo", prioridade: 3, urgencia: "atencao",
-      texto: "Estamos perdendo a disputa no meio-campo — eles chegam com mais facilidade." });
+      texto: "O adversário está congestionando o meio. Que tal explorar os ataques pelas pontas?",
+      acao: "concentrar-lados", rotuloAcao: "Mudar para ataque pelas pontas" });
   } else if (diffMeio >= 4) {
     candidatos.push({ chave: "meio-dominando", prioridade: 2, urgencia: "neutro",
       texto: "Estamos com domínio total do meio-campo." });
@@ -2646,14 +2766,15 @@ function avaliarAuxiliar(partida) {
       urgencia: urgente ? "alerta" : "atencao",
       texto: "O " + maisCansado.jogador.nome + " (" + maisCansado.vaga.pos + ") está " +
         (urgente ? "muito cansado" : "cansando") + " e começando a errar passes. Pense numa substituição.",
-      acao: "mexer-time",
+      acao: "mexer-time", rotuloAcao: "Substituir " + maisCansado.jogador.nome,
     });
   }
 
   // 3. Lado vulnerável — setas ofensivas abrindo espaço nas costas, ou lateral cansada/fora de posição.
   if (meuTime.fatorContraAtaqueConcedido > 1.15) {
     candidatos.push({ chave: "contra-ataque-exposto", prioridade: 4, urgencia: "atencao",
-      texto: "Estamos abrindo espaço nas costas com as setas ofensivas — cuidado com o contra-ataque." });
+      texto: "Estamos levando muitas bolas nas costas. Sugiro recuar a linha defensiva.",
+      acao: "estilo-retranca", rotuloAcao: "Recuar linha" });
   }
   const lateralFraca = titularesMeus.find(function (item) {
     return (item.vaga.pos === "LAT.D" || item.vaga.pos === "LAT.E") &&
@@ -2664,7 +2785,7 @@ function avaliarAuxiliar(partida) {
     candidatos.push({
       chave: "lateral-" + lateralFraca.vaga.id, prioridade: 4, urgencia: "atencao",
       texto: "A lateral " + ladoTexto + " está vulnerável — o ponta deles está achando espaço por ali.",
-      acao: "mexer-time",
+      acao: "mexer-time", rotuloAcao: "Mudar para " + lateralFraca.jogador.nome,
     });
   }
 
@@ -2711,7 +2832,19 @@ function avaliarAuxiliar(partida) {
     candidatos.push({
       chave: "pendurado-" + pendurado.jogador._id, prioridade: 7, urgencia: "alerta",
       texto: pendurado.jogador.nome + " está pendurado e levou amarelo — mais uma falta dura e desfalca a próxima rodada.",
-      acao: "mexer-time",
+      acao: "mexer-time", rotuloAcao: "Substituir " + pendurado.jogador.nome,
+    });
+  }
+
+  // 7. Brecha explorada pela IA (Inteligência Artificial dos Clubes Adversários): o adversário
+  // percebeu um titular meu cansado/pendurado e está mirando os ataques ali.
+  if (meuTime.penalidadeBrechaExterna) {
+    const alvo = meuTime.penalidadeBrechaExterna.jogador;
+    candidatos.push({
+      chave: "brecha-explorada-" + alvo._id, prioridade: 8, urgencia: "alerta",
+      texto: "Seu " + (meuTime.penalidadeBrechaExterna.amarelado ? alvo.nome + " está amarelado" : alvo.nome + " está desgastado") +
+        " e pode ser exposto — o adversário está mandando jogadas naquele setor.",
+      acao: "mexer-time", rotuloAcao: "Substituir " + alvo.nome,
     });
   }
 
@@ -2756,6 +2889,8 @@ function montarResumoIntervaloAuxiliar(partida) {
 function renderizarPainelAuxiliar() {
   const painel = document.getElementById("painel-auxiliar");
   const textoEl = document.getElementById("texto-auxiliar");
+  const badgeEl = document.getElementById("badge-nova-dica-auxiliar");
+  const acaoEl = document.getElementById("texto-acao-auxiliar");
   if (!painel || !textoEl) return;
 
   const statusSemAuxiliar = ["fim", "nao-iniciada", "penalti", "expulsao"];
@@ -2765,31 +2900,76 @@ function renderizarPainelAuxiliar() {
   }
   painel.hidden = false;
 
+  let chaveAtual = null;
   if (partidaAtual.status === "intervalo") {
     auxiliarEstado.textoAtual = montarResumoIntervaloAuxiliar(partidaAtual);
     auxiliarEstado.urgenciaAtual = "neutro";
     auxiliarEstado.acaoAtual = null;
+    auxiliarEstado.rotuloAcaoAtual = null;
   } else {
     const candidatos = avaliarAuxiliar(partidaAtual);
     const escolhida = escolherDicaAuxiliar(candidatos, partidaAtual.minuto);
     if (escolhida) {
+      chaveAtual = escolhida.chave;
       auxiliarEstado.ultimoMinutoPorChave[escolhida.chave] = partidaAtual.minuto;
       auxiliarEstado.textoAtual = escolhida.texto;
       auxiliarEstado.urgenciaAtual = escolhida.urgencia;
       auxiliarEstado.acaoAtual = escolhida.acao || null;
+      auxiliarEstado.rotuloAcaoAtual = escolhida.rotuloAcao || null;
     } else if (!auxiliarEstado.textoAtual) {
       auxiliarEstado.textoAtual = "Observando o jogo…";
       auxiliarEstado.urgenciaAtual = "neutro";
       auxiliarEstado.acaoAtual = null;
+      auxiliarEstado.rotuloAcaoAtual = null;
     }
   }
 
   textoEl.textContent = "🎧 " + auxiliarEstado.textoAtual;
+
+  if (acaoEl) {
+    if (auxiliarEstado.rotuloAcaoAtual) {
+      acaoEl.textContent = "▶ " + auxiliarEstado.rotuloAcaoAtual;
+      acaoEl.hidden = false;
+    } else {
+      acaoEl.hidden = true;
+    }
+  }
+
+  // Indicador visual de alerta: dica NOVA (chave diferente da última mostrada) pisca por alguns
+  // segundos com borda pulsante + badge "💡 Nova Dica Tática".
+  const ehDicaNova = chaveAtual && chaveAtual !== auxiliarEstado.ultimaChaveExibida;
+  if (chaveAtual) auxiliarEstado.ultimaChaveExibida = chaveAtual;
+
   painel.className = "painel-auxiliar auxiliar-" + auxiliarEstado.urgenciaAtual +
-    (auxiliarEstado.acaoAtual ? " auxiliar-clicavel" : "");
+    (auxiliarEstado.acaoAtual ? " auxiliar-clicavel" : "") +
+    (ehDicaNova ? " auxiliar-pulsante" : "");
+
+  if (badgeEl) {
+    badgeEl.hidden = !ehDicaNova;
+    if (ehDicaNova) {
+      clearTimeout(auxiliarEstado.timeoutBadge);
+      auxiliarEstado.timeoutBadge = setTimeout(function () {
+        badgeEl.hidden = true;
+        painel.classList.remove("auxiliar-pulsante");
+      }, 4000);
+    }
+  }
 }
 
-/** Clique no balão: só faz algo quando a dica atual tem uma ação (ex.: dica de cansaço/lateral/pendurado). */
+/**
+ * Aplica um ajuste tático de 1 clique (Auxiliar em Tempo Real) direto da dica do auxiliar,
+ * sem precisar abrir "Mexer no time" — vale na hora, mesmo com a simulação rolando.
+ */
+function aplicarAcaoTaticaRapidaAuxiliar(campo, valor) {
+  estado.tatica[campo] = valor;
+  salvarProgresso();
+  if (partidaAtual) {
+    recalcularForcaUsuario();
+    renderizarPartida();
+  }
+}
+
+/** Clique no balão: dispara a ação da dica atual (mexer no time, ou um ajuste tático de 1 clique). */
 function acionarPainelAuxiliar() {
   if (!auxiliarEstado.acaoAtual || !partidaAtual) return;
   if (auxiliarEstado.acaoAtual === "mexer-time") {
@@ -2798,6 +2978,10 @@ function acionarPainelAuxiliar() {
       pararIntervaloPartida();
     }
     abrirTelaEscalacao();
+  } else if (auxiliarEstado.acaoAtual === "concentrar-lados") {
+    aplicarAcaoTaticaRapidaAuxiliar("concentrar", "lados");
+  } else if (auxiliarEstado.acaoAtual === "estilo-retranca") {
+    aplicarAcaoTaticaRapidaAuxiliar("estilo", "retranca");
   }
 }
 
@@ -3268,6 +3452,86 @@ function atualizarInfoRodada() {
   btnRodada.disabled = false;
 }
 
+const NOME_SETOR_RELATORIO = { defesa: "defesa", meio: "meio-campo", ataque: "ataque" };
+
+/**
+ * Relatório do Auxiliar Técnico (Pré-Jogo, aba "Adversário"): esquema/estilo do rival, jogador
+ * mais perigoso e a brecha tática (setor mais fraco da escalação automática dele). Só faz sentido
+ * antes do jogo começar — durante uma partida ativa o botão some (o "Mexer no time" já mostra o
+ * adversário ao vivo).
+ */
+async function atualizarRelatorioAdversario() {
+  const botao = document.getElementById("btn-toggle-relatorio-adversario");
+  const cartao = document.getElementById("cartao-relatorio-adversario");
+  if (!botao || !cartao) return;
+
+  if (estaEmPartidaAtiva() || !estado.temporada) {
+    botao.hidden = true;
+    cartao.hidden = true;
+    return;
+  }
+
+  const temporadaDivisao = estado.temporada[estado.timeAtual.divisaoChave];
+  const numeroRodada = estado.temporada.rodadaAtual;
+  const rodada = temporadaDivisao.calendario[numeroRodada - 1];
+  const meuJogo = rodada && rodada.find(function (j) { return j.casa === estado.timeAtual.nome || j.fora === estado.timeAtual.nome; });
+  if (!meuJogo) {
+    botao.hidden = true;
+    cartao.hidden = true;
+    return;
+  }
+  const nomeAdversario = meuJogo.casa === estado.timeAtual.nome ? meuJogo.fora : meuJogo.casa;
+
+  const dados = await carregarDados();
+  const oponenteInfo = buscarTimePorNome(dados, nomeAdversario);
+  if (!oponenteInfo) {
+    botao.hidden = true;
+    return;
+  }
+
+  botao.hidden = false;
+  botao.textContent = "🔍 Relatório do Auxiliar Técnico — " + nomeAdversario;
+
+  const titularesMap = autoEscalarMelhores(oponenteInfo.jogadores, "4-4-2");
+  const titulares = resolverTitulares(oponenteInfo.jogadores, "4-4-2", titularesMap);
+
+  const porSetor = { defesa: [], meio: [], ataque: [] };
+  titulares.forEach(function (item) {
+    const setor = SETOR_POR_POSICAO[item.vaga.pos];
+    if (setor) porSetor[setor].push(item.jogador.forca);
+  });
+  const mediaSetor = {};
+  Object.keys(porSetor).forEach(function (s) {
+    mediaSetor[s] = porSetor[s].length ? porSetor[s].reduce(function (a, b) { return a + b; }, 0) / porSetor[s].length : 0;
+  });
+
+  let estiloTexto;
+  if (mediaSetor.ataque - mediaSetor.defesa >= 2) estiloTexto = "4-4-2, time ofensivo — investe forte no ataque.";
+  else if (mediaSetor.defesa - mediaSetor.ataque >= 2) estiloTexto = "4-4-2, time retranqueiro — prioriza a marcação.";
+  else estiloTexto = "4-4-2, time equilibrado entre ataque e defesa.";
+  document.getElementById("relatorio-adversario-esquema").textContent = estiloTexto;
+
+  const maisPerigoso = titulares
+    .filter(function (item) { return ["ATA", "ATD", "ATE", "MEI"].indexOf(item.vaga.pos) !== -1; })
+    .sort(function (a, b) { return b.jogador.forca - a.jogador.forca; })[0];
+  document.getElementById("relatorio-adversario-perigoso").textContent = maisPerigoso
+    ? maisPerigoso.jogador.nome + " (" + maisPerigoso.vaga.pos + ")" : "—";
+
+  const piorSetor = Object.keys(mediaSetor).sort(function (a, b) { return mediaSetor[a] - mediaSetor[b]; })[0];
+  const piorJogadorDoSetor = titulares
+    .filter(function (item) { return SETOR_POR_POSICAO[item.vaga.pos] === piorSetor; })
+    .sort(function (a, b) { return a.jogador.forca - b.jogador.forca; })[0];
+  document.getElementById("relatorio-adversario-fraqueza").textContent = piorJogadorDoSetor
+    ? "O setor de " + NOME_SETOR_RELATORIO[piorSetor] + " é o mais fraco — de olho em " +
+      piorJogadorDoSetor.jogador.nome + " (" + piorJogadorDoSetor.vaga.pos + ")."
+    : "—";
+}
+
+function alternarRelatorioAdversario() {
+  const cartao = document.getElementById("cartao-relatorio-adversario");
+  if (cartao) cartao.hidden = !cartao.hidden;
+}
+
 /** Atualiza caixa/posição/reputação no topo fixo do hub (escalação). */
 function atualizarTopoHub() {
   const elCaixa = document.getElementById("hub-stat-caixa");
@@ -3316,7 +3580,8 @@ async function iniciarRodadaOficial() {
   // Mando do adversário é sempre o oposto do meu; quando ELE manda o jogo (eu visito),
   // entra o reforço extra de mando pra IA (Rebalanceamento 2026-07-23).
   const mandoAdversario = meuLadoNaPartida === "casa" ? "fora" : "casa";
-  const oponenteSimulado = criarTimeSimuladoAutomatico(oponenteInfo, mandoAdversario, mandoAdversario === "casa");
+  const classico = ehConfrontoClassico(estado.timeAtual.nome, nomeAdversario);
+  const oponenteSimulado = criarTimeSimuladoAutomatico(oponenteInfo, mandoAdversario, mandoAdversario === "casa", classico);
 
   if (meuLadoNaPartida === "casa") {
     timeForaSimulado = oponenteSimulado;
@@ -6554,6 +6819,9 @@ function ligarBotoes() {
 
   const painelAuxiliar = document.getElementById("painel-auxiliar");
   if (painelAuxiliar) painelAuxiliar.addEventListener("click", acionarPainelAuxiliar);
+
+  const btnRelatorioAdversario = document.getElementById("btn-toggle-relatorio-adversario");
+  if (btnRelatorioAdversario) btnRelatorioAdversario.addEventListener("click", alternarRelatorioAdversario);
 
   const selectCapitao = document.getElementById("select-capitao");
   if (selectCapitao) selectCapitao.addEventListener("change", function () { definirCapitao(selectCapitao.value); });

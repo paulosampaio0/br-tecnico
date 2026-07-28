@@ -274,9 +274,7 @@ function calcularForcaTime(titularesResolvidos, tatica) {
  * estiver entre `titularesResolvidos`, guarda o fator de liderança dele (ver `calcularSetoresEfetivosDoMinuto`,
  * onde o bônus de resiliência mental é de fato aplicado quando o time está perdendo no 2º tempo).
  */
-function criarTimeSimulado(nome, titularesResolvidos, tatica, setasPorVaga, opcoesMando, idCapitao) {
-  const setores = calcularForcaTime(titularesResolvidos, tatica);
-
+function aplicarBonusMando(setores, opcoesMando) {
   if (opcoesMando && opcoesMando.mando === "casa") {
     setores.ataque += MANDO_BONUS_CASA.ataque;
     setores.defesa += MANDO_BONUS_CASA.defesa;
@@ -288,6 +286,17 @@ function criarTimeSimulado(nome, titularesResolvidos, tatica, setasPorVaga, opco
     setores.ataque += MANDO_PENALIDADE_FORA.ataque;
     setores.defesa += MANDO_PENALIDADE_FORA.defesa;
   }
+  return setores;
+}
+
+/**
+ * `extras` (IA dos clubes adversários): { reservas: [jogador], classico: boolean }. `reservas` é
+ * o resto do elenco (fora os titulares) — só as IAs recebem isso, é de onde saem os jogadores das
+ * substituições táticas (ver `tentarSubstituicaoTaticaIA`). `classico` marca um confronto de maior
+ * intensidade (rival/clássico regional) — sobe um pouco a agressividade da IA o jogo inteiro.
+ */
+function criarTimeSimulado(nome, titularesResolvidos, tatica, setasPorVaga, opcoesMando, idCapitao, extras) {
+  const setores = aplicarBonusMando(calcularForcaTime(titularesResolvidos, tatica), opcoesMando);
 
   let capitao = null;
   if (idCapitao !== undefined && idCapitao !== null) {
@@ -298,6 +307,8 @@ function criarTimeSimulado(nome, titularesResolvidos, tatica, setasPorVaga, opco
   return {
     nome: nome,
     titulares: titularesResolvidos, // guardado pra sortear nomes de jogadores nos eventos
+    tatica: tatica, // guardado pra recalcular setoresBase depois de uma substituição tática da IA
+    opcoesMando: opcoesMando || null,
     setores: setores, // { defesa, meio, ataque } — força EFETIVA do setor, recalculada minuto a minuto (setas + reatividade da IA + expulsão)
     setoresBase: Object.assign({}, setores), // referência fixa (mando+tática já aplicados), sem setas/reatividade/expulsão
     setasAtivas: montarSetasAtivas(titularesResolvidos, setasPorVaga), // Rebalanceamento: cada seta com sua taxa de sucesso (Overall)
@@ -306,7 +317,76 @@ function criarTimeSimulado(nome, titularesResolvidos, tatica, setasPorVaga, opco
     // capitão (Gestão Humana): null se não foi escalado nesta partida (ou o time não tem função de capitão,
     // caso dos times da CPU) — "em campo" é checado na hora via `estaExpulso`, não fica bakeado aqui.
     capitao: capitao,
+    // IA dos clubes adversários (Auxiliar Técnico/IA rival): reservas disponíveis pra substituição
+    // tática, e flags de controle pra cada tipo de troca só acontecer 1x por partida.
+    reservas: (extras && extras.reservas) || [],
+    classico: !!(extras && extras.classico),
+    substituicoesIA: 0,
+    iaSubOfensivaFeita: false,
+    iaSubDefensivaFeita: false,
+    penalidadeBrechaExterna: null, // { setor, valor } — setado de fora (app.js) quando a IA explora um jogador cansado/pendurado do adversário
   };
+}
+
+/**
+ * Recalcula `setoresBase` do zero (força + tática + mando), reaproveitando a MESMA lista
+ * `time.titulares` (já alterada por uma substituição tática da IA) — chamado depois de
+ * `tentarSubstituicaoTaticaIA` trocar alguém em campo, pra a troca valer de verdade na força do time.
+ */
+function recalcularSetoresBase(time) {
+  time.setoresBase = aplicarBonusMando(calcularForcaTime(time.titulares, time.tatica), time.opcoesMando);
+}
+
+// Setores "seguros" pra tirar de campo numa substituição tática (nunca mexe no goleiro).
+const SETORES_TROCA_OFENSIVA = ["VOL", "MEI", "LAT.D", "LAT.E"]; // sai um desses, entra um atacante
+const SETORES_TROCA_DEFENSIVA = ["ATA", "ATD", "ATE"]; // sai um atacante, entra reforço defensivo/de meio
+
+/**
+ * Substituição tática automática da IA (Inteligência Artificial dos Clubes Adversários):
+ * perdendo depois dos 65' bota mais um atacante pra dentro; ganhando um jogo difícil nos 10
+ * minutos finais, tira um atacante e reforça a marcação. No máximo 1 de cada tipo por partida
+ * (`iaSubOfensivaFeita`/`iaSubDefensivaFeita`), e só se ainda sobrar alguém no banco (`reservas`).
+ */
+function tentarSubstituicaoTaticaIA(time, diferenca, minuto, partida, lado) {
+  if (!time.reservas || time.reservas.length === 0) return;
+
+  let saiDoGrupo = null, entraDoGrupo = null, motivo = "";
+  if (!time.iaSubOfensivaFeita && minuto >= 65 && diferenca <= -1) {
+    saiDoGrupo = SETORES_TROCA_OFENSIVA;
+    entraDoGrupo = ["ATA", "ATD", "ATE"];
+    motivo = "ofensiva";
+  } else if (!time.iaSubDefensivaFeita && minuto >= 80 && diferenca >= 1) {
+    saiDoGrupo = SETORES_TROCA_DEFENSIVA;
+    entraDoGrupo = ["ZAG", "VOL", "LAT.D", "LAT.E"];
+    motivo = "defensiva";
+  } else {
+    return;
+  }
+
+  const candidatosSaida = titularesEmCampo(time).filter(function (item) { return saiDoGrupo.indexOf(item.vaga.pos) !== -1; });
+  if (candidatosSaida.length === 0) return;
+  const itemSai = candidatosSaida.sort(function (a, b) { return a.jogador.forca - b.jogador.forca; })[0];
+
+  const candidatosEntrada = time.reservas.filter(function (j) { return entraDoGrupo.indexOf(j.pos) !== -1; });
+  const poolEntrada = candidatosEntrada.length > 0 ? candidatosEntrada : time.reservas;
+  const jogadorEntra = poolEntrada.slice().sort(function (a, b) { return b.forca - a.forca; })[0];
+  if (!jogadorEntra) return;
+
+  const jogadorSai = itemSai.jogador;
+  itemSai.jogador = jogadorEntra;
+  itemSai.eficiencia = calcularEficienciaPosicional(jogadorEntra.pos, itemSai.vaga.pos);
+  time.reservas = time.reservas.filter(function (j) { return j._id !== jogadorEntra._id; });
+  time.substituicoesIA++;
+  if (motivo === "ofensiva") time.iaSubOfensivaFeita = true; else time.iaSubDefensivaFeita = true;
+
+  recalcularSetoresBase(time);
+
+  if (partida) {
+    const evento = registrarEvento(partida, "substituicao", lado,
+      "🔄 Substituição (" + time.nome + "): " + jogadorSai.nome + " sai, " + jogadorEntra.nome + " entra.");
+    evento.idJogadorSai = jogadorSai._id;
+    evento.idJogadorEntra = jogadorEntra._id;
+  }
 }
 
 /** Esse jogador já foi expulso nesta partida (não pode mais ser sorteado pra nada em campo)? */
@@ -346,6 +426,7 @@ function novaPartida(interativa) {
     placarCasa: 0,
     placarFora: 0,
     eventos: [],
+    fluxoMinutos: [], // { minuto, valor } — pressão casa(+)/fora(-) por minuto, pro gráfico de fluxo da partida
     posseTicksCasa: 0,
     posseTicksFora: 0,
     estatisticas: {
@@ -641,9 +722,24 @@ function calcularSetoresEfetivosDoMinuto(time, lado, partida, ladoComEscolhaCobr
   if (ehIA) {
     const meusGols = lado === "casa" ? partida.placarCasa : partida.placarFora;
     const golsSofridos = lado === "casa" ? partida.placarFora : partida.placarCasa;
-    const ajuste = calcularAjustePosturaIA(meusGols - golsSofridos, partida.minuto);
+    const diferencaPlacar = meusGols - golsSofridos;
+    const ajuste = calcularAjustePosturaIA(diferencaPlacar, partida.minuto);
     setores.ataque += ajuste.ataque;
     setores.defesa += ajuste.defesa;
+
+    // Fator Clássico/Decisão: IA mais agressiva e intensa em jogos de rival (Correção de bug 2026-07-28).
+    if (time.classico) {
+      setores.ataque += 1;
+      setores.defesa += 0.8;
+    }
+
+    tentarSubstituicaoTaticaIA(time, diferencaPlacar, partida.minuto, partida, lado);
+  }
+
+  // Brecha explorada pela IA (setada de fora, em app.js, quando o time humano tem um titular
+  // cansado/pendurado em campo): penaliza o setor vulnerável do time humano naquele minuto.
+  if (time.penalidadeBrechaExterna) {
+    setores[time.penalidadeBrechaExterna.setor] -= time.penalidadeBrechaExterna.valor;
   }
 
   aplicarEfeitoSetasDoMinuto(time, setores, partida.estatisticas[lado]);
@@ -692,6 +788,12 @@ function simularMinuto(partida, timeCasa, timeFora, ladoComEscolhaCobranca) {
 
   calcularSetoresEfetivosDoMinuto(timeCasa, "casa", partida, ladoComEscolhaCobranca);
   calcularSetoresEfetivosDoMinuto(timeFora, "fora", partida, ladoComEscolhaCobranca);
+
+  // Gráfico de Fluxo da Partida (estilo SofaScore/Momentum): pressão do minuto, positiva pro
+  // lado casa e negativa pro lado fora — combina quem ataca mais com quem defende pior.
+  const pressaoCasa = timeCasa.setores.ataque - timeFora.setores.defesa;
+  const pressaoFora = timeFora.setores.ataque - timeCasa.setores.defesa;
+  partida.fluxoMinutos.push({ minuto: partida.minuto, valor: clamp(pressaoCasa - pressaoFora, -14, 14) });
 
   processarLadoPartida(partida, timeCasa, timeFora, "casa", ladoComEscolhaCobranca === "casa");
   if (partida.pendencia) return partida; // pênalti pausou a simulação — não processa o outro lado neste minuto

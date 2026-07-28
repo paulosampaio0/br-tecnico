@@ -711,6 +711,43 @@ body::before {
   margin-top: 4px;
 }
 
+/* Relatório do Auxiliar Técnico (Pré-Jogo, aba "Adversário") */
+.btn-relatorio-adversario {
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: var(--raio);
+  color: var(--branco);
+  font-size: 13px;
+  font-weight: 600;
+  padding: 10px 12px;
+  text-align: left;
+}
+
+.cartao-relatorio-adversario {
+  border-radius: var(--raio);
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.cartao-relatorio-adversario h3 {
+  font-size: 13px;
+  margin: 0 0 2px;
+}
+
+.relatorio-adversario-linha {
+  font-size: 13px;
+  color: var(--cinza-texto);
+  margin: 0;
+}
+
+.relatorio-adversario-linha strong {
+  color: var(--branco);
+}
+
 .titulo-secao-escalacao {
   font-family: var(--fonte-titulo);
   font-size: 15px;
@@ -2050,6 +2087,60 @@ body::before {
 
 .painel-auxiliar.auxiliar-clicavel:active {
   transform: scale(0.98);
+}
+
+/* Indicador visual de alerta: dica NOVA pisca por alguns segundos com borda pulsante. */
+.painel-auxiliar.auxiliar-pulsante {
+  animation: pulsar-borda-auxiliar 1s ease-in-out 3;
+}
+
+@keyframes pulsar-borda-auxiliar {
+  0%, 100% { box-shadow: 0 0 0 rgba(255, 210, 63, 0); }
+  50% { box-shadow: 0 0 0 3px rgba(255, 210, 63, 0.55); }
+}
+
+.badge-nova-dica-auxiliar {
+  display: inline-block;
+  margin-bottom: 4px;
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-size: 10.5px;
+  font-weight: 700;
+  background: rgba(255, 210, 63, 0.9);
+  color: #1a1200;
+  animation: pulsar-badge-auxiliar 1s ease-in-out infinite;
+}
+
+@keyframes pulsar-badge-auxiliar {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.55; }
+}
+
+.texto-acao-auxiliar {
+  display: block;
+  margin-top: 6px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--amarelo);
+}
+
+/* Gráfico de Fluxo da Partida (estilo SofaScore/Momentum) */
+.secao-fluxo-partida {
+  padding: 8px 10px;
+  border-radius: var(--raio);
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.grafico-fluxo-partida {
+  width: 100%;
+  height: 90px;
+}
+
+.grafico-fluxo-partida svg {
+  width: 100%;
+  height: 100%;
+  display: block;
 }
 
 /* Painel com abas (Eventos/Estatísticas) — altura fixa pra não empurrar

@@ -116,7 +116,9 @@ function simularJogoCompleto(timeCasaInfo, timeForaInfo) {
 function criarTimeSimuladoAutomaticoPuro(timeInfo, mando) {
   const titularesMap = autoEscalarMelhores(timeInfo.jogadores, "4-4-2");
   const titulares = resolverTitulares(timeInfo.jogadores, "4-4-2", titularesMap);
-  return criarTimeSimulado(timeInfo.nome, titulares, taticaPadrao(), {}, { mando: mando });
+  const idsEscalados = new Set(titulares.map(function (item) { return item.jogador._id; }));
+  const reservas = timeInfo.jogadores.filter(function (j) { return !idsEscalados.has(j._id); });
+  return criarTimeSimulado(timeInfo.nome, titulares, taticaPadrao(), {}, { mando: mando }, null, { reservas: reservas });
 }
 
 /**
