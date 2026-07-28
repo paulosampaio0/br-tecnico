@@ -2229,7 +2229,8 @@ body::before {
   color: var(--cinza-texto);
 }
 
-.tela-tabela {
+.tela-tabela,
+.tela-pos-jogo {
   justify-content: flex-start;
   align-items: stretch;
   text-align: left;

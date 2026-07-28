@@ -345,12 +345,6 @@
       <h2 class="titulo-lista">Tabela</h2>
     </header>
 
-    <section class="secao-relatorio-rodada" id="secao-relatorio-rodada" hidden>
-      <h3>🏁 Fim da Rodada</h3>
-      <p class="linha-relatorio" id="texto-relatorio-rodada-placar"></p>
-      <p class="linha-relatorio linha-relatorio-saldo" id="texto-relatorio-rodada-premiacao"></p>
-    </section>
-
     <section class="secao-relatorio-temporada" id="secao-relatorio-temporada" hidden>
       <h3 id="titulo-relatorio-temporada">Fim de temporada</h3>
       <p class="linha-relatorio" id="texto-relatorio-acesso"></p>
@@ -387,6 +381,19 @@
         <tbody id="corpo-tabela-classificacao"></tbody>
       </table>
     </div>
+
+  </main>
+
+  <!-- Tela: Fim de jogo — some logo depois de encerrar uma partida de rodada oficial
+       (ver finalizarPartida/abrirTelaPosJogo): resultados da rodada + Escalações e Notas/Info
+       da Partida do jogo que o usuário jogou, terminando num botão que manda pro hub. -->
+  <main class="tela tela-pos-jogo" id="tela-pos-jogo" hidden>
+
+    <section class="secao-relatorio-rodada" id="secao-relatorio-rodada" hidden>
+      <h3>🏁 Fim da Rodada</h3>
+      <p class="linha-relatorio" id="texto-relatorio-rodada-placar"></p>
+      <p class="linha-relatorio linha-relatorio-saldo" id="texto-relatorio-rodada-premiacao"></p>
+    </section>
 
     <section class="secao-resultados-rodada">
       <div class="cabecalho-resultados">
@@ -429,9 +436,7 @@
       </div>
     </section>
 
-    <!-- Só aparece logo depois de encerrar uma partida de rodada oficial (ver abrirTelaTabela) —
-         essa tela vira o "Fim de jogo": mostra o resultado da rodada e manda direto pro hub. -->
-    <button class="btn btn-primario btn-continuar-pos-rodada" id="btn-continuar-pos-rodada" type="button" hidden>Continuar ▶</button>
+    <button class="btn btn-primario btn-continuar-pos-rodada" id="btn-continuar-pos-rodada" type="button">Continuar ▶</button>
 
   </main>
 

@@ -85,8 +85,6 @@ let intervaloPartida = null;
 let velocidadePartida = 1; // 1x, 2x ou 3x — acelera o setInterval da simulação
 let partidasRodada = []; // os outros jogos da mesma divisão, simulados em paralelo (Fase 5)
 let meuLadoNaPartida = "casa"; // se o meu time é "casa" ou "fora" na partida atual (Fase 6)
-// A tela Tabela dobra de "Fim de jogo" logo após uma partida de rodada oficial — ver finalizarPartida/abrirTelaTabela.
-let modoPosJogoTabela = false;
 
 // Auxiliar técnico (dicas táticas em tempo real) — guarda a última dica exibida (com cooldown
 // por chave, pra não repetir a mesma frase toda hora) e se ela tem uma ação associada (ex.:
@@ -559,7 +557,6 @@ async function escalarEsteTime(time) {
 /* ---------- Tela: escalação e tática ---------- */
 
 function abrirTelaEscalacao() {
-  modoPosJogoTabela = false; // chegar no hub sempre encerra o modo "Fim de jogo" da tela Tabela
   mostrarTela("tela-escalacao");
   document.getElementById("titulo-escalacao").textContent = estado.timeAtual.nome;
   document.getElementById("topo-hub-escudo").innerHTML = montarEscudoClube(estado.timeAtual.nome);
@@ -2928,14 +2925,13 @@ function fecharTemporadaNoHistoricoDosJogadores() {
 
 /**
  * Chamada pelo botão da tela de partida ao terminar o jogo ("Ver resultado da rodada" /
- * "Continuar"). Rodada oficial: fecha a rodada de verdade e pousa direto na tela Tabela, que
- * nesse momento vira o "Fim de jogo" (resultados da rodada + Escalações e Notas/Info da
- * Partida, com um botão "Continuar" pro hub — ver abrirTelaTabela). Amistoso não mexe em
- * tabela/rodada, então só volta pra escalação, como sempre fez.
+ * "Continuar"). Rodada oficial: fecha a rodada de verdade e pousa na tela dedicada "Fim de
+ * jogo" (resultados da rodada + Escalações e Notas/Info da Partida, com um botão "Continuar"
+ * pro hub — ver abrirTelaPosJogo, chamada no fim de `concluirRodadaOficial`). Amistoso não mexe
+ * em tabela/rodada, então só volta pra escalação, como sempre fez.
  */
 function finalizarPartida() {
   if (partidaAtual.ehRodadaOficial) {
-    modoPosJogoTabela = true;
     concluirRodadaOficial();
     return;
   }
@@ -3479,7 +3475,7 @@ async function concluirRodadaOficial() {
   partidaAtual = null;
   partidasRodada = [];
   salvarProgresso();
-  abrirTelaTabela();
+  abrirTelaPosJogo();
 }
 
 /** Fim de temporada: aplica acesso/rebaixamento, evolui o elenco e monta o calendário do ano seguinte. */
@@ -5365,20 +5361,23 @@ async function abrirTelaSelecaoRodada() {
 function abrirTelaTabela() {
   mostrarTela("tela-tabela");
   divisaoTabelaAtual = estado.timeAtual.divisaoChave;
-  rodadaResultadosExibida = Math.max(1, estado.temporada.rodadaAtual - 1);
 
-  renderizarRelatorioRodada();
   renderizarRelatorioTemporada();
   montarNavDivisaoTabela();
   renderizarTabelaClassificacao();
-  renderizarResultadosRodada();
+}
 
-  // Logo depois de uma partida de rodada oficial (ver finalizarPartida), essa mesma tela vira
-  // o "Fim de jogo": some o "←" de navegação livre e mostra só o botão "Continuar" pro hub.
-  const btnContinuarPosRodada = document.getElementById("btn-continuar-pos-rodada");
-  const btnVoltarEscalacaoTabela = document.getElementById("btn-voltar-escalacao-tabela");
-  if (btnContinuarPosRodada) btnContinuarPosRodada.hidden = !modoPosJogoTabela;
-  if (btnVoltarEscalacaoTabela) btnVoltarEscalacaoTabela.hidden = modoPosJogoTabela;
+/**
+ * Tela "Fim de jogo": some logo depois de encerrar uma partida de rodada oficial (ver
+ * `finalizarPartida`) — resultados da rodada + Escalações e Notas/Info da Partida do jogo que o
+ * usuário jogou, com um botão "Continuar" que manda direto pro hub da próxima semana.
+ */
+function abrirTelaPosJogo() {
+  mostrarTela("tela-pos-jogo");
+  divisaoTabelaAtual = estado.timeAtual.divisaoChave;
+  rodadaResultadosExibida = Math.max(1, estado.temporada.rodadaAtual - 1);
+  renderizarRelatorioRodada();
+  renderizarResultadosRodada();
 }
 
 /**
@@ -6519,10 +6518,7 @@ function ligarBotoes() {
 
   const btnContinuarPosRodada = document.getElementById("btn-continuar-pos-rodada");
   if (btnContinuarPosRodada) {
-    btnContinuarPosRodada.addEventListener("click", function () {
-      modoPosJogoTabela = false;
-      abrirTelaEscalacao();
-    });
+    btnContinuarPosRodada.addEventListener("click", abrirTelaEscalacao);
   }
 
   const btnFecharSeletor = document.getElementById("btn-fechar-seletor");
