@@ -2260,7 +2260,7 @@ body::before {
   display: grid;
   grid-template-columns: 1fr auto 1fr auto;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
   padding: 8px 12px;
   border-radius: 10px;
   background: rgba(255, 255, 255, 0.05);
@@ -2277,8 +2277,15 @@ body::before {
   white-space: nowrap;
 }
 
-.item-jogo-rodada .time-rodada:last-of-type {
+/* Mandante: texto encostado no placar (borda direita da coluna). Visitante: encostado do
+   outro lado (borda esquerda da coluna) — o escudo de cada um fica sempre na ponta de fora
+   (ver .nome-time-com-escudo / o row-reverse do visitante logo abaixo). */
+.item-jogo-rodada .time-rodada:first-of-type {
   text-align: right;
+}
+
+.item-jogo-rodada .time-rodada:last-of-type {
+  text-align: left;
 }
 
 .item-jogo-rodada .placar-rodada {
