@@ -111,11 +111,29 @@ function calcularEstrelasPotencial(jogador) {
 }
 
 /**
+ * Jogadores emblemáticos/consagrados (Estrela Dourada — Sistema de Estrelas): recebem a
+ * Estrela Dourada só pelo nome estar aqui, em qualquer clube, independente de desempenho.
+ */
+const JOGADORES_EMBLEMATICOS = new Set([
+  "Neymar", "Neymar Jr", "Giorgian de Arrascaeta", "Arrascaeta", "Memphis Depay",
+  "Hulk", "Gabriel Barbosa", "Gabigol", "Pedro", "Everton Ribeiro", "Alan Franco",
+  "Endrick", "Vitor Roque", "Rony", "Estêvão", "Yuri Alberto", "Paulinho",
+]);
+
+/** Estrela Dourada por nome (banco de dados) — pura, não depende de save/estado. */
+function obterEstrelaEmblematica(nome) {
+  return JOGADORES_EMBLEMATICOS.has(nome) ? "dourada" : null;
+}
+
+/**
  * Valor de mercado (em milhões de €), calculado a partir de força e idade.
  * O valor_mi que veio nos dados originais foi só o ponto de partida pra
  * calibrar a escala — o valor de verdade no jogo é sempre recalculado.
+ * `estrela` (Sistema de Estrelas — Valorização de Mercado): "dourada" soma +10%,
+ * "prateada" soma +5% — passado pelo chamador (jogadores fora do elenco do usuário
+ * não têm estrela dinâmica rastreada, só a emblemática, que é resolvida aqui dentro).
  */
-function calcularValorMercado(jogador) {
+function calcularValorMercado(jogador, estrela) {
   const baseForca = Math.pow(Math.max(0, jogador.forca - 28), 2.1) * 0.045;
 
   let fatorIdade;
@@ -126,7 +144,13 @@ function calcularValorMercado(jogador) {
   else if (jogador.idade <= 35) fatorIdade = 0.55;
   else fatorIdade = 0.3;
 
-  return Math.max(0.05, Math.round(baseForca * fatorIdade * 100) / 100);
+  let valor = Math.max(0.05, Math.round(baseForca * fatorIdade * 100) / 100);
+
+  const estrelaEfetiva = estrela || obterEstrelaEmblematica(jogador.nome);
+  if (estrelaEfetiva === "dourada") valor = Math.round(valor * 1.10 * 100) / 100;
+  else if (estrelaEfetiva === "prateada") valor = Math.round(valor * 1.05 * 100) / 100;
+
+  return valor;
 }
 
 /** Salário mensal estimado (em milhões de €), a partir do valor de mercado. */

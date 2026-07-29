@@ -321,6 +321,9 @@ function criarTimeSimulado(nome, titularesResolvidos, tatica, setasPorVaga, opco
     // tática, e flags de controle pra cada tipo de troca só acontecer 1x por partida.
     reservas: (extras && extras.reservas) || [],
     classico: !!(extras && extras.classico),
+    // Estrela Dourada — Poder de Reação (Clutch): true quando esse time tem pelo menos 1 titular
+    // com Estrela Dourada em campo (só o time do usuário rastreia isso, ver `calcularTimeSimuladoUsuario`).
+    temEstrelaDourada: !!(extras && extras.temEstrelaDourada),
     substituicoesIA: 0,
     iaSubOfensivaFeita: false,
     iaSubDefensivaFeita: false,
@@ -615,7 +618,18 @@ function processarLadoPartida(partida, atacante, defensor, ladoAtacante, permiti
 
       estatAtacante.noGol++;
       if (ladoAtacante === "casa") partida.placarCasa++; else partida.placarFora++;
-      registrarEvento(partida, "gol", ladoAtacante, "⚽ Gol de " + jogador.nome + "!", jogador._id);
+      const eventoGol = registrarEvento(partida, "gol", ladoAtacante, "⚽ Gol de " + jogador.nome + "!", jogador._id);
+      // Assistência (Estatísticas — Sistema de Estrelas): só gol "de jogo" tem chance de
+      // assistência (pênalti não tem passador) — sorteia 1 companheiro de linha em campo.
+      if (Math.random() < 0.62) {
+        const candidatosAssistencia = titularesEmCampo(atacante)
+          .filter(function (i) { return i.jogador._id !== jogador._id && i.vaga.pos !== "GOL"; });
+        if (candidatosAssistencia.length > 0) {
+          const autor = candidatosAssistencia[Math.floor(Math.random() * candidatosAssistencia.length)].jogador;
+          eventoGol.idJogadorAssistencia = autor._id;
+          eventoGol.texto += " (assistência: " + autor.nome + ")";
+        }
+      }
     } else if (rolagem < chanceGol + janelaNoGol) {
       estatAtacante.noGol++;
       let textoDefesa;
@@ -734,6 +748,17 @@ function calcularSetoresEfetivosDoMinuto(time, lado, partida, ladoComEscolhaCobr
     }
 
     tentarSubstituicaoTaticaIA(time, diferencaPlacar, partida.minuto, partida, lado);
+  } else if (time.temEstrelaDourada) {
+    // Estrela Dourada — Poder de Reação (Clutch): craque em campo puxa a equipe pra cima nos
+    // últimos 15 minutos de jogo empatado ou desfavorável (jogos de mata-mata usam a mesma
+    // reação, já que aqui "decisivo" é medido pelo placar apertado no fim, não pelo formato do campeonato).
+    const meusGols = lado === "casa" ? partida.placarCasa : partida.placarFora;
+    const golsSofridos = lado === "casa" ? partida.placarFora : partida.placarCasa;
+    const reagindo = partida.tempo === 2 && partida.minuto >= 75 && meusGols <= golsSofridos;
+    if (reagindo) {
+      setores.ataque += 1.5;
+      setores.defesa += 1;
+    }
   }
 
   // Brecha explorada pela IA (setada de fora, em app.js, quando o time humano tem um titular
@@ -783,22 +808,63 @@ function calcularSetoresEfetivosDoMinuto(time, lado, partida, ladoComEscolhaCobr
  * simulação pra escolher o cobrador; nos demais casos (jogos da CPU, ou
  * pênalti do adversário) o pênalti é resolvido na hora.
  */
+// Tipos de evento que contam como "criou perigo" pro Gráfico de Fluxo — cartão não conta (não é ataque).
+const TIPOS_EVENTO_ATAQUE = { gol: true, chance: true, penalti: true };
+
+/** Maior evento de ataque de um lado, registrado a partir do índice `desde` — "gol" > "chance" > null. */
+function maiorEventoDeAtaque(eventos, desde, lado) {
+  let melhor = null;
+  for (let i = desde; i < eventos.length; i++) {
+    const evento = eventos[i];
+    if (evento.lado !== lado || !TIPOS_EVENTO_ATAQUE[evento.tipo]) continue;
+    if (evento.tipo === "gol") return "gol"; // já é o maior possível, não precisa continuar
+    melhor = "chance";
+  }
+  return melhor;
+}
+
+/**
+ * Gráfico de Fluxo da Partida (estilo SofaScore/Momentum) — 1 ponto por minuto, positivo pro
+ * lado casa e negativo pro lado fora. Correção de bug: a versão anterior só olhava a diferença
+ * de setores (quase estática minuto a minuto), o que rendia um gráfico praticamente achatado —
+ * agora o grosso do valor vem de EVENTOS DE VERDADE (quem criou chance/finalização nesse minuto,
+ * com pico maior ainda se foi gol), e só uma oscilação pequena de "posse/pressão" de fundo pros
+ * minutos sem finalização, pra nunca ficar 100% reto.
+ */
+function registrarMomentoDoMinuto(partida, timeCasa, timeFora, eventoCasa, eventoFora) {
+  const pressaoCasa = timeCasa.setores.ataque - timeFora.setores.defesa;
+  const pressaoFora = timeFora.setores.ataque - timeCasa.setores.defesa;
+  let valor = clamp((pressaoCasa - pressaoFora) * 0.35, -4, 4) + (Math.random() - 0.5) * 1.5;
+
+  if (eventoCasa === "gol") valor += 11;
+  else if (eventoCasa === "chance") valor += 6 + Math.random() * 3;
+  if (eventoFora === "gol") valor -= 11;
+  else if (eventoFora === "chance") valor -= 6 + Math.random() * 3;
+
+  partida.fluxoMinutos.push({ minuto: partida.minuto, valor: clamp(valor, -14, 14) });
+}
+
 function simularMinuto(partida, timeCasa, timeFora, ladoComEscolhaCobranca) {
   partida.minuto += 1;
 
   calcularSetoresEfetivosDoMinuto(timeCasa, "casa", partida, ladoComEscolhaCobranca);
   calcularSetoresEfetivosDoMinuto(timeFora, "fora", partida, ladoComEscolhaCobranca);
 
-  // Gráfico de Fluxo da Partida (estilo SofaScore/Momentum): pressão do minuto, positiva pro
-  // lado casa e negativa pro lado fora — combina quem ataca mais com quem defende pior.
-  const pressaoCasa = timeCasa.setores.ataque - timeFora.setores.defesa;
-  const pressaoFora = timeFora.setores.ataque - timeCasa.setores.defesa;
-  partida.fluxoMinutos.push({ minuto: partida.minuto, valor: clamp(pressaoCasa - pressaoFora, -14, 14) });
+  const qtdEventosAntes = partida.eventos.length;
 
   processarLadoPartida(partida, timeCasa, timeFora, "casa", ladoComEscolhaCobranca === "casa");
-  if (partida.pendencia) return partida; // pênalti pausou a simulação — não processa o outro lado neste minuto
+  const eventoCasa = maiorEventoDeAtaque(partida.eventos, qtdEventosAntes, "casa");
+  if (partida.pendencia) {
+    // pênalti pausou a simulação — não processa o outro lado neste minuto, mas o momento já
+    // registrado até aqui (o pênalti em si já conta como o pico do minuto pro lado que atacou).
+    registrarMomentoDoMinuto(partida, timeCasa, timeFora, eventoCasa || "chance", null);
+    return partida;
+  }
 
+  const qtdEventosAntesFora = partida.eventos.length;
   processarLadoPartida(partida, timeFora, timeCasa, "fora", ladoComEscolhaCobranca === "fora");
+  const eventoFora = maiorEventoDeAtaque(partida.eventos, qtdEventosAntesFora, "fora");
+  registrarMomentoDoMinuto(partida, timeCasa, timeFora, eventoCasa, eventoFora);
   if (partida.pendencia) return partida;
 
   // Posse de bola é puxada principalmente por quem domina o meio-campo.

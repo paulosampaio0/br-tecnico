@@ -553,6 +553,8 @@ function aplicarFinancasDaRodada(financas, contexto) {
   if (souCasa) {
     publico = calcularPublicoJogo(financas.capacidadeEstadio, faixaPreco, financas.moralTorcida, contexto.aproveitamento);
     bilheteria = calcularReceitaBilheteria(publico, faixaPreco);
+    // Estrela Dourada — Receita Comercial: +15% de bilheteria com um craque titular em casa.
+    if (contexto.bonusEstrelaDourada) bilheteria = Math.round(bilheteria * 1.15 * 100) / 100;
   }
 
   const receita = Math.round((cotaTv + patrocinio + bilheteria) * 100) / 100;
@@ -597,8 +599,8 @@ function janelaDeMercadoAberta(numeroRodada, totalRodadas) {
  * anosContratoRestante: quanto falta no contrato dele (contrato acabando = mais barato).
  * divisaoVendedora: a divisão do clube dono do jogador agora.
  */
-function calcularPrecoTransferencia(jogador, anosContratoRestante, divisaoVendedora) {
-  let preco = converterEuroParaReal(calcularValorMercado(jogador));
+function calcularPrecoTransferencia(jogador, anosContratoRestante, divisaoVendedora, estrela) {
+  let preco = converterEuroParaReal(calcularValorMercado(jogador, estrela));
 
   const estrelas = calcularEstrelasPotencial(jogador);
   preco *= 1 + estrelas * CONFIG_FINANCEIRO.bonusPrecoPorEstrelaPotencial;

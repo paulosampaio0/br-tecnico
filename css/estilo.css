@@ -498,6 +498,14 @@ body::before {
   margin-right: 2px;
 }
 
+/* Sistema de Estrelas (Dourada/Prateada) e Setas de Fase — marcadores compactos no nome do jogador. */
+.tag-forma,
+.tag-estrela-status {
+  display: inline-block;
+  font-size: 11px;
+  margin-right: 2px;
+}
+
 /* Braçadeira no campo tático — canto da bolinha do jogador escalado como capitão. */
 .tag-capitao-campo {
   color: var(--amarelo);

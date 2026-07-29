@@ -239,6 +239,9 @@ function salvarProgresso() {
     jogadoresParaEmprestimo: estado.jogadoresParaEmprestimo,
     precoPedidoVenda: estado.precoPedidoVenda,
     detalhesPartidaPorRodada: estado.detalhesPartidaPorRodada,
+    estrelasPorJogador: estado.estrelasPorJogador,
+    prateadaLimiteIdadePorJogador: estado.prateadaLimiteIdadePorJogador,
+    formaPorJogador: estado.formaPorJogador,
     atualizadoEm: new Date().toISOString(),
   };
   try {
@@ -449,7 +452,17 @@ function criarItemJogador(jogador, mostrarEnergia) {
   const prefixoExpulso = jogadorFoiExpulsoNestaPartida(jogador._id) ? "<span class=\"tag-expulso\">🔴 Expulso</span> " : "";
   const prefixoCapitao = estado.capitaoId === jogador._id
     ? "<span class=\"tag-capitao\" title=\"Capitão do time\">©</span> " : "";
-  const valorMercado = calcularValorMercado(jogador);
+  // `mostrarEnergia` já significa "esse elenco é o time que eu de fato treino" (ver `abrirTelaElenco`)
+  // — reaproveitado aqui como guarda: `_id` do jogador é só o índice DENTRO do elenco de cada clube
+  // (não é globalmente único), então estrela/forma dinâmicas SÓ podem ser lidas pro meu próprio elenco,
+  // senão um jogador de outro clube "herdaria" a estrela de um jogador meu que calhou de ter o mesmo índice.
+  const estrelaStatus = mostrarEnergia ? obterEstrelaJogador(jogador) : obterEstrelaEmblematica(jogador.nome);
+  const formaJogador = mostrarEnergia ? obterFormaJogador(jogador._id) : "neutra";
+  const prefixoForma = formaJogador === "alta" ? "<span class=\"tag-forma\" title=\"Em alta\">🟢⬆️</span> "
+    : formaJogador === "baixa" ? "<span class=\"tag-forma\" title=\"Em baixa\">🔴⬇️</span> " : "";
+  const sufixoEstrelaStatus = estrelaStatus === "dourada" ? " <span class=\"tag-estrela-status\" title=\"Estrela Dourada\">⭐</span>"
+    : estrelaStatus === "prateada" ? " <span class=\"tag-estrela-status\" title=\"Estrela Prateada\">🥈</span>" : "";
+  const valorMercado = calcularValorMercado(jogador, estrelaStatus);
 
   let blocoEnergia = "";
   if (mostrarEnergia) {
@@ -481,7 +494,8 @@ function criarItemJogador(jogador, mostrarEnergia) {
   item.innerHTML =
     "<span class=\"pos " + classeSetorPosicao(jogador.pos) + "\">" + escaparHtml(jogador.pos) + "</span>" +
     "<span class=\"info\">" +
-      "<span class=\"nome\">" + prefixoExpulso + prefixoSuspenso + prefixoCapitao + prefixoEstrelas + escaparHtml(jogador.nome) + "</span>" +
+      "<span class=\"nome\">" + prefixoExpulso + prefixoSuspenso + prefixoCapitao + prefixoForma + prefixoEstrelas +
+        escaparHtml(jogador.nome) + sufixoEstrelaStatus + "</span>" +
       "<span class=\"detalhes\">" +
         jogador.idade + " anos · " + escaparHtml(jogador.nac) + " · " +
         escaparHtml(caracteristicas) + " · €" + valorMercado + "mi</span>" +
@@ -531,6 +545,9 @@ async function escalarEsteTime(time) {
   estado.contratos = {};
   estado.moralPorJogador = {};
   estado.rodadasSemJogarPorJogador = {}; // _id -> rodadas oficiais consecutivas sem entrar em campo
+  estado.estrelasPorJogador = {}; // _id -> "dourada" | "prateada"
+  estado.prateadaLimiteIdadePorJogador = {}; // _id -> idade limite pra manter a Estrela Prateada (22, ou 23 no Easter Egg)
+  estado.formaPorJogador = {}; // _id -> "alta" | "neutra" | "baixa" (Setas de Fase, recalculado a cada partida oficial)
   time.jogadores.forEach(function (jogador) {
     estado.contratos[jogador._id] = criarContratoInicial(jogador);
     estado.moralPorJogador[jogador._id] = CONFIG_FINANCEIRO.moralInicial;
@@ -968,7 +985,7 @@ function montarLadoCampoDuplo(campoEl, lado) {
       "</span>" +
       "<span class=\"nome-vaga\">" +
         (souEuNesseLado && estado.capitaoId === jogador._id ? "<span class=\"tag-capitao-campo\" title=\"Capitão\">©</span>" : "") +
-        montarForcaNomeCurto(jogador) +
+        montarForcaNomeCurto(jogador, souEuNesseLado) +
       "</span>" +
       (icones ? "<span class=\"icones-evento-partida-wrap\">" + icones + "</span>" : "") +
       montarBarraEnergiaComValor(energia);
@@ -1524,10 +1541,35 @@ function classeSetorPosicao(pos) {
   return "setor-ataque"; // ATE, ATD, ATA
 }
 
-/** "35 Felipe" — força em destaque + sobrenome curto, texto único reaproveitado em TODO card de
- *  jogador (Padronização de cards): titular no campo, "Mexer no time" e Banco/Não Relacionados. */
-function montarForcaNomeCurto(jogador) {
-  return "<span class=\"forca-compacto\">" + jogador.forca + "</span> " + escaparHtml(sobrenomeCurto(jogador.nome));
+/** Estrela Dourada/Prateada deste jogador (dinâmica do save, ou emblemática do banco de dados). */
+function obterEstrelaJogador(jogador) {
+  if (!jogador) return null;
+  return (estado.estrelasPorJogador && estado.estrelasPorJogador[jogador._id]) || obterEstrelaEmblematica(jogador.nome);
+}
+
+/** Seta de Fase (forma recente) — "alta" | "neutra" | "baixa"; "neutra" se nunca foi calculada. */
+function obterFormaJogador(idJogador) {
+  return (estado.formaPorJogador && estado.formaPorJogador[idJogador]) || "neutra";
+}
+
+const MARCADOR_FORMA_COMPACTO = { alta: " 🟢⬆️", baixa: " 🔴⬇️" };
+const MARCADOR_ESTRELA_COMPACTO = { dourada: " ⭐", prateada: " 🥈" };
+
+/**
+ * "35 🟢⬆️ Felipe ⭐" — força + forma + sobrenome curto + estrela, texto único reaproveitado em
+ * TODO card de jogador (Padronização de cards): titular no campo, "Mexer no time" e Banco/Não Relacionados.
+ * `ehMeuJogador` (default true): `_id` é só o índice dentro do elenco de cada clube (não é globalmente
+ * único) — passar `false` pro lado adversário do campo duplo, senão ele "herdaria" estrela/forma de um
+ * jogador meu que calhou de ter o mesmo índice. Estrela emblemática (banco de dados) é por nome, então
+ * vale pros dois lados.
+ */
+function montarForcaNomeCurto(jogador, ehMeuJogador) {
+  const souMeu = ehMeuJogador !== false;
+  const marcadorForma = souMeu ? (MARCADOR_FORMA_COMPACTO[obterFormaJogador(jogador._id)] || "") : "";
+  const estrela = souMeu ? obterEstrelaJogador(jogador) : obterEstrelaEmblematica(jogador.nome);
+  const marcadorEstrela = MARCADOR_ESTRELA_COMPACTO[estrela] || "";
+  return "<span class=\"forca-compacto\">" + jogador.forca + "</span>" + marcadorForma + " " +
+    escaparHtml(sobrenomeCurto(jogador.nome)) + marcadorEstrela;
 }
 
 /** Código curto (3 letras) de uma característica, pro texto compacto do card (ex.: "Cabeceio" -> "CAB"). */
@@ -1985,11 +2027,20 @@ function buscarDivisaoFisicaDoTime(dados, nomeTime) {
  * jogo (só o mandante tem bilheteria, mesma regra já usada em `aplicarFinancasDaRodada`). Calculado
  * 1x no início da partida (não muda minuto a minuto) e guardado em `partidaAtual.bilheteria`.
  */
-function calcularBilheteriaExibicao(jogadoresMandante, divisaoMandante, moralTorcida, aproveitamentoMandante, faixaPreco) {
+function calcularBilheteriaExibicao(jogadoresMandante, divisaoMandante, moralTorcida, aproveitamentoMandante, faixaPreco, bonusEstrelaDourada) {
   const capacidade = calcularCapacidadeEstadio(jogadoresMandante, divisaoMandante);
   const publico = calcularPublicoJogo(capacidade, faixaPreco, moralTorcida, aproveitamentoMandante);
-  const renda = calcularReceitaBilheteria(publico, faixaPreco);
+  let renda = calcularReceitaBilheteria(publico, faixaPreco);
+  // Estrela Dourada — Receita Comercial: +15% de bilheteria com um craque titular em casa.
+  if (bonusEstrelaDourada) renda = Math.round(renda * 1.15 * 100) / 100;
   return { publico: publico, renda: renda };
+}
+
+/** Algum dos titulares escalados agora tem Estrela Dourada? (Receita Comercial — bilheteria.) */
+function existeEstrelaDouradaNaEscalacaoAtual() {
+  if (!estado.timeAtual) return false;
+  return resolverTitulares(estado.timeAtual.jogadores, estado.formacaoId, estado.titulares)
+    .some(function (item) { return obterEstrelaJogador(item.jogador) === "dourada"; });
 }
 
 /** Sorteia um adversário da mesma divisão e começa uma partida amistosa (não conta pra tabela). */
@@ -2012,7 +2063,7 @@ async function iniciarAmistoso() {
   partidaAtual.bilheteria = calcularBilheteriaExibicao(
     estado.timeAtual.jogadores, estado.timeAtual.divisaoChave,
     estado.financas ? estado.financas.moralTorcida : 60,
-    calcularAproveitamentoAtual(), estado.precoIngresso
+    calcularAproveitamentoAtual(), estado.precoIngresso, existeEstrelaDouradaNaEscalacaoAtual()
   );
   partidasRodada = montarRodadaParalela(divisao, estado.timeAtual.nome, oponente.nome);
 
@@ -2096,6 +2147,10 @@ function calcularFatorFadiga(energia) {
 function calcularTimeSimuladoUsuario() {
   const titulares = resolverTitulares(estado.timeAtual.jogadores, estado.formacaoId, estado.titulares);
 
+  // Estrela Dourada — Mentoria: se algum titular tem Estrela Dourada, todo titular com Estrela
+  // Prateada rende +10% (calculado ANTES do map abaixo, pra valer pros dois lados na mesma leva).
+  const existeDouradaTitular = titulares.some(function (item) { return obterEstrelaJogador(item.jogador) === "dourada"; });
+
   // A energia baixa (cansaço) reduz a força efetiva em campo; o Centro de Análise (Fase 18) dá um bônus geral.
   const fatorAnalise = estado.infraestrutura ? calcularFatorForcaAnalise(estado.infraestrutura.analise) : 1;
   const titularesComFadiga = titulares.map(function (item) {
@@ -2104,8 +2159,24 @@ function calcularTimeSimuladoUsuario() {
     // Moral crítica (Gestão Humana): jogador insatisfeito rende um pouco menos em campo.
     const moral = estado.moralPorJogador ? obterMoralJogador(estado.moralPorJogador, item.jogador._id) : 100;
     const fatorMoral = moral < CONFIG_FINANCEIRO.moralLimiteRendimentoReduzido ? CONFIG_FINANCEIRO.fatorRendimentoMoralBaixa : 1;
-    const jogadorAjustado = Object.assign({}, item.jogador, { forca: item.jogador.forca * fatorFadiga * fatorAnalise * fatorMoral });
-    return { vaga: item.vaga, jogador: jogadorAjustado };
+    let forcaAjustada = item.jogador.forca * fatorFadiga * fatorAnalise * fatorMoral;
+
+    // Seta de Fase (Sistema de Estrelas): forma recente dá ou tira 10% da força em campo.
+    const forma = obterFormaJogador(item.jogador._id);
+    if (forma === "alta") forcaAjustada *= 1.10;
+    else if (forma === "baixa") forcaAjustada *= 0.90;
+
+    // Estrela Dourada (+5 de força direta) / Estrela Prateada (Mentoria, +10% com craque em campo).
+    const estrela = obterEstrelaJogador(item.jogador);
+    if (estrela === "dourada") forcaAjustada += 5;
+    else if (estrela === "prateada" && existeDouradaTitular) forcaAjustada *= 1.10;
+
+    const jogadorAjustado = Object.assign({}, item.jogador, { forca: forcaAjustada });
+    // Correção de bug crítica: faltava repassar `eficiencia` (Correção de bug — 2026-07-25, eficiência
+    // posicional) pro item reconstruído aqui — sem ela, `itemFinalizador.eficiencia` chegava `undefined`
+    // em `processarLadoPartida` (partida.js), e `0.65 * undefined` vira NaN, que nunca é "menor que" nada
+    // em comparação — todo chute do MEU time virava chute pra fora, sem NUNCA acertar o gol ou ser defendido.
+    return { vaga: item.vaga, jogador: jogadorAjustado, eficiencia: item.eficiencia };
   });
 
   // Mando de campo (Rebalanceamento 2026-07-23): o time do usuário também sente o efeito de
@@ -2113,7 +2184,7 @@ function calcularTimeSimuladoUsuario() {
   // Capitão (Gestão Humana): só o time do usuário tem essa mecânica — os outros 39 clubes da
   // liga são só tabela/estatística, sem elenco "de verdade" pra escolher um capitão.
   const time = criarTimeSimulado(estado.timeAtual.nome, titularesComFadiga, estado.tatica, estado.setas,
-    { mando: meuLadoNaPartida }, estado.capitaoId);
+    { mando: meuLadoNaPartida }, estado.capitaoId, { temEstrelaDourada: existeDouradaTitular });
 
   // Correção de bug — cartão vermelho: essa função RECRIA o time do zero toda vez que a
   // simulação retoma de uma pausa (pra escalação/tática valerem), o que apagaria a lista de
@@ -2131,16 +2202,20 @@ function calcularTimeSimuladoUsuario() {
 /**
  * Correção de bug (2026-07-23): a energia ficava travada em 100% (ou no valor de entrada) a
  * partida inteira, porque só era recalculada no apito final (`aplicarDesgastePosPartida`). Agora,
- * enquanto a partida está rolando, quem está EM CAMPO nesse exato minuto perde energia ao vivo
- * (~0.4%/min, dentro da faixa pedida de 0,3% a 0,5%, mais rápido com seta ativa) — o valor final
- * "de verdade" que fica salvo continua vindo de `aplicarDesgastePosPartida` no apito final, essa
- * conta aqui é só a evolução minuto a minuto enquanto o jogo está em andamento.
+ * enquanto a partida está rolando, quem está EM CAMPO nesse exato minuto perde energia ao vivo —
+ * o valor final "de verdade" que fica salvo continua vindo de `aplicarDesgastePosPartida` no apito
+ * final, essa conta aqui é só a evolução minuto a minuto enquanto o jogo está em andamento.
+ * Rebalanceamento de desgaste (2026-07-29): a taxa por minuto foi calibrada pra bater com a
+ * perda final de 90min (~12-18% linha / ~4-6% goleiro), senão a energia "ao vivo" caía muito
+ * mais rápido que o valor persistido — mostrando o jogador "mais cansado" do que realmente fica.
  */
 function calcularTaxaPerdaEnergiaPorMinuto(jogador, idJogador) {
-  let taxa = 0.4; // % por minuto, dentro da faixa pedida (0.3 a 0.5)
+  let taxa = jogador.pos === "GOL" ? 0.05 : 0.15; // % por minuto — ~4.5%/90min (goleiro), ~13.5%/90min (linha)
   if (jogador.idade >= 30) taxa *= 1.15;
   const temResistencia = jogador.caracteristica_1 === "Resistência" || jogador.caracteristica_2 === "Resistência";
   if (temResistencia) taxa *= 0.75;
+  // Estrela Prateada — Resistência Física: cansa 30% menos.
+  if (obterEstrelaJogador(jogador) === "prateada") taxa *= 0.7;
 
   // Mesma regra de setas do Rebalanceamento de setas: 30% a mais com 1 seta ativa, 50% com 2.
   const vagaId = Object.keys(estado.titulares).find(function (id) { return estado.titulares[id] === idJogador; });
@@ -3049,11 +3124,21 @@ function registrarHistoricoPartidaOficial() {
       { jogos: 0, gols: 0, assistencias: 0, amarelos: 0, vermelhos: 0 };
     stats.jogos++;
     partidaAtual.eventos.forEach(function (evento) {
-      if (evento.idJogador !== idJogador || evento.lado !== meuLadoNaPartida) return;
-      if (evento.tipo === "gol") stats.gols++;
-      else if (evento.tipo === "cartao-amarelo") stats.amarelos++;
-      else if (evento.tipo === "cartao-vermelho") stats.vermelhos++;
+      if (evento.lado !== meuLadoNaPartida) return;
+      if (evento.idJogador === idJogador) {
+        if (evento.tipo === "gol") stats.gols++;
+        else if (evento.tipo === "cartao-amarelo") stats.amarelos++;
+        else if (evento.tipo === "cartao-vermelho") stats.vermelhos++;
+      }
+      if (evento.tipo === "gol" && evento.idJogadorAssistencia === idJogador) stats.assistencias++;
     });
+
+    // Seta de Fase (Sistema de Estrelas): recalculada a cada partida oficial, a partir da
+    // média das últimas 3 notas (ou menos, no início de uma temporada nova).
+    const ultimasNotas = jogosDaTemporada.slice(-3).map(function (j) { return j.nota; });
+    const mediaRecente = ultimasNotas.reduce(function (s, n) { return s + n; }, 0) / ultimasNotas.length;
+    estado.formaPorJogador = estado.formaPorJogador || {};
+    estado.formaPorJogador[idJogador] = mediaRecente >= 7.2 ? "alta" : mediaRecente < 6.0 ? "baixa" : "neutra";
   });
 }
 
@@ -3280,19 +3365,30 @@ function aplicarDesgastePosPartida() {
       return;
     }
 
-    let perda = 12;
-    if (jogador.idade >= 30) perda += 4;
+    // Rebalanceamento de desgaste (2026-07-29): jogador de linha aguenta pelo menos 2 jogos
+    // inteiros seguidos (180min) sem cair de rendimento crítico (perda de ~12-18%/jogo); goleiro
+    // mal cansa fisicamente na posição — aguenta 5-6 jogos seguidos (perda de só 4-6%/jogo).
+    const ehGoleiro = jogador.pos === "GOL";
+    let perda = ehGoleiro ? 4 : 12;
+    if (jogador.idade >= 30) perda += ehGoleiro ? 1 : 4;
     const temResistencia = jogador.caracteristica_1 === "Resistência" || jogador.caracteristica_2 === "Resistência";
-    if (temResistencia) perda -= 5;
+    if (temResistencia) perda -= ehGoleiro ? 1 : 5;
 
     // Rebalanceamento de setas (2026-07-23) — risco vs. recompensa: jogar com seta ativa
     // consome 30% a mais de energia (1 seta) até 50% a mais (2 setas), substituindo o antigo
     // "+3 fixo por seta" por um multiplicador proporcional ao desgaste base do jogador.
+    // Goleiro nunca tem seta ativa (não entra no embate por setor), então nunca sofre esse extra.
     const setasJogador = estado.setas[vagaPorJogador[jogador._id]] || [];
     if (setasJogador.length === 1) perda *= 1.3;
     else if (setasJogador.length >= 2) perda *= 1.5;
 
+    // Estrela Prateada — Resistência Física: cansa 30% menos.
+    if (obterEstrelaJogador(jogador) === "prateada") perda *= 0.7;
+
     perda *= fatorDesgasteDM;
+    // Teto de segurança: nenhum modificador empilhado pode fugir da faixa pedida (12-18%
+    // linha / 4-6% goleiro), pra "2 jogos seguidos" (ou "5-6" pro goleiro) valer sempre.
+    perda = clamp(perda, ehGoleiro ? 2 : 8, ehGoleiro ? 6 : 18);
 
     estado.energiaPorJogador[jogador._id] = Math.max(10, Math.round(atual - perda));
   });
@@ -3302,8 +3398,11 @@ function aplicarDesgastePosPartida() {
  * Evolução de fim de temporada: jovens tendem a crescer, veteranos a cair.
  * Devolve { forca, idade } — o novo estado do jogador pro ano seguinte.
  */
-/** fatorCT (Fase 18, Centro de Treinamento): amplia o delta, positivo OU negativo — nível 1 = fator 1 (neutro). */
-function evoluirJogador(jogador, fatorCT) {
+/**
+ * fatorCT (Fase 18, Centro de Treinamento): amplia o delta, positivo OU negativo — nível 1 = fator 1 (neutro).
+ * fatorEstrela (Estrela Prateada — Evolução Acelerada): 1.5 quando o jogador tem Estrela Prateada, senão 1.
+ */
+function evoluirJogador(jogador, fatorCT, fatorEstrela) {
   const idade = jogador.idade;
   let delta;
   if (idade <= 20) delta = 1 + Math.random() * 1.5;
@@ -3313,9 +3412,173 @@ function evoluirJogador(jogador, fatorCT) {
   else delta = -(1.5 + Math.random() * 2);
 
   delta *= fatorCT !== undefined ? fatorCT : 1;
+  delta *= fatorEstrela !== undefined ? fatorEstrela : 1;
 
   const novaForca = Math.max(28, Math.min(48, Math.round(jogador.forca + delta)));
   return { forca: novaForca, idade: idade + 1 };
+}
+
+/* ---------- Sistema de Estrelas (Dourada/Prateada) — fim de temporada ---------- */
+
+/**
+ * Estatísticas sintéticas de temporada pra um jogador de OUTRO clube (a liga inteira não é
+ * simulada jogador a jogador — só o meu time tem `statsTemporadaAtualPorJogador` de verdade).
+ * Semente fixa por ano+divisão+clube+jogador: estável se reconsultada na mesma temporada.
+ */
+function gerarStatsSinteticasTemporada(jogador, nomeTime, divisaoChave, ano) {
+  const semente = semeanteDeTexto("stats-temporada|" + ano + "|" + divisaoChave + "|" + nomeTime + "|" + jogador._id);
+  const rnd = criarRandomSeeded(semente);
+  const fatorOfensivo = ["ATA", "ATD", "ATE"].indexOf(jogador.pos) !== -1 ? 1
+    : (["MEI", "VOL"].indexOf(jogador.pos) !== -1 ? 0.55 : 0.15);
+  const nivel = Math.max(0, jogador.forca - 28) / 20;
+  const jogos = 22 + Math.floor(rnd() * 14);
+  const gols = Math.max(0, Math.round(fatorOfensivo * nivel * (6 + rnd() * 14)));
+  const assistencias = Math.max(0, Math.round(fatorOfensivo * 0.7 * nivel * (4 + rnd() * 10)));
+  const notaMedia = clamp(5.6 + nivel * 2.2 + (rnd() - 0.5) * 1.2, 4.5, 9.3);
+  return { gols: gols, assistencias: assistencias, notaMedia: Math.round(notaMedia * 10) / 10, jogos: jogos };
+}
+
+// Vagas por posição pra "eleger" a Seleção do Campeonato (mesmo esquema 4-3-3 da Seleção da Rodada).
+const VAGAS_SELECAO_CAMPEONATO = { GOL: 1, ZAG: 2, "LAT.D": 1, "LAT.E": 1, VOL: 2, MEI: 1, ATA: 1, ATD: 1, ATE: 1 };
+
+/**
+ * Artilheiro, líder de assistências, maior nota média e Seleção do Campeonato da divisão do
+ * usuário nesta temporada — combina estatística REAL do meu elenco (statsTemporadaAtualPorJogador/
+ * jogosTemporadaPorJogador) com estatística SINTÉTICA dos outros ~19 clubes (não há elenco "de
+ * verdade" simulado partida a partida pra eles). Devolve só os _ids do MEU time que bateram cada
+ * feito — é só isso que o Sistema de Estrelas precisa pra decidir uma promoção.
+ */
+function calcularLiderancasDaLiga(dados, divisaoChave, ano) {
+  const divisao = dados.divisoes[divisaoChave];
+  const meuTimeNome = estado.timeAtual.nome;
+  const candidatos = [];
+
+  divisao.times.forEach(function (time) {
+    const ehMeuTime = time.nome === meuTimeNome;
+    time.jogadores.forEach(function (jogador) {
+      if (ehMeuTime) {
+        const stats = estado.statsTemporadaAtualPorJogador[jogador._id];
+        if (!stats || stats.jogos === 0) return;
+        const jogosLista = estado.jogosTemporadaPorJogador[jogador._id] || [];
+        const notaMedia = jogosLista.length
+          ? jogosLista.reduce(function (s, j) { return s + j.nota; }, 0) / jogosLista.length : 0;
+        candidatos.push({
+          id: jogador._id, pos: jogador.pos, gols: stats.gols, assistencias: stats.assistencias,
+          notaMedia: notaMedia, jogos: stats.jogos, meu: true,
+        });
+      } else {
+        const sint = gerarStatsSinteticasTemporada(jogador, time.nome, divisaoChave, ano);
+        candidatos.push({
+          id: null, pos: jogador.pos, gols: sint.gols, assistencias: sint.assistencias,
+          notaMedia: sint.notaMedia, jogos: sint.jogos, meu: false,
+        });
+      }
+    });
+  });
+
+  // Precisa de um mínimo de jogos pra concorrer a um título da liga — evita 1 jogo isolado virar "artilheiro".
+  const elegiveis = candidatos.filter(function (c) { return c.jogos >= 5; });
+
+  const maxGols = elegiveis.reduce(function (m, c) { return Math.max(m, c.gols); }, 0);
+  const maxAssist = elegiveis.reduce(function (m, c) { return Math.max(m, c.assistencias); }, 0);
+  const maxNota = elegiveis.reduce(function (m, c) { return Math.max(m, c.notaMedia); }, 0);
+
+  const artilheiroIds = new Set(elegiveis.filter(function (c) { return c.meu && maxGols > 0 && c.gols === maxGols; }).map(function (c) { return c.id; }));
+  const liderAssistIds = new Set(elegiveis.filter(function (c) { return c.meu && maxAssist > 0 && c.assistencias === maxAssist; }).map(function (c) { return c.id; }));
+  const liderNotaIds = new Set(elegiveis.filter(function (c) { return c.meu && c.notaMedia === maxNota; }).map(function (c) { return c.id; }));
+
+  // Seleção do Campeonato: melhor nota média por posição, entre todos os elegíveis da divisão.
+  const selecaoIds = new Set();
+  Object.keys(VAGAS_SELECAO_CAMPEONATO).forEach(function (pos) {
+    const doPosto = elegiveis.filter(function (c) { return c.pos === pos; })
+      .sort(function (a, b) { return b.notaMedia - a.notaMedia; });
+    doPosto.slice(0, VAGAS_SELECAO_CAMPEONATO[pos]).forEach(function (c) {
+      if (c.meu && c.notaMedia > 8.5) selecaoIds.add(c.id);
+    });
+  });
+
+  return { artilheiroIds: artilheiroIds, liderAssistIds: liderAssistIds, liderNotaIds: liderNotaIds, selecaoIds: selecaoIds };
+}
+
+/**
+ * Promoções/expirações de Estrela Dourada/Prateada no fim de temporada — roda ANTES de
+ * `fecharTemporadaNoHistoricoDosJogadores()` zerar os acumuladores da temporada. Regras (Sistema
+ * de Estrelas): Dourada por feito da liga (artilheiro/líder de assistências/maior nota/Seleção do
+ * Campeonato >8.5) vale pra qualquer jogador; Prateada só nasce em jovem (<22 anos) com nota
+ * média ≥7.1 ou líder de assistências; Easter Egg aos 21 anos estende o prazo até os 23.
+ */
+async function atualizarEstrelasDeTemporada() {
+  if (!estado.timeAtual || !estado.statsTemporadaAtualPorJogador) return;
+  estado.estrelasPorJogador = estado.estrelasPorJogador || {};
+  estado.prateadaLimiteIdadePorJogador = estado.prateadaLimiteIdadePorJogador || {};
+
+  const dados = await carregarDados();
+  const liderancas = calcularLiderancasDaLiga(dados, estado.timeAtual.divisaoChave, estado.temporada.ano);
+
+  const promovidosDourada = [];
+  const promovidosPrateada = [];
+  const expirados = [];
+
+  estado.timeAtual.jogadores.forEach(function (jogador) {
+    const idJogador = jogador._id;
+    const idade = jogador.idade; // idade NESTA temporada que está terminando (evoluirJogador só soma +1 depois)
+    const stats = estado.statsTemporadaAtualPorJogador[idJogador];
+    if (!stats || stats.jogos === 0) return; // não jogou nada — sem gatilho nesta temporada
+
+    const jogosLista = estado.jogosTemporadaPorJogador[idJogador] || [];
+    const notaMedia = jogosLista.length ? jogosLista.reduce(function (s, j) { return s + j.nota; }, 0) / jogosLista.length : 0;
+    const estrelaAtual = estado.estrelasPorJogador[idJogador] || null;
+    // Feitos que dão Dourada DIRETO, mesmo sem nunca ter tido Prateada (Quem Recebe Estrela Dourada,
+    // itens 2-4): artilheiro, maior nota média da liga, ou Seleção do Campeonato com nota >8.5.
+    // Líder de assistências, sozinho, NÃO entra aqui — pelo Gatilho de Novas Promessas ele só dá
+    // Prateada (ou promove quem JÁ é Prateada, no bloco abaixo).
+    const feitoDouradaDireto = liderancas.artilheiroIds.has(idJogador) || liderancas.liderNotaIds.has(idJogador) ||
+      liderancas.selecaoIds.has(idJogador);
+    const feitoPromocaoDePrateada = notaMedia >= 7.1 || liderancas.artilheiroIds.has(idJogador) || liderancas.liderAssistIds.has(idJogador);
+
+    if (estrelaAtual === "dourada") return; // craque consagrado não perde a estrela por 1 temporada ruim
+
+    if (estrelaAtual === "prateada") {
+      if (feitoPromocaoDePrateada) {
+        estado.estrelasPorJogador[idJogador] = "dourada";
+        delete estado.prateadaLimiteIdadePorJogador[idJogador];
+        promovidosDourada.push(jogador.nome);
+        return;
+      }
+      const limiteIdade = estado.prateadaLimiteIdadePorJogador[idJogador] || 22;
+      if (idade >= limiteIdade && notaMedia < 6.8) {
+        delete estado.estrelasPorJogador[idJogador];
+        delete estado.prateadaLimiteIdadePorJogador[idJogador];
+        expirados.push(jogador.nome);
+      }
+      return;
+    }
+
+    // Sem estrela ainda: só artilheiro/maior nota da liga/Seleção >8.5 promovem direto pra Dourada.
+    if (feitoDouradaDireto) {
+      estado.estrelasPorJogador[idJogador] = "dourada";
+      promovidosDourada.push(jogador.nome);
+      return;
+    }
+
+    // Gatilho de Novas Promessas: só jovem (<22) com nota alta ou líder de assistências.
+    if (idade < 22 && (notaMedia >= 7.1 || liderancas.liderAssistIds.has(idJogador))) {
+      estado.estrelasPorJogador[idJogador] = "prateada";
+      // Easter Egg: bateu a meta EXATAMENTE aos 21 anos ganha +2 anos de tolerância (até os 23).
+      estado.prateadaLimiteIdadePorJogador[idJogador] = idade === 21 ? 23 : 22;
+      promovidosPrateada.push(jogador.nome);
+    }
+  });
+
+  if (promovidosDourada.length > 0) {
+    alert("⭐ Nova Estrela Dourada! " + promovidosDourada.join(", ") + " se consagrou nesta temporada.");
+  }
+  if (promovidosPrateada.length > 0) {
+    alert("🥈 Nova Promessa! " + promovidosPrateada.join(", ") + " ganhou a Estrela Prateada.");
+  }
+  if (expirados.length > 0) {
+    alert("A Estrela Prateada de " + expirados.join(", ") + " expirou — não deslancharam a tempo.");
+  }
 }
 
 /* ---------- Temporada (Fase 6) ---------- */
@@ -3607,7 +3870,7 @@ async function iniciarRodadaOficial() {
     partidaAtual.bilheteria = calcularBilheteriaExibicao(
       estado.timeAtual.jogadores, divisaoChave,
       estado.financas ? estado.financas.moralTorcida : 60,
-      calcularAproveitamentoAtual(), estado.precoIngresso
+      calcularAproveitamentoAtual(), estado.precoIngresso, existeEstrelaDouradaNaEscalacaoAtual()
     );
   } else {
     partidaAtual.bilheteria = calcularBilheteriaExibicao(
@@ -3718,6 +3981,7 @@ async function concluirRodadaOficial() {
       resultado: resultadoNumerico,
       contratos: estado.contratos,
       investimentoBaseAtivo: estado.investimentoBase,
+      bonusEstrelaDourada: existeEstrelaDouradaNaEscalacaoAtual(),
     });
 
     // Confiança da torcida no técnico (Fase 20) reage ao resultado, igual à felicidade — mas de forma mais lenta.
@@ -3905,16 +4169,23 @@ async function processarFimDeTemporada() {
     estado.torcida.confianca = ajustarConfiancaTorcida(estado.torcida.confianca, deltaConfiancaMeta);
   }
 
+  // Sistema de Estrelas: promoções/expirações de Estrela Dourada/Prateada, calculadas com as
+  // estatísticas da temporada que está terminando — TEM que rodar antes de
+  // `fecharTemporadaNoHistoricoDosJogadores()` zerar `statsTemporadaAtualPorJogador`/`jogosTemporadaPorJogador`.
+  await atualizarEstrelasDeTemporada();
+
   // Perfil do Atleta: fecha a temporada que está terminando como 1 linha de carreira por
   // jogador (jogos/gols/cartões acumulados), antes do ano virar — e zera os acumuladores.
   fecharTemporadaNoHistoricoDosJogadores();
 
   // Evolução do MEU elenco: todo mundo fica 1 ano mais velho, a força sobe ou cai.
   // Nível do Centro de Treinamento (Fase 18) amplia o ganho — ou reduz a perda dos veteranos.
+  // Estrela Prateada (Evolução Acelerada) dá +50% no ganho/perda de força deste jogador.
   const fatorEvolucaoCT = estado.infraestrutura ? calcularFatorEvolucaoCT(estado.infraestrutura.ct) : 1;
   const evolucaoResumo = [];
   estado.timeAtual.jogadores = estado.timeAtual.jogadores.map(function (jogador) {
-    const ajuste = evoluirJogador(jogador, fatorEvolucaoCT);
+    const fatorEstrelaEvolucao = obterEstrelaJogador(jogador) === "prateada" ? 1.5 : 1;
+    const ajuste = evoluirJogador(jogador, fatorEvolucaoCT, fatorEstrelaEvolucao);
     estado.evolucao[jogador._id] = ajuste;
     if (ajuste.forca !== jogador.forca) {
       evolucaoResumo.push({ nome: jogador.nome, de: jogador.forca, para: ajuste.forca });
@@ -4971,9 +5242,11 @@ async function gerarPropostasEspontaneas(divisaoChave, numeroRodada, totalRodada
   // Quem está marcado como "à venda" (Contratos) é sorteado com chance bem maior.
   const embaralhados = candidatos.slice().sort(function () { return Math.random() - 0.5; });
   const alvo = embaralhados.find(function (j) {
-    const chance = estado.jogadoresAVenda[j._id]
+    let chance = estado.jogadoresAVenda[j._id]
       ? CONFIG_FINANCEIRO.chanceOfertaEspontaneaJogadorAVenda
       : CONFIG_FINANCEIRO.chanceOfertaEspontaneaPorJogador;
+    // Estrela Prateada — Interesse Comercial: +25% de chance de receber proposta espontânea.
+    if (obterEstrelaJogador(j) === "prateada") chance *= 1.25;
     return Math.random() < chance;
   });
   if (!alvo) return;
@@ -4986,7 +5259,7 @@ async function gerarPropostasEspontaneas(divisaoChave, numeroRodada, totalRodada
   const nomeComprador = possiveisCompradores[Math.floor(Math.random() * possiveisCompradores.length)];
 
   const contrato = estado.contratos[alvo._id] || criarContratoInicial(alvo);
-  const precoBase = calcularPrecoTransferencia(alvo, contrato.anosRestantes, divisaoChave);
+  const precoBase = calcularPrecoTransferencia(alvo, contrato.anosRestantes, divisaoChave, obterEstrelaJogador(alvo));
   const fator = CONFIG_FINANCEIRO.fatorOfertaEspontaneaMinimo +
     Math.random() * (CONFIG_FINANCEIRO.fatorOfertaEspontaneaMaximo - CONFIG_FINANCEIRO.fatorOfertaEspontaneaMinimo);
   let valor = Math.round(precoBase * fator * 100) / 100;
@@ -5102,9 +5375,11 @@ function executarVendaForcadaPelaDiretoria() {
   }
 
   const maisValioso = estado.timeAtual.jogadores.slice()
-    .sort(function (a, b) { return calcularValorMercado(b) - calcularValorMercado(a); })[0];
+    .sort(function (a, b) {
+      return calcularValorMercado(b, obterEstrelaJogador(b)) - calcularValorMercado(a, obterEstrelaJogador(a));
+    })[0];
   const contrato = estado.contratos[maisValioso._id] || criarContratoInicial(maisValioso);
-  const preco = calcularPrecoTransferencia(maisValioso, contrato.anosRestantes, estado.timeAtual.divisaoChave);
+  const preco = calcularPrecoTransferencia(maisValioso, contrato.anosRestantes, estado.timeAtual.divisaoChave, obterEstrelaJogador(maisValioso));
 
   estado.financas.caixa = Math.round((estado.financas.caixa + preco) * 100) / 100;
   if (estado.dashboard) {
@@ -6262,6 +6537,11 @@ async function continuarJogoSalvo() {
     estado.dashboard = registro.dashboard || { vendaAtletasTemporada: 0, vendaCamisasTemporada: 0, comprasTemporada: 0 };
     estado.historicoTemporadas = registro.historicoTemporadas || [];
 
+    // Saves de antes das Estrelas Dourada/Prateada e da Forma não têm esses campos.
+    estado.estrelasPorJogador = registro.estrelasPorJogador || {};
+    estado.prateadaLimiteIdadePorJogador = registro.prateadaLimiteIdadePorJogador || {};
+    estado.formaPorJogador = registro.formaPorJogador || {};
+
     // Saves de antes da Fase 11 não têm contratos — cria um pra cada jogador que ainda não tiver.
     estado.contratos = registro.contratos || {};
     estado.timeAtual.jogadores.forEach(function (jogador) {
@@ -6352,7 +6632,8 @@ function abrirPerfilAtleta(jogador, contexto) {
   document.getElementById("perfil-nacionalidade").textContent = MAPA_NACIONALIDADE[jogador.nac] || jogador.nac;
   document.getElementById("perfil-forca").textContent = jogador.forca;
   document.getElementById("perfil-idade").textContent = jogador.idade + " anos";
-  document.getElementById("perfil-valor").textContent = "€" + calcularValorMercado(jogador) + "mi";
+  const estrelaPerfil = contexto && contexto.meu ? obterEstrelaJogador(jogador) : obterEstrelaEmblematica(jogador.nome);
+  document.getElementById("perfil-valor").textContent = "€" + calcularValorMercado(jogador, estrelaPerfil) + "mi";
   document.getElementById("perfil-caracteristicas").textContent =
     [jogador.caracteristica_1, jogador.caracteristica_2].filter(Boolean).join(" / ") || "—";
 
@@ -6514,7 +6795,7 @@ function montarBarraAcoesPerfil() {
 /** Botão "Vender" (meu jogador): mostra o campo de preço pedido, pré-preenchido com o valor de mercado. */
 function abrirSubformVendaPerfil() {
   const jogador = perfilAtletaAberto.jogador;
-  const precoAtual = estado.precoPedidoVenda[jogador._id] || calcularValorMercado(jogador);
+  const precoAtual = estado.precoPedidoVenda[jogador._id] || calcularValorMercado(jogador, obterEstrelaJogador(jogador));
   document.getElementById("input-preco-venda-perfil").value = precoAtual;
   document.getElementById("subform-venda-perfil").hidden = false;
 }
