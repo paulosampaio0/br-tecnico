@@ -245,7 +245,7 @@ function concederPenalti(partida, atacante, ladoAtacante, permitirPausaPenalti, 
   const converteu = Math.random() < taxaConversaoPenalti(cobrador);
   if (converteu) {
     if (ladoAtacante === "casa") partida.placarCasa++; else partida.placarFora++;
-    registrarEvento(partida, "gol", ladoAtacante, "⚽ Pênalti convertido por " + cobrador.nome + "!", cobrador._id);
+    registrarEvento(partida, "gol", ladoAtacante, "⚽ Pênalti convertido por " + cobrador.nome + sufixoEstrelaEvento(cobrador) + "!", cobrador._id);
   } else {
     registrarEvento(partida, "chance", ladoAtacante, cobrador.nome + " bate o pênalti… e perde!", cobrador._id);
   }
@@ -260,7 +260,7 @@ function resolverCobrancaFaltaDireta(partida, atacante, ladoAtacante, estatAtaca
   if (converteu) {
     estatAtacante.noGol++;
     if (ladoAtacante === "casa") partida.placarCasa++; else partida.placarFora++;
-    registrarEvento(partida, "gol", ladoAtacante, "⚽ Golaço de falta de " + cobrador.nome + "!", cobrador._id);
+    registrarEvento(partida, "gol", ladoAtacante, "⚽ Golaço de falta de " + cobrador.nome + sufixoEstrelaEvento(cobrador) + "!", cobrador._id);
   } else {
     estatAtacante.chutesFora++;
     registrarEvento(partida, "chance", ladoAtacante, "Cobrança de falta de " + cobrador.nome + " passa por cima do gol.", cobrador._id);
@@ -530,7 +530,8 @@ function tentarSubstituicaoTaticaIA(time, diferenca, minuto, partida, lado) {
 
   if (partida) {
     const evento = registrarEvento(partida, "substituicao", lado,
-      "🔄 Substituição (" + time.nome + "): " + jogadorSai.nome + " sai, " + jogadorEntra.nome + " entra.");
+      "🔄 Substituição (" + time.nome + "): " + jogadorSai.nome + sufixoEstrelaEvento(jogadorSai) +
+      " sai, " + jogadorEntra.nome + sufixoEstrelaEvento(jogadorEntra) + " entra.");
     evento.idJogadorSai = jogadorSai._id;
     evento.idJogadorEntra = jogadorEntra._id;
   }
@@ -636,6 +637,16 @@ function obterInfoGoleiro(timeSimulado) {
   if (!item) return { jogador: null, natural: false, fator: 0 };
   const natural = item.jogador.pos === "GOL";
   return { jogador: item.jogador, natural: natural, fator: natural ? 1.0 : FATOR_GOLEIRO_IMPROVISADO_DEFESA };
+}
+
+/**
+ * Sufixo de estrela (Exibição Global do Sistema de Estrelas) pro texto de um evento da partida —
+ * chama a função de app.js (carrega depois, mas só roda em tempo de jogo, quando app.js já
+ * terminou de executar) sem duplicar a lógica dourada/prateada aqui no motor. `typeof` guarda
+ * contra os poucos usos "puros" de partida.js (testes/simulação isolada sem app.js carregado).
+ */
+function sufixoEstrelaEvento(jogador) {
+  return typeof obterEstrelaJogadorParaEvento === "function" ? obterEstrelaJogadorParaEvento(jogador) : "";
 }
 
 function registrarEvento(partida, tipo, lado, texto, idJogador) {
@@ -767,7 +778,7 @@ function processarLadoPartida(partida, atacante, defensor, ladoAtacante, permiti
 
       estatAtacante.noGol++;
       if (ladoAtacante === "casa") partida.placarCasa++; else partida.placarFora++;
-      const eventoGol = registrarEvento(partida, "gol", ladoAtacante, "⚽ Gol de " + jogador.nome + "!", jogador._id);
+      const eventoGol = registrarEvento(partida, "gol", ladoAtacante, "⚽ Gol de " + jogador.nome + sufixoEstrelaEvento(jogador) + "!", jogador._id);
       // Assistência (Estatísticas — Sistema de Estrelas): só gol "de jogo" tem chance de
       // assistência (pênalti não tem passador) — sorteia 1 companheiro de linha em campo.
       if (Math.random() < 0.62) {
@@ -776,7 +787,7 @@ function processarLadoPartida(partida, atacante, defensor, ladoAtacante, permiti
         if (candidatosAssistencia.length > 0) {
           const autor = candidatosAssistencia[Math.floor(Math.random() * candidatosAssistencia.length)].jogador;
           eventoGol.idJogadorAssistencia = autor._id;
-          eventoGol.texto += " (assistência: " + autor.nome + ")";
+          eventoGol.texto += " (assistência: " + autor.nome + sufixoEstrelaEvento(autor) + ")";
         }
       }
     } else if (rolagem < chanceGol + janelaNoGol) {
@@ -822,7 +833,7 @@ function processarCartao(partida, time, lado, tipo, jogadorForcado) {
   const jogador = jogadorForcado || elegiveis[Math.floor(Math.random() * elegiveis.length)].jogador;
 
   if (tipo === "vermelho") {
-    registrarEvento(partida, "cartao-vermelho", lado, "🟥 Cartão vermelho para " + jogador.nome + "!", jogador._id);
+    registrarEvento(partida, "cartao-vermelho", lado, "🟥 Cartão vermelho para " + jogador.nome + sufixoEstrelaEvento(jogador) + "!", jogador._id);
     expulsarJogador(partida, time, lado, jogador, "vermelho-direto");
     return;
   }
@@ -832,13 +843,13 @@ function processarCartao(partida, time, lado, tipo, jogadorForcado) {
     // 2º amarelo na mesma partida = expulsão automática.
     partida.cartoesNoJogoPorJogador[jogador._id] = qtdAmarelos + 1;
     registrarEvento(partida, "cartao-vermelho", lado,
-      "🟨🟥 Segundo amarelo: " + jogador.nome + " está expulso!", jogador._id);
+      "🟨🟥 Segundo amarelo: " + jogador.nome + sufixoEstrelaEvento(jogador) + " está expulso!", jogador._id);
     expulsarJogador(partida, time, lado, jogador, "segundo-amarelo");
     return;
   }
 
   partida.cartoesNoJogoPorJogador[jogador._id] = 1;
-  registrarEvento(partida, "cartao-amarelo", lado, "🟨 Cartão amarelo para " + jogador.nome + ".", jogador._id);
+  registrarEvento(partida, "cartao-amarelo", lado, "🟨 Cartão amarelo para " + jogador.nome + sufixoEstrelaEvento(jogador) + ".", jogador._id);
 }
 
 /**

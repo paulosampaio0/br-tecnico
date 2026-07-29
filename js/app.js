@@ -107,6 +107,11 @@ let rodadaResultadosExibida = 1;
 let divisaoSelecaoRodadaAtual = null;
 let rodadaSelecaoRodadaAtual = null;
 
+// Navegação da tela "Artilharia".
+let divisaoArtilhariaAtual = null;
+let abaArtilhariaAtual = "gols"; // "gols" | "assistencias"
+let dadosArtilhariaCache = null;
+
 const estado = {
   timeAtual: null, // { divisaoChave, nome, jogadores }
   tecnico: null, // { nome, nacionalidade } — definido na tela "Novo Jogo" (config. do técnico)
@@ -1692,6 +1697,24 @@ const MARCADOR_ESTRELA_COMPACTO = { dourada: " ⭐", prateada: " 🥈" };
  * jogador meu que calhou de ter o mesmo índice. Estrela emblemática (banco de dados) é por nome, então
  * vale pros dois lados.
  */
+/**
+ * Sufixo de estrela em TEXTO PURO (Exibição Global do Sistema de Estrelas), pra qualquer jogador
+ * de QUALQUER clube — usado pelo motor de partida (partida.js, textos de gol/assistência/cartão/
+ * substituição) e por telas que listam jogadores de fora do meu elenco (Mercado, Seleção da
+ * Rodada, propostas etc.). Correção de bug — vazamento de estrela entre clubes: durante uma
+ * partida ao vivo, o jogador que chega aqui pode ser um CLONE (`Object.assign` em
+ * `calcularTimeSimuladoUsuario`, força ajustada por energia/tática), não o mesmo objeto de
+ * `estado.timeAtual.jogadores` — por isso a checagem é por `_id` + `nome`, não por referência.
+ */
+function obterEstrelaJogadorParaEvento(jogador) {
+  if (!jogador) return "";
+  const meuCorrespondente = estado.timeAtual && estado.timeAtual.jogadores.find(function (j) {
+    return j._id === jogador._id && j.nome === jogador.nome;
+  });
+  const estrela = meuCorrespondente ? obterEstrelaJogador(meuCorrespondente) : obterEstrelaEmblematica(jogador.nome);
+  return MARCADOR_ESTRELA_COMPACTO[estrela] || "";
+}
+
 function montarForcaNomeCurto(jogador, ehMeuJogador) {
   const souMeu = ehMeuJogador !== false;
   const marcadorForma = souMeu ? (MARCADOR_FORMA_COMPACTO[obterFormaJogador(jogador._id)] || "") : "";
@@ -3260,20 +3283,33 @@ function registrarHistoricoPartidaOficial() {
   calcularNotasPosJogo().forEach(function (entrada) {
     const idJogador = entrada.idJogador;
 
+    // Gols/assistências DESSA partida (Artilharia/Assistências): antes só a nota ficava
+    // guardada por rodada — sem o detalhe por jogo não dá pra mostrar "marcou X gols nesse
+    // confronto" no histórico da temporada, só o total acumulado.
+    let golsNestaPartida = 0, assistenciasNestaPartida = 0;
+    partidaAtual.eventos.forEach(function (evento) {
+      if (evento.tipo !== "gol") return;
+      if (evento.lado === meuLadoNaPartida && evento.idJogador === idJogador) golsNestaPartida++;
+      if (evento.lado === meuLadoNaPartida && evento.idJogadorAssistencia === idJogador) assistenciasNestaPartida++;
+    });
+
     const jogosDaTemporada = estado.jogosTemporadaPorJogador[idJogador] = estado.jogosTemporadaPorJogador[idJogador] || [];
-    jogosDaTemporada.push({ rodada: numeroRodada, confronto: confronto, nota: entrada.nota });
+    jogosDaTemporada.push({
+      rodada: numeroRodada, confronto: confronto, nota: entrada.nota,
+      gols: golsNestaPartida, assistencias: assistenciasNestaPartida,
+    });
 
     const stats = estado.statsTemporadaAtualPorJogador[idJogador] = estado.statsTemporadaAtualPorJogador[idJogador] ||
       { jogos: 0, gols: 0, assistencias: 0, amarelos: 0, vermelhos: 0 };
     stats.jogos++;
+    stats.gols += golsNestaPartida;
+    stats.assistencias += assistenciasNestaPartida;
     partidaAtual.eventos.forEach(function (evento) {
       if (evento.lado !== meuLadoNaPartida) return;
       if (evento.idJogador === idJogador) {
-        if (evento.tipo === "gol") stats.gols++;
-        else if (evento.tipo === "cartao-amarelo") stats.amarelos++;
+        if (evento.tipo === "cartao-amarelo") stats.amarelos++;
         else if (evento.tipo === "cartao-vermelho") stats.vermelhos++;
       }
-      if (evento.tipo === "gol" && evento.idJogadorAssistencia === idJogador) stats.assistencias++;
     });
 
     // Seta de Fase (Sistema de Estrelas): recalculada a cada partida oficial, a partir da
@@ -3585,13 +3621,14 @@ function gerarStatsSinteticasTemporada(jogador, nomeTime, divisaoChave, ano) {
 const VAGAS_SELECAO_CAMPEONATO = { GOL: 1, ZAG: 2, "LAT.D": 1, "LAT.E": 1, VOL: 2, MEI: 1, ATA: 1, ATD: 1, ATE: 1 };
 
 /**
- * Artilheiro, líder de assistências, maior nota média e Seleção do Campeonato da divisão do
- * usuário nesta temporada — combina estatística REAL do meu elenco (statsTemporadaAtualPorJogador/
- * jogosTemporadaPorJogador) com estatística SINTÉTICA dos outros ~19 clubes (não há elenco "de
- * verdade" simulado partida a partida pra eles). Devolve só os _ids do MEU time que bateram cada
- * feito — é só isso que o Sistema de Estrelas precisa pra decidir uma promoção.
+ * Candidatos da divisão inteira pra qualquer "ranking da liga" (Artilharia/Assistências, líderes
+ * pro Sistema de Estrelas, Seleção do Campeonato) — combina estatística REAL do meu elenco
+ * (statsTemporadaAtualPorJogador/jogosTemporadaPorJogador) com estatística SINTÉTICA dos outros
+ * ~19 clubes (não há elenco "de verdade" simulado partida a partida pra eles). Cada item traz o
+ * `jogador` e `nomeTime`, então serve tanto pra só extrair _ids (Sistema de Estrelas) quanto pra
+ * exibir uma tabela de verdade (nome, escudo, estrela).
  */
-function calcularLiderancasDaLiga(dados, divisaoChave, ano) {
+function montarCandidatosLigaTemporada(dados, divisaoChave, ano) {
   const divisao = dados.divisoes[divisaoChave];
   const meuTimeNome = estado.timeAtual.nome;
   const candidatos = [];
@@ -3606,18 +3643,30 @@ function calcularLiderancasDaLiga(dados, divisaoChave, ano) {
         const notaMedia = jogosLista.length
           ? jogosLista.reduce(function (s, j) { return s + j.nota; }, 0) / jogosLista.length : 0;
         candidatos.push({
-          id: jogador._id, pos: jogador.pos, gols: stats.gols, assistencias: stats.assistencias,
+          jogador: jogador, nomeTime: time.nome, pos: jogador.pos, gols: stats.gols, assistencias: stats.assistencias,
           notaMedia: notaMedia, jogos: stats.jogos, meu: true,
         });
       } else {
         const sint = gerarStatsSinteticasTemporada(jogador, time.nome, divisaoChave, ano);
         candidatos.push({
-          id: null, pos: jogador.pos, gols: sint.gols, assistencias: sint.assistencias,
+          jogador: jogador, nomeTime: time.nome, pos: jogador.pos, gols: sint.gols, assistencias: sint.assistencias,
           notaMedia: sint.notaMedia, jogos: sint.jogos, meu: false,
         });
       }
     });
   });
+
+  return candidatos;
+}
+
+/**
+ * Artilheiro, líder de assistências, maior nota média e Seleção do Campeonato da divisão do
+ * usuário nesta temporada. Devolve só os _ids do MEU time que bateram cada feito — é só isso
+ * que o Sistema de Estrelas precisa pra decidir uma promoção.
+ */
+function calcularLiderancasDaLiga(dados, divisaoChave, ano) {
+  const candidatos = montarCandidatosLigaTemporada(dados, divisaoChave, ano)
+    .map(function (c) { return Object.assign({}, c, { id: c.meu ? c.jogador._id : null }); });
 
   // Precisa de um mínimo de jogos pra concorrer a um título da liga — evita 1 jogo isolado virar "artilheiro".
   const elegiveis = candidatos.filter(function (c) { return c.jogos >= 5; });
@@ -3641,6 +3690,18 @@ function calcularLiderancasDaLiga(dados, divisaoChave, ano) {
   });
 
   return { artilheiroIds: artilheiroIds, liderAssistIds: liderAssistIds, liderNotaIds: liderNotaIds, selecaoIds: selecaoIds };
+}
+
+/**
+ * Ranking de Artilharia/Assistências da divisão (tela "Artilharia"): top N candidatos ordenados
+ * por `chave` ("gols" ou "assistencias"), com o mínimo de jogos pra entrar no ranking (mesmo
+ * critério de `calcularLiderancasDaLiga` — evita 1 jogo isolado virar "artilheiro").
+ */
+function montarRankingArtilharia(dados, divisaoChave, ano, chave, limite) {
+  return montarCandidatosLigaTemporada(dados, divisaoChave, ano)
+    .filter(function (c) { return c.jogos >= 5; })
+    .sort(function (a, b) { return b[chave] - a[chave] || b.notaMedia - a.notaMedia; })
+    .slice(0, limite || 15);
 }
 
 /**
@@ -4599,7 +4660,7 @@ function renderizarContratos() {
       li.innerHTML =
         "<span class=\"pos\">" + escaparHtml(jogador.pos) + "</span>" +
         "<span class=\"info-contrato\">" +
-          "<span class=\"nome-contrato\">" + escaparHtml(jogador.nome) + "</span>" +
+          "<span class=\"nome-contrato\">" + escaparHtml(jogador.nome) + (MARCADOR_ESTRELA_COMPACTO[obterEstrelaJogador(jogador)] || "") + "</span>" +
           "<span class=\"detalhes-contrato\">🔄 Emprestado de " + escaparHtml(emp.timeOrigem) + " · " +
             emp.rodadasRestantes + (emp.rodadasRestantes === 1 ? " rodada restante" : " rodadas restantes") +
             (emp.valorOpcaoCompra > 0 ? " · Opção: " + formatarReais(emp.valorOpcaoCompra) : "") +
@@ -4623,7 +4684,7 @@ function renderizarContratos() {
     li.innerHTML =
       "<span class=\"pos\">" + escaparHtml(jogador.pos) + "</span>" +
       "<span class=\"info-contrato\">" +
-        "<span class=\"nome-contrato\">" + escaparHtml(jogador.nome) + (aVenda ? " 🏷️" : "") + "</span>" +
+        "<span class=\"nome-contrato\">" + escaparHtml(jogador.nome) + (MARCADOR_ESTRELA_COMPACTO[obterEstrelaJogador(jogador)] || "") + (aVenda ? " 🏷️" : "") + "</span>" +
         "<span class=\"detalhes-contrato\">" + formatarReais(salarioMensalReais) + "/mês · " +
           (vencendo ? "⚠ " : "") + contrato.anosRestantes + (contrato.anosRestantes === 1 ? " ano restante" : " anos restantes") +
           (contrato.clausulaRescisao ? " · Cláusula: " + formatarReais(contrato.clausulaRescisao) : "") +
@@ -4775,6 +4836,10 @@ function renderizarMercado() {
   itens.forEach(function (item) {
     const jogador = item.jogador;
     const estrelas = calcularEstrelasPotencial(jogador);
+    // Exibição Global do Sistema de Estrelas: jogador do Mercado nunca é do meu elenco
+    // (`listarJogadoresMercado` já exclui meu clube), então só a Estrela emblemática (por nome,
+    // segura globalmente) pode aparecer aqui — nunca a dinâmica de `estado.estrelasPorJogador`.
+    const marcadorEstrela = MARCADOR_ESTRELA_COMPACTO[obterEstrelaEmblematica(jogador.nome)] || "";
     const li = document.createElement("li");
     li.className = "item-contrato aberto-perfil";
     li.addEventListener("click", function (evento) {
@@ -4784,7 +4849,8 @@ function renderizarMercado() {
     li.innerHTML =
       "<span class=\"pos\">" + escaparHtml(jogador.pos) + "</span>" +
       "<span class=\"info-contrato\">" +
-        "<span class=\"nome-contrato\">" + escaparHtml(jogador.nome) + (estrelas > 0 ? " " + "⭐".repeat(estrelas) : "") + "</span>" +
+        "<span class=\"nome-contrato\">" + escaparHtml(jogador.nome) + marcadorEstrela +
+          (estrelas > 0 ? " " + "⭐".repeat(estrelas) : "") + "</span>" +
         "<span class=\"detalhes-contrato\">" + escaparHtml(item.nomeTime) + " · " + jogador.idade + " anos · " + formatarForcaMercado(item) +
           " · " + formatarReais(item.preco) +
         "</span>" +
@@ -4809,7 +4875,8 @@ function abrirPropostaMercado(item) {
     precoPedido: item.preco, rodada: 0, fase: "clube",
   };
 
-  document.getElementById("proposta-titulo").textContent = item.jogador.nome;
+  document.getElementById("proposta-titulo").textContent = item.jogador.nome +
+    (MARCADOR_ESTRELA_COMPACTO[obterEstrelaEmblematica(item.jogador.nome)] || "");
   document.getElementById("proposta-info-jogador").textContent =
     item.nomeTime + " · " + item.jogador.pos + " · " + item.jogador.idade + " anos · " + formatarForcaMercado(item);
   document.getElementById("proposta-preco-pedido").textContent = "Preço pedido: " + formatarReais(item.preco);
@@ -5333,12 +5400,14 @@ function renderizarRankingCamisas() {
   }
 
   ranking.forEach(function (item, indice) {
+    // Ranking de camisas é só de quem está no meu elenco — estrela dinâmica é segura aqui.
+    const marcadorEstrela = MARCADOR_ESTRELA_COMPACTO[obterEstrelaJogador(item.jogador)] || "";
     const li = document.createElement("li");
     li.className = "item-contrato";
     li.innerHTML =
       "<span class=\"pos\">" + (indice + 1) + "º</span>" +
       "<span class=\"info-contrato\">" +
-        "<span class=\"nome-contrato\">" + escaparHtml(item.jogador.nome) + "</span>" +
+        "<span class=\"nome-contrato\">" + escaparHtml(item.jogador.nome) + marcadorEstrela + "</span>" +
         "<span class=\"detalhes-contrato\">" + formatarReais(item.total) + " em camisas vendidas</span>" +
       "</span>";
     listaEl.appendChild(li);
@@ -5424,11 +5493,14 @@ function renderizarPropostasRecebidas() {
   listaEl.innerHTML = "";
 
   estado.propostasRecebidas.forEach(function (proposta) {
+    // Proposta é sempre por um jogador do MEU elenco (estado.timeAtual) — a estrela dinâmica é segura aqui.
+    const jogadorProposta = encontrarJogadorPorId(estado.timeAtual.jogadores, proposta.idJogador);
+    const marcadorEstrela = jogadorProposta ? (MARCADOR_ESTRELA_COMPACTO[obterEstrelaJogador(jogadorProposta)] || "") : "";
     const li = document.createElement("li");
     li.className = "item-contrato";
     li.innerHTML =
       "<span class=\"info-contrato\">" +
-        "<span class=\"nome-contrato\">" + escaparHtml(proposta.nomeJogador) + "</span>" +
+        "<span class=\"nome-contrato\">" + escaparHtml(proposta.nomeJogador) + marcadorEstrela + "</span>" +
         "<span class=\"detalhes-contrato\">" + escaparHtml(proposta.nomeTimeComprador) + " oferece " + formatarReais(proposta.valor) + "</span>" +
       "</span>" +
       "<button class=\"btn-renovar-contrato btn-aceitar-proposta\" type=\"button\">Aceitar</button>" +
@@ -6015,11 +6087,16 @@ function criarNoSelecaoRodada(item) {
   botao.style.top = item.vaga.y + "%";
 
   const faixaNota = item.nota >= 7.5 ? "boa" : item.nota >= 6.2 ? "media" : "ruim";
+  // Seleção da Rodada/Campeonato espalha jogadores de vários clubes — só usa a estrela dinâmica
+  // (estado.estrelasPorJogador) se o jogador for mesmo do MEU elenco, senão só a emblemática.
+  const ehMeuNaSelecao = estado.timeAtual && item.nomeTime === estado.timeAtual.nome;
+  const estrelaSelecao = ehMeuNaSelecao ? obterEstrelaJogador(item.jogador) : obterEstrelaEmblematica(item.jogador.nome);
+  const marcadorEstrelaSelecao = MARCADOR_ESTRELA_COMPACTO[estrelaSelecao] || "";
   botao.innerHTML =
     "<span class=\"mini-escudo-selecao-rodada\">" + montarEscudoClube(item.nomeTime) + "</span>" +
     "<span class=\"pilula-pos-forca\">" + escaparHtml(item.jogador.pos) + "</span>" +
     "<span class=\"nota-partida-badge nota-partida-" + faixaNota + "\">" + item.nota.toFixed(1) + "</span>" +
-    "<span class=\"nome-compacto-jogador\">" + escaparHtml(sobrenomeCurto(item.jogador.nome)) + "</span>" +
+    "<span class=\"nome-compacto-jogador\">" + escaparHtml(sobrenomeCurto(item.jogador.nome)) + marcadorEstrelaSelecao + "</span>" +
     "<span class=\"sigla-time-selecao-rodada\">" + escaparHtml(siglaTime(item.nomeTime)) + "</span>";
 
   botao.addEventListener("click", function () {
@@ -6085,6 +6162,78 @@ async function abrirTelaSelecaoRodada() {
   dadosSelecaoRodadaCache = await carregarDados();
   montarFiltrosSelecaoRodada(dadosSelecaoRodadaCache);
   renderizarSelecaoRodada();
+}
+
+/** Popula (1x) o seletor de divisão da tela Artilharia, igual ao de Seleção da Rodada. */
+function montarFiltroDivisaoArtilharia(dados) {
+  if (!divisaoArtilhariaAtual) {
+    divisaoArtilhariaAtual = (estado.timeAtual && estado.timeAtual.divisaoChave) || "serie_a";
+  }
+  const selectDivisao = document.getElementById("select-divisao-artilharia");
+  if (selectDivisao && selectDivisao.options.length === 0) {
+    listarDivisoes(dados).forEach(function (divisao) {
+      const opcao = document.createElement("option");
+      opcao.value = divisao.chave;
+      opcao.textContent = ROTULO_DIVISAO_ORDINAL[divisao.chave] || divisao.nome;
+      selectDivisao.appendChild(opcao);
+    });
+  }
+  if (selectDivisao) selectDivisao.value = divisaoArtilhariaAtual;
+}
+
+/**
+ * Ranking de Artilheiros/Assistências (tela "Artilharia"): reaproveita `montarRankingArtilharia`
+ * (app.js) — real pro meu elenco, sintético pros outros ~19 clubes da divisão. Cada linha mostra
+ * a estrela dourada/prateada do jogador (Exibição Global do Sistema de Estrelas), só usando a
+ * dinâmica de verdade quando é mesmo do meu elenco (`c.meu`).
+ */
+function renderizarArtilharia() {
+  const corpoEl = document.getElementById("corpo-tabela-artilharia");
+  const colunaEl = document.getElementById("coluna-feito-artilharia");
+  if (!corpoEl || !dadosArtilhariaCache || !estado.temporada) return;
+
+  const chave = abaArtilhariaAtual === "assistencias" ? "assistencias" : "gols";
+  if (colunaEl) colunaEl.textContent = chave === "assistencias" ? "Assist." : "Gols";
+  document.getElementById("aba-artilheiros").classList.toggle("ativa", chave === "gols");
+  document.getElementById("aba-assistencias").classList.toggle("ativa", chave === "assistencias");
+
+  const ranking = montarRankingArtilharia(dadosArtilhariaCache, divisaoArtilhariaAtual, estado.temporada.ano, chave, 15);
+
+  corpoEl.innerHTML = "";
+  if (ranking.length === 0) {
+    corpoEl.innerHTML = "<tr><td colspan=\"5\" class=\"mensagem-vazia-perfil\">" +
+      "Ninguém na divisão ainda jogou o mínimo de rodadas pra entrar no ranking.</td></tr>";
+    return;
+  }
+
+  ranking.forEach(function (c, indice) {
+    const estrela = c.meu ? obterEstrelaJogador(c.jogador) : obterEstrelaEmblematica(c.jogador.nome);
+    const marcadorEstrela = MARCADOR_ESTRELA_COMPACTO[estrela] || "";
+    const tr = document.createElement("tr");
+    tr.className = "linha-artilharia aberto-perfil";
+    tr.innerHTML =
+      "<td class=\"col-pos\">" + (indice + 1) + "º</td>" +
+      "<td class=\"col-time\">" + escaparHtml(c.jogador.nome) + marcadorEstrela + "</td>" +
+      "<td>" + montarNomeComEscudo(c.nomeTime) + "</td>" +
+      "<td>" + c.jogos + "</td>" +
+      "<td>" + c[chave] + "</td>";
+    tr.addEventListener("click", function () {
+      abrirPerfilAtleta(c.jogador, { meu: c.meu, nomeTime: c.nomeTime, divisaoChave: divisaoArtilhariaAtual });
+    });
+    corpoEl.appendChild(tr);
+  });
+}
+
+function trocarAbaArtilharia(aba) {
+  abaArtilhariaAtual = aba;
+  renderizarArtilharia();
+}
+
+async function abrirTelaArtilharia() {
+  mostrarTela("tela-artilharia");
+  dadosArtilhariaCache = await carregarDados();
+  montarFiltroDivisaoArtilharia(dadosArtilhariaCache);
+  renderizarArtilharia();
 }
 
 function abrirTelaTabela() {
@@ -6772,12 +6921,12 @@ let perfilAtletaAberto = null;
 function abrirPerfilAtleta(jogador, contexto) {
   perfilAtletaAberto = Object.assign({ jogador: jogador }, contexto);
 
-  document.getElementById("perfil-nome-jogador").textContent = jogador.nome;
+  const estrelaPerfil = contexto && contexto.meu ? obterEstrelaJogador(jogador) : obterEstrelaEmblematica(jogador.nome);
+  document.getElementById("perfil-nome-jogador").textContent = jogador.nome + (MARCADOR_ESTRELA_COMPACTO[estrelaPerfil] || "");
   document.getElementById("perfil-posicao").textContent = ROTULO_POSICAO_COMPLETO[jogador.pos] || jogador.pos;
   document.getElementById("perfil-nacionalidade").textContent = MAPA_NACIONALIDADE[jogador.nac] || jogador.nac;
   document.getElementById("perfil-forca").textContent = jogador.forca;
   document.getElementById("perfil-idade").textContent = jogador.idade + " anos";
-  const estrelaPerfil = contexto && contexto.meu ? obterEstrelaJogador(jogador) : obterEstrelaEmblematica(jogador.nome);
   document.getElementById("perfil-valor").textContent = "€" + calcularValorMercado(jogador, estrelaPerfil) + "mi";
   document.getElementById("perfil-caracteristicas").textContent =
     [jogador.caracteristica_1, jogador.caracteristica_2].filter(Boolean).join(" / ") || "—";
@@ -6869,11 +7018,17 @@ function renderizarAbaTemporadaPerfil() {
 
   jogos.slice().reverse().forEach(function (jogo) {
     const corNota = jogo.nota >= 7 ? "nota-boa" : jogo.nota <= 5 ? "nota-ruim" : "nota-media";
+    // Gols/assistências por partida (Artilharia/Assistências): jogos salvos ANTES dessa
+    // adição não têm esses campos — trata como 0 (compatibilidade com saves antigos).
+    const gols = jogo.gols || 0;
+    const assistencias = jogo.assistencias || 0;
+    const sufixoFeitos = (gols > 0 ? " ⚽" + (gols > 1 ? "×" + gols : "") : "") +
+      (assistencias > 0 ? " 🅰️" + (assistencias > 1 ? "×" + assistencias : "") : "");
     const li = document.createElement("li");
     li.className = "item-jogo-temporada-perfil";
     li.innerHTML =
       "<span class=\"rodada-jogo-temporada-perfil\">R" + jogo.rodada + "</span>" +
-      "<span class=\"confronto-jogo-temporada-perfil\">" + escaparHtml(jogo.confronto) + "</span>" +
+      "<span class=\"confronto-jogo-temporada-perfil\">" + escaparHtml(jogo.confronto) + sufixoFeitos + "</span>" +
       "<span class=\"nota-jogo-temporada-perfil " + corNota + "\">" + jogo.nota.toFixed(1) + "</span>";
     listaEl.appendChild(li);
   });
@@ -7116,6 +7271,26 @@ function ligarBotoes() {
     selectRodadaSelecaoRodada.addEventListener("change", function () {
       rodadaSelecaoRodadaAtual = Number(selectRodadaSelecaoRodada.value);
       renderizarSelecaoRodada();
+    });
+  }
+
+  const btnVerArtilharia = document.getElementById("btn-ver-artilharia");
+  if (btnVerArtilharia) btnVerArtilharia.addEventListener("click", abrirTelaArtilharia);
+
+  const btnVoltarEscalacaoArtilharia = document.getElementById("btn-voltar-escalacao-artilharia");
+  if (btnVoltarEscalacaoArtilharia) btnVoltarEscalacaoArtilharia.addEventListener("click", abrirTelaEscalacao);
+
+  const abaArtilheiros = document.getElementById("aba-artilheiros");
+  if (abaArtilheiros) abaArtilheiros.addEventListener("click", function () { trocarAbaArtilharia("gols"); });
+
+  const abaAssistencias = document.getElementById("aba-assistencias");
+  if (abaAssistencias) abaAssistencias.addEventListener("click", function () { trocarAbaArtilharia("assistencias"); });
+
+  const selectDivisaoArtilharia = document.getElementById("select-divisao-artilharia");
+  if (selectDivisaoArtilharia) {
+    selectDivisaoArtilharia.addEventListener("change", function () {
+      divisaoArtilhariaAtual = selectDivisaoArtilharia.value;
+      renderizarArtilharia();
     });
   }
 

@@ -4069,6 +4069,15 @@ body::before {
   background: rgba(255, 255, 255, 0.05);
 }
 
+/* Tela Artilharia — linhas de jogador clicáveis dentro da tabela de classificação. */
+.linha-artilharia.aberto-perfil {
+  cursor: pointer;
+}
+
+.linha-artilharia.aberto-perfil:active {
+  background: rgba(255, 255, 255, 0.05);
+}
+
 /* ============================================================
    Tela Tabela — navegação de divisão por setas + resultados da rodada
    selecionáveis + painel de detalhes (Escalações e Notas / Info da Partida)
