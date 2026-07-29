@@ -125,6 +125,49 @@ function obterEstrelaEmblematica(nome) {
   return JOGADORES_EMBLEMATICOS.has(nome) ? "dourada" : null;
 }
 
+/* ============================================================
+   Sistema de Árbitro (Realismo da Simulação): cada partida sorteia um juiz
+   com nome real e um nível de rigor, que escala a chance de cartão/pênalti
+   na Match Engine (partida.js). Nomes públicos de árbitros que atuam no
+   futebol brasileiro — mesmo critério já usado em JOGADORES_EMBLEMATICOS.
+   ============================================================ */
+const ARBITROS = [
+  { nome: "Wilton Pereira Sampaio", rigor: "rigoroso" },
+  { nome: "Anderson Daronco", rigor: "rigoroso" },
+  { nome: "Raphael Claus", rigor: "normal" },
+  { nome: "Ramon Abatti Abel", rigor: "normal" },
+  { nome: "Bráulio da Silva Machado", rigor: "normal" },
+  { nome: "Flávio Rodrigues de Souza", rigor: "rigoroso" },
+  { nome: "Sávio Pereira Sampaio", rigor: "normal" },
+  { nome: "Rafael Traci", rigor: "brando" },
+  { nome: "Luiz Flávio de Oliveira", rigor: "normal" },
+  { nome: "Paulo César Zanovelli", rigor: "brando" },
+  { nome: "Edina Alves Batista", rigor: "normal" },
+  { nome: "Bruno Arleu de Araújo", rigor: "rigoroso" },
+  { nome: "Rodrigo José Pereira", rigor: "rigoroso" },
+  { nome: "Gustavo Ervino Bauermann", rigor: "normal" },
+  { nome: "Matheus Delgado Candançan", rigor: "brando" },
+];
+
+// Multiplicadores por nível de rigor: `cartao` escala a chance de uma falta virar cartão,
+// `penalti` escala a chance de marcar pênalti/falta perigosa, `faltaCartao` é o mesmo conceito
+// que `cartao` mas separado pra poder calibrar os dois de forma independente (ver partida.js).
+const RIGOR_ARBITRO = {
+  brando: { cartao: 0.65, penalti: 0.90, faltaCartao: 0.7 },
+  normal: { cartao: 1.00, penalti: 1.00, faltaCartao: 1.0 },
+  rigoroso: { cartao: 1.45, penalti: 1.15, faltaCartao: 1.4 },
+};
+
+/** Sorteia um árbitro (nome + rigor) pra uma nova partida — vive só no objeto da partida, não é salvo. */
+function sortearArbitro() {
+  return ARBITROS[Math.floor(Math.random() * ARBITROS.length)];
+}
+
+/** Este jogador tem alguma das características da lista (ex.: pra bônus de cobrança de pênalti/falta)? */
+function temCaracteristica(jogador, lista) {
+  return lista.indexOf(jogador.caracteristica_1) !== -1 || lista.indexOf(jogador.caracteristica_2) !== -1;
+}
+
 /**
  * Valor de mercado (em milhões de €), calculado a partir de força e idade.
  * O valor_mi que veio nos dados originais foi só o ponto de partida pra

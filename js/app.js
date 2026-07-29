@@ -29,6 +29,7 @@ const METRICAS_ESTATISTICAS_COMPARATIVAS = [
   { chave: "escanteios", rotulo: "Escanteios" },
   { chave: "desarmes", rotulo: "Desarmes" },
   { chave: "errosPasse", rotulo: "Erros de passe" },
+  { chave: "faltas", rotulo: "Faltas cometidas" },
   { chave: "amarelos", rotulo: "Cartões amarelos" },
   { chave: "vermelhos", rotulo: "Cartões vermelhos" },
 ];
@@ -2466,6 +2467,7 @@ function montarDadosEstatisticasComparativas(lado) {
     escanteios: estat.escanteios,
     desarmes: estat.desarmes,
     errosPasse: estat.errosPasse,
+    faltas: estat.faltas,
     amarelos: cartoes.amarelos,
     vermelhos: cartoes.vermelhos,
   };
@@ -2629,10 +2631,11 @@ function abrirCobrancaPenalti() {
   document.getElementById("sobreposicao-seletor").hidden = false;
 }
 
-/** Sorteia o resultado da cobrança conforme a força do jogador escolhido e resolve a pausa. */
+/** Sorteia o resultado da cobrança conforme a força do jogador escolhido e resolve a pausa.
+ * `taxaConversaoPenalti` (partida.js) é a MESMA fórmula usada no pênalti automático (CPU/
+ * adversário) — Realismo: escolher o cobrador certo passa a importar de verdade. */
 function resolverPenaltiUsuario(jogadorCobrador) {
-  const chance = clamp(0.55 + (jogadorCobrador.forca - 38) * 0.02, 0.35, 0.9);
-  const converteu = Math.random() < chance;
+  const converteu = Math.random() < taxaConversaoPenalti(jogadorCobrador);
   const lado = partidaAtual.pendencia.lado;
 
   if (converteu) {
@@ -2759,6 +2762,18 @@ function renderizarPartida() {
   elPlacar.textContent = novoPlacar;
   document.getElementById("partida-minuto").textContent = partidaAtual.minuto + "'";
   document.getElementById("partida-status").textContent = ROTULO_STATUS_PARTIDA[partidaAtual.status];
+
+  // Sistema de Árbitro (Realismo): mostra o juiz sorteado pra essa partida (nome + rigor), só
+  // nas partidas interativas do usuário — a CPU não precisa dessa informação na tela.
+  const elArbitro = document.getElementById("partida-arbitro");
+  if (elArbitro) {
+    if (partidaAtual.arbitro) {
+      elArbitro.hidden = false;
+      elArbitro.textContent = "🧑‍⚖️ Árbitro: " + partidaAtual.arbitro.nome + " (" + partidaAtual.arbitro.rigor + ")";
+    } else {
+      elArbitro.hidden = true;
+    }
+  }
 
   renderizarQuadroEstatisticasComparativas("linhas-estatisticas-partida",
     montarDadosEstatisticasComparativas("casa"), montarDadosEstatisticasComparativas("fora"));

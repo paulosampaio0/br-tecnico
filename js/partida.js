@@ -163,6 +163,142 @@ const MANDO_BONUS_EXTRA_IA_CASA = { ataque: 0.7, defesa: 0.5 };
 const PENALIDADE_NUMERICA_POR_EXPULSO = { ataque: -2.2, defesa: -2.5, meio: -2.8 };
 
 /* ============================================================
+   Faltas, juiz e bola parada (Realismo da Simulação)
+   Antes os cartões eram sorteados soltos, sem conceito de falta, sem juiz
+   e sem gol de bola parada. Agora toda falta é cometida pelo lado que
+   DEFENDE contra o ataque adversário (é quem trava a jogada), pesada por
+   posição (defensores cometem muito mais falta que atacantes), e o rigor
+   do árbitro sorteado pra partida (`partida.arbitro`, dados.js) escala tanto
+   a chance de virar cartão quanto a de virar pênalti/cobrança direta.
+   ============================================================ */
+
+const CHANCE_NA_TRAVE = 0.05; // fração das finalizações que iriam virar gol e batem na trave/travessão
+const CHANCE_FALTA_POR_MINUTO = 0.155; // ~14 faltas por time numa partida de 90min (defensor de cada minuto)
+const CHANCE_FALTA_VIRA_PENALTI = 0.003; // fração das faltas que acontece dentro da própria área
+const CHANCE_FALTA_VIRA_COBRANCA_DIRETA = 0.08; // fração que é perigosa o bastante pra cobrança direta
+const CHANCE_FALTA_VIRA_CARTAO = 0.145; // fração das faltas que o juiz também pune com cartão
+const CHANCE_CARTAO_DE_FALTA_E_VERMELHO = 0.045; // fração dos cartões de falta que já saem vermelho direto (falta violenta)
+
+// Peso de sorteio do infrator por posição — defensores (zagueiro/lateral/volante) cometem MUITO
+// mais falta que meias e atacantes na vida real; goleiro nunca é sorteado (fica de fora do mapa).
+const PESO_FALTA_POR_POSICAO = { ZAG: 3, "LAT.D": 2.5, "LAT.E": 2.5, VOL: 3, MEI: 1.5, ATD: 0.6, ATE: 0.6, ATA: 0.6 };
+// Jogador que já está advertido "se contém" pra não levar o 2º amarelo — o peso dele cai bastante.
+const FATOR_PESO_JOGADOR_JA_AMARELADO = 0.02;
+
+/** Sorteia quem cometeu a falta, ponderado por posição (defesa >> meio >> ataque) e reduzindo
+ * bastante o peso de quem já está advertido nesta partida (joga mais cauteloso). */
+function escolherInfratorFalta(partida, time) {
+  const candidatos = titularesEmCampo(time).filter(function (i) { return i.vaga.pos !== "GOL"; });
+  if (candidatos.length === 0) return null;
+
+  const pesos = candidatos.map(function (item) {
+    let peso = PESO_FALTA_POR_POSICAO[item.vaga.pos] || 1;
+    if ((partida.cartoesNoJogoPorJogador[item.jogador._id] || 0) >= 1) peso *= FATOR_PESO_JOGADOR_JA_AMARELADO;
+    return peso;
+  });
+
+  const total = pesos.reduce(function (a, b) { return a + b; }, 0);
+  let alvo = Math.random() * total;
+  for (let i = 0; i < candidatos.length; i++) {
+    alvo -= pesos[i];
+    if (alvo <= 0) return candidatos[i].jogador;
+  }
+  return candidatos[candidatos.length - 1].jogador;
+}
+
+/** Melhor jogador de linha em campo (maior força) — cobrador padrão de pênalti/falta direta
+ * quando não é o usuário escolhendo (adversário ou jogo 100% automático da CPU). */
+function melhorCobrador(timeSimulado) {
+  const linha = titularesEmCampo(timeSimulado).filter(function (i) { return i.vaga.pos !== "GOL"; });
+  const lista = linha.length > 0 ? linha : titularesEmCampo(timeSimulado);
+  return lista.reduce(function (melhor, item) {
+    return (!melhor || item.jogador.forca > melhor.forca) ? item.jogador : melhor;
+  }, null);
+}
+
+/** Conversão de pênalti por habilidade do cobrador (Realismo — antes era taxa fixa 0.76 pra
+ * todo mundo). Característica "Finalização" dá um empurrão extra. Usado tanto no pênalti
+ * automático (CPU/adversário) quanto no interativo (usuário escolhe o cobrador, app.js). */
+function taxaConversaoPenalti(cobrador) {
+  const bonusCarac = temCaracteristica(cobrador, ["Finalização"]) ? 0.05 : 0;
+  return clamp(0.60 + (cobrador.forca - 35) * 0.012 + bonusCarac, 0.55, 0.92);
+}
+
+/** Conversão de cobrança de falta direta — bem mais rara que pênalti e mais sensível à força. */
+function taxaConversaoFaltaDireta(cobrador) {
+  const bonusCarac = temCaracteristica(cobrador, ["Finalização"]) ? 0.04 : 0;
+  return clamp(0.04 + (cobrador.forca - 35) * 0.006 + bonusCarac, 0.02, 0.22);
+}
+
+/** Concede um pênalti: pausa pro usuário escolher o cobrador (partida interativa do usuário) ou
+ * resolve na hora com o melhor cobrador disponível (CPU/adversário) — sempre com conversão por
+ * habilidade (`taxaConversaoPenalti`), nunca mais taxa fixa igual pra qualquer um. */
+function concederPenalti(partida, atacante, ladoAtacante, permitirPausaPenalti, estatAtacante) {
+  estatAtacante.noGol++;
+  if (permitirPausaPenalti) {
+    partida.pendencia = { tipo: "penalti", lado: ladoAtacante };
+    registrarEvento(partida, "penalti", ladoAtacante, "🎯 Pênalti marcado!");
+    return;
+  }
+  const cobrador = melhorCobrador(atacante);
+  if (!cobrador) return;
+  const converteu = Math.random() < taxaConversaoPenalti(cobrador);
+  if (converteu) {
+    if (ladoAtacante === "casa") partida.placarCasa++; else partida.placarFora++;
+    registrarEvento(partida, "gol", ladoAtacante, "⚽ Pênalti convertido por " + cobrador.nome + "!", cobrador._id);
+  } else {
+    registrarEvento(partida, "chance", ladoAtacante, cobrador.nome + " bate o pênalti… e perde!", cobrador._id);
+  }
+}
+
+/** Cobrança de falta direta (fora da área, em posição perigosa) — bem mais rara que pênalti. */
+function resolverCobrancaFaltaDireta(partida, atacante, ladoAtacante, estatAtacante) {
+  const cobrador = melhorCobrador(atacante);
+  if (!cobrador) return;
+  estatAtacante.finalizacoes++;
+  const converteu = Math.random() < taxaConversaoFaltaDireta(cobrador);
+  if (converteu) {
+    estatAtacante.noGol++;
+    if (ladoAtacante === "casa") partida.placarCasa++; else partida.placarFora++;
+    registrarEvento(partida, "gol", ladoAtacante, "⚽ Golaço de falta de " + cobrador.nome + "!", cobrador._id);
+  } else {
+    estatAtacante.chutesFora++;
+    registrarEvento(partida, "chance", ladoAtacante, "Cobrança de falta de " + cobrador.nome + " passa por cima do gol.", cobrador._id);
+  }
+}
+
+/**
+ * Falta cometida pelo `defensor` contra o `atacante` — sorteia o infrator (ponderado por
+ * posição), decide a zona (comum / perigosa-cobrança-direta / dentro-da-área-pênalti) e, à
+ * parte disso, se o juiz também aplica cartão (escalado pelo rigor de `partida.arbitro`).
+ */
+function processarFalta(partida, defensor, ladoDefensor, atacante, ladoAtacante, estatDefensor, estatAtacante, rigorArbitro, permitirPausaPenalti) {
+  estatDefensor.faltas++;
+  const infrator = escolherInfratorFalta(partida, defensor);
+  const nomeInfrator = infrator ? infrator.nome : "um defensor";
+
+  const rolagemZona = Math.random();
+  if (rolagemZona < CHANCE_FALTA_VIRA_PENALTI * rigorArbitro.penalti) {
+    registrarEvento(partida, "chance", ladoDefensor, "🟡 Pênalti! Falta de " + nomeInfrator + " dentro da área.", infrator ? infrator._id : null);
+    concederPenalti(partida, atacante, ladoAtacante, permitirPausaPenalti, estatAtacante);
+  } else if (rolagemZona < (CHANCE_FALTA_VIRA_PENALTI + CHANCE_FALTA_VIRA_COBRANCA_DIRETA) * rigorArbitro.penalti) {
+    registrarEvento(partida, "chance", ladoDefensor, "Falta perigosa: " + nomeInfrator + " dá a cobrança direta pro adversário.", infrator ? infrator._id : null);
+    resolverCobrancaFaltaDireta(partida, atacante, ladoAtacante, estatAtacante);
+  } else {
+    registrarEvento(partida, "chance", ladoDefensor, "Falta de " + nomeInfrator + ".", infrator ? infrator._id : null);
+  }
+
+  if (!infrator) return;
+  const chanceCartao = CHANCE_FALTA_VIRA_CARTAO * rigorArbitro.cartao;
+  const rolagemCartao = Math.random();
+  if (rolagemCartao < chanceCartao * CHANCE_CARTAO_DE_FALTA_E_VERMELHO) {
+    processarCartao(partida, defensor, ladoDefensor, "vermelho", infrator);
+  } else if (rolagemCartao < chanceCartao) {
+    processarCartao(partida, defensor, ladoDefensor, "amarelo", infrator);
+  }
+}
+
+/* ============================================================
    Eficiência posicional (Correção de bug — 2026-07-25)
    Antes a força de cada jogador entrava inteira no cálculo do setor,
    não importava a posição em que ele estava escalado — um zagueiro
@@ -406,7 +542,7 @@ function estaExpulso(time, idJogador) {
 }
 
 function criarEstatisticasVazias() {
-  return { finalizacoes: 0, noGol: 0, chutesFora: 0, desarmes: 0, errosPasse: 0, escanteios: 0 };
+  return { finalizacoes: 0, noGol: 0, chutesFora: 0, desarmes: 0, errosPasse: 0, escanteios: 0, faltas: 0 };
 }
 
 /**
@@ -454,6 +590,7 @@ function novaPartida(interativa) {
     jogadoresQueJogaram: [], // _ids de quem entrou em campo (titular de saída + quem entrou depois) — pro pós-jogo
     cartoesNoJogoPorJogador: {}, // _id -> qtd de amarelos NESTA partida (2º vira vermelho)
     jogadoresExpulsos: [], // [{ idJogador, lado, minuto, motivo: "vermelho-direto"|"segundo-amarelo" }]
+    arbitro: sortearArbitro(), // Sistema de Árbitro (Realismo): { nome, rigor } — vive só nesta partida, não é salvo
   };
 }
 
@@ -576,7 +713,7 @@ function processarLadoPartida(partida, atacante, defensor, ladoAtacante, permiti
   // Exposição a contra-ataque (Rebalanceamento de setas 2026-07-23): se o time que defende
   // tem zagueiro/lateral/volante com seta ofensiva bem-sucedida nesse minuto, fica mais fácil
   // pro adversário criar chance — o teto de chance por minuto sobe um pouco pra esse efeito valer.
-  const probChance = clamp((0.05 + diferenca * 0.006) * vantagemMeio * defensor.fatorContraAtaqueConcedido, 0.01, 0.24);
+  const probChance = clamp((0.1 + diferenca * 0.007) * vantagemMeio * defensor.fatorContraAtaqueConcedido, 0.02, 0.3);
 
   if (Math.random() < probChance) {
     estatAtacante.finalizacoes++;
@@ -584,7 +721,7 @@ function processarLadoPartida(partida, atacante, defensor, ladoAtacante, permiti
     // Fator zebra do lado que defende (Rebalanceamento 2026-07-23): dia inspirado do
     // goleiro/defesa reduz a conversão do ataque adversário; dia ruim aumenta — é isso
     // que permite um time mais fraco "segurar" um favorito de vez em quando.
-    let chanceGol = clamp((0.26 + vantagem) * partida.fatorZebra[ladoDefensor], 0.05, 0.6);
+    let chanceGol = clamp((0.10 + vantagem) * partida.fatorZebra[ladoDefensor], 0.03, 0.4);
     // Goleiro improvisado ou ausente (Correção de bug — 2026-07-25): quanto menor o fator,
     // mais essa penalidade empurra a chance de gol pra cima — praticamente certo de virar
     // gol quando não há goleiro de verdade em campo.
@@ -613,24 +750,18 @@ function processarLadoPartida(partida, atacante, defensor, ladoAtacante, permiti
       // Uma pequena fração das chances de gol vira pênalti.
       const ehPenalti = Math.random() < 0.09;
 
-      if (ehPenalti && permitirPausaPenalti) {
-        // O time do usuário ganhou o pênalti: pausa a simulação pra ele escolher o cobrador.
-        estatAtacante.noGol++;
-        partida.pendencia = { tipo: "penalti", lado: ladoAtacante };
-        registrarEvento(partida, "penalti", ladoAtacante, "🎯 Pênalti marcado!");
+      if (ehPenalti) {
+        // Pênalti (usuário escolhe o cobrador se `permitirPausaPenalti`; senão resolve na hora
+        // com o melhor cobrador disponível) — sempre com conversão por habilidade (Realismo).
+        concederPenalti(partida, atacante, ladoAtacante, permitirPausaPenalti, estatAtacante);
         return;
       }
 
-      if (ehPenalti) {
-        // Pênalti do adversário (ou de um jogo da CPU): resolve na hora.
+      // Bola na trave (Realismo): uma fração pequena das finalizações que iriam virar gol bate
+      // na trave/travessão e não vale — conta como finalização no alvo, mas sem gol nem defesa.
+      if (Math.random() < CHANCE_NA_TRAVE) {
         estatAtacante.noGol++;
-        const converteu = Math.random() < 0.76;
-        if (converteu) {
-          if (ladoAtacante === "casa") partida.placarCasa++; else partida.placarFora++;
-          registrarEvento(partida, "gol", ladoAtacante, "⚽ Pênalti convertido por " + jogador.nome + "!", jogador._id);
-        } else {
-          registrarEvento(partida, "chance", ladoAtacante, jogador.nome + " bate o pênalti… e perde!", jogador._id);
-        }
+        registrarEvento(partida, "chance", ladoAtacante, "🪵 Chute de " + jogador.nome + " explode na trave!", jogador._id);
         return;
       }
 
@@ -669,22 +800,26 @@ function processarLadoPartida(partida, atacante, defensor, ladoAtacante, permiti
   if (Math.random() < 0.05) estatAtacante.errosPasse++;
   if (Math.random() < 0.055) estatAtacante.escanteios++; // ~5 por time numa partida de 90min, perto da média real
 
-  if (Math.random() < 0.015) {
-    processarCartao(partida, atacante, ladoAtacante, "amarelo");
-  } else if (Math.random() < 0.001) {
-    processarCartao(partida, atacante, ladoAtacante, "vermelho");
+  // Faltas (Realismo — Sistema de Árbitro): quem comete é o `defensor` (trava a jogada do
+  // atacante), escalado pelo rigor do juiz sorteado nesta partida — ver `partida.arbitro`.
+  const rigorArbitro = RIGOR_ARBITRO[partida.arbitro.rigor];
+  if (Math.random() < CHANCE_FALTA_POR_MINUTO * rigorArbitro.faltaCartao) {
+    processarFalta(partida, defensor, ladoDefensor, atacante, ladoAtacante, estatDefensor, estatAtacante, rigorArbitro, permitirPausaPenalti);
   }
 }
 
 /**
- * Cartão amarelo ou vermelho pra alguém do time `atacante` (Correção de bug — 2026-07-23):
+ * Cartão amarelo ou vermelho pra alguém do time `time` (Correção de bug — 2026-07-23):
  * controla o 2º amarelo (vira vermelho automático) e dispara a expulsão de verdade — antes o
  * cartão vermelho só virava texto no histórico, sem tirar ninguém de campo.
+ * `jogadorForcado` (Realismo — Faltas): quando o cartão vem de uma falta já resolvida
+ * (`processarFalta`), o infrator já foi escolhido lá (ponderado por posição) — não sorteia de
+ * novo aqui. Sem ele, mantém o sorteio aleatório simples (compatibilidade com outros usos).
  */
-function processarCartao(partida, time, lado, tipo) {
+function processarCartao(partida, time, lado, tipo, jogadorForcado) {
   const elegiveis = titularesEmCampo(time);
-  if (elegiveis.length === 0) return;
-  const jogador = elegiveis[Math.floor(Math.random() * elegiveis.length)].jogador;
+  if (!jogadorForcado && elegiveis.length === 0) return;
+  const jogador = jogadorForcado || elegiveis[Math.floor(Math.random() * elegiveis.length)].jogador;
 
   if (tipo === "vermelho") {
     registrarEvento(partida, "cartao-vermelho", lado, "🟥 Cartão vermelho para " + jogador.nome + "!", jogador._id);

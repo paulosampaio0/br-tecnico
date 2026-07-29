@@ -2102,6 +2102,15 @@ body::before {
   background: rgba(255, 255, 255, 0.08);
 }
 
+/* Sistema de Árbitro (Realismo): nome + rigor do juiz sorteado pra essa partida. */
+.arbitro-partida {
+  width: 100%;
+  text-align: center;
+  font-size: 11px;
+  color: var(--cinza-texto);
+  margin: 6px 0 0;
+}
+
 .controles-partida {
   display: flex;
   flex-direction: column;
