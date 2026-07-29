@@ -479,7 +479,7 @@ function criarItemJogador(jogador, mostrarEnergia) {
   const caracteristicas = [jogador.caracteristica_1, jogador.caracteristica_2].filter(Boolean).join("/");
 
   item.innerHTML =
-    "<span class=\"pos\">" + escaparHtml(jogador.pos) + "</span>" +
+    "<span class=\"pos " + classeSetorPosicao(jogador.pos) + "\">" + escaparHtml(jogador.pos) + "</span>" +
     "<span class=\"info\">" +
       "<span class=\"nome\">" + prefixoExpulso + prefixoSuspenso + prefixoCapitao + prefixoEstrelas + escaparHtml(jogador.nome) + "</span>" +
       "<span class=\"detalhes\">" +
@@ -841,12 +841,12 @@ function renderizarCampo() {
     botao.style.top = vaga.y + "%";
     botao.innerHTML =
       "<span class=\"bolinha-wrap\">" +
-        "<span class=\"bolinha\">" + vaga.rotulo + "</span>" +
+        "<span class=\"bolinha" + (jogador ? " " + classeSetorPosicao(jogador.pos) : "") + "\">" + vaga.rotulo + "</span>" +
         (jogador ? montarIndicadoresSetas(vaga, jogador) : "") +
       "</span>" +
       "<span class=\"nome-vaga\">" +
         (jogador && estado.capitaoId === jogador._id ? "<span class=\"tag-capitao-campo\" title=\"Capitão\">©</span>" : "") +
-        (jogador ? escaparHtml(sobrenomeCurto(jogador.nome)) : "Vazio") +
+        (jogador ? montarForcaNomeCurto(jogador) : "Vazio") +
       "</span>" +
       (jogador ? montarBarraEnergiaVaga(jogador) : "");
 
@@ -963,12 +963,12 @@ function montarLadoCampoDuplo(campoEl, lado) {
     node.innerHTML =
       "<span class=\"nota-partida-badge nota-partida-" + faixaNota + "\">" + nota.toFixed(1) + "</span>" +
       "<span class=\"bolinha-wrap\">" +
-        "<span class=\"bolinha\">" + obterNumeroCamisa(jogador) + "</span>" +
+        "<span class=\"bolinha " + classeSetorPosicao(jogador.pos) + "\">" + obterNumeroCamisa(jogador) + "</span>" +
         (souEuNesseLado ? montarIndicadoresSetas(vaga, jogador) : "") +
       "</span>" +
       "<span class=\"nome-vaga\">" +
         (souEuNesseLado && estado.capitaoId === jogador._id ? "<span class=\"tag-capitao-campo\" title=\"Capitão\">©</span>" : "") +
-        escaparHtml(sobrenomeCurto(jogador.nome)) +
+        montarForcaNomeCurto(jogador) +
       "</span>" +
       (icones ? "<span class=\"icones-evento-partida-wrap\">" + icones + "</span>" : "") +
       montarBarraEnergiaComValor(energia);
@@ -1524,6 +1524,12 @@ function classeSetorPosicao(pos) {
   return "setor-ataque"; // ATE, ATD, ATA
 }
 
+/** "35 Felipe" — força em destaque + sobrenome curto, texto único reaproveitado em TODO card de
+ *  jogador (Padronização de cards): titular no campo, "Mexer no time" e Banco/Não Relacionados. */
+function montarForcaNomeCurto(jogador) {
+  return "<span class=\"forca-compacto\">" + jogador.forca + "</span> " + escaparHtml(sobrenomeCurto(jogador.nome));
+}
+
 /** Código curto (3 letras) de uma característica, pro texto compacto do card (ex.: "Cabeceio" -> "CAB"). */
 const CODIGO_CARACTERISTICA = {
   "Armação": "ARM", "Cabeceio": "CAB", "Colocação": "COL", "Cruzamento": "CRZ",
@@ -1603,8 +1609,7 @@ function criarNodeCompactoJogador(jogador, origem) {
   botao.innerHTML =
     tagCapitao + tagSuspenso + tagSaiu +
     "<span class=\"avatar-compacto-jogador " + classeSetorPosicao(jogador.pos) + "\">" + escaparHtml(jogador.pos) + "</span>" +
-    "<span class=\"forca-nome-compacto\"><span class=\"forca-compacto\">" + jogador.forca + "</span> " +
-      escaparHtml(sobrenomeCurto(jogador.nome)) + "</span>" +
+    "<span class=\"forca-nome-compacto\">" + montarForcaNomeCurto(jogador) + "</span>" +
     montarBarraEnergiaComValor(energia) +
     (caracteristicas ? "<span class=\"caracteristicas-compacto\">" + escaparHtml(caracteristicas) + "</span>" : "");
 

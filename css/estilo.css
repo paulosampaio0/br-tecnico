@@ -366,6 +366,13 @@ body::before {
   font-weight: 800;
 }
 
+/* Cor por setor do campo (Padronização de cards — goleiro/defesa/meio/ataque): mesma paleta
+   em toda tela de gestão de elenco, da lista completa (.pos) aos cards compactos e ao campo. */
+.item-jogador .pos.setor-goleiro { background: var(--amarelo); color: #3a2b00; }
+.item-jogador .pos.setor-defesa { background: #3b82f6; color: #fff; }
+.item-jogador .pos.setor-meio { background: var(--neon-verde); color: #04220f; }
+.item-jogador .pos.setor-ataque { background: #ff5a3c; color: #2a0b02; }
+
 .item-jogador .info {
   flex: 1;
   min-width: 0;
@@ -1042,6 +1049,14 @@ body::before {
   transition: transform 0.08s ease;
 }
 
+/* Cor por setor do campo (Padronização de cards): mesma paleta do card compacto do
+   Banco/Não Relacionados (`.avatar-compacto-jogador.setor-*`), agora também na bolinha do
+   campo tático — titular, reserva e "Mexer no time" (meu time e adversário) ficam no mesmo padrão. */
+.vaga .bolinha.setor-goleiro { background: var(--amarelo); color: #3a2b00; }
+.vaga .bolinha.setor-defesa { background: #3b82f6; color: #fff; }
+.vaga .bolinha.setor-meio { background: var(--neon-verde); color: #04220f; }
+.vaga .bolinha.setor-ataque { background: #ff5a3c; color: #2a0b02; }
+
 /* Setinha permanente indicando uma seta já ativa naquele jogador */
 .seta-indicador {
   position: absolute;
@@ -1099,6 +1114,13 @@ body::before {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+/* Força em destaque (ex.: "35 Felipe") — mesma cor de `.forca-compacto`, com sombra própria
+   pra continuar legível em cima do gramado. */
+.vaga .nome-vaga .forca-compacto {
+  color: var(--amarelo);
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.9);
 }
 
 /* Barrinha de energia (blocos coloridos 🟩🟨🟥⬜) embaixo do nome, visível ao montar/mexer na escalação */
@@ -1190,16 +1212,15 @@ body::before {
   aspect-ratio: 3 / 4;
 }
 
-/* Time adversário: só visualização (sem cursor de clique) e uma cor diferente da
-   bolinha pra distinguir de longe do meu time (que continua no amarelo padrão). */
+/* Time adversário: só visualização (sem cursor de clique) — a bolinha usa a MESMA cor por
+   setor do meu time (Padronização de cards), só a borda fica mais discreta pra sinalizar
+   que esse lado não é editável. */
 .vaga-adversario {
   cursor: default;
 }
 
 .vaga-adversario .bolinha {
-  background: #3b7fd4;
-  color: var(--branco);
-  border-color: rgba(255, 255, 255, 0.5);
+  border-color: rgba(255, 255, 255, 0.4);
 }
 
 /* Pílula de nota da partida (Match Rating) — sempre acima da bolinha do jogador. */
@@ -1626,8 +1647,9 @@ body::before {
   border: 2px solid rgba(255, 255, 255, 0.7);
 }
 
-/* Cor por setor do campo — só usada na rodela dos cards compactos (Banco/Não Relacionados),
-   pra identificar a posição de longe sem precisar ler o texto. */
+/* Cor por setor do campo (Padronização de cards): identifica a posição de longe sem precisar
+   ler o texto — mesma paleta na rodela dos cards compactos (Banco/Não Relacionados) E na
+   bolinha do campo tático (Escalação e Mexer no time, ver `.vaga .bolinha.setor-*` abaixo). */
 .avatar-compacto-jogador.setor-goleiro { background: var(--amarelo); color: #3a2b00; }
 .avatar-compacto-jogador.setor-defesa { background: #3b82f6; color: #fff; }
 .avatar-compacto-jogador.setor-meio { background: var(--neon-verde); color: #04220f; }
