@@ -822,6 +822,9 @@ function reencaixarFormacaoEmPartida(novaFormacaoId) {
   }
   const vagasNovas = obterFormacao(novaFormacaoId);
 
+  // Passo 1: reencaixa quem já estava em campo na vaga de MESMA posição na formação nova
+  // (ex.: os 2 ZAG continuam ZAG). Quem sobra (a formação nova tem menos vagas daquela
+  // posição — ex.: 4º meia num esquema com só 3 de MEI) fica de fora por enquanto.
   const porPosicao = {};
   vagasAtuais.forEach(function (vaga) {
     const idJogador = estado.titulares[vaga.id];
@@ -830,11 +833,43 @@ function reencaixarFormacaoEmPartida(novaFormacaoId) {
   });
 
   const novosTitulares = {};
+  const vagasPendentes = [];
   vagasNovas.forEach(function (vaga) {
     const lista = porPosicao[vaga.pos];
     if (lista && lista.length) {
       novosTitulares[vaga.id] = lista.shift();
+    } else {
+      vagasPendentes.push(vaga);
     }
+  });
+
+  // Passo 2 (Correção de bug — "jogadores somem ao trocar de formação"): quem sobrou do passo 1
+  // (ex.: o 4º meia) é reaproveitado nas vagas ainda vazias, priorizando o MESMO setor (defesa/
+  // meio/ataque) — é assim que o meia sobressalente vira automaticamente um atacante (ATA/ATE/
+  // ATD) num esquema com mais vagas de ataque, em vez de simplesmente sumir do time.
+  const sobras = Object.keys(porPosicao).reduce(function (acc, pos) { return acc.concat(porPosicao[pos]); }, []);
+  vagasPendentes.forEach(function (vaga) {
+    if (sobras.length === 0) return;
+    const setorVaga = SETOR_POR_POSICAO[vaga.pos];
+    let indiceEscolhido = sobras.findIndex(function (idJogador) {
+      const jog = encontrarJogadorPorId(estado.timeAtual.jogadores, idJogador);
+      return jog && SETOR_POR_POSICAO[jog.pos] === setorVaga;
+    });
+    if (indiceEscolhido === -1) indiceEscolhido = 0; // sem ninguém do mesmo setor sobrando: qualquer um serve
+    novosTitulares[vaga.id] = sobras.splice(indiceEscolhido, 1)[0];
+  });
+
+  // Passo 3 — rede de segurança (Validação estrita: sempre 11 titulares): qualquer vaga que
+  // ainda ficou vazia (ex.: elenco incompleto numa posição, ou sobrou vaga sem ninguém pra
+  // encaixar) é preenchida pelo reserva de maior Força disponível no elenco.
+  const idsUsados = new Set(Object.values(novosTitulares));
+  const bancoPorForca = estado.timeAtual.jogadores
+    .filter(function (j) { return !idsUsados.has(j._id); })
+    .sort(function (a, b) { return b.forca - a.forca; });
+  vagasNovas.forEach(function (vaga) {
+    if (novosTitulares[vaga.id] !== undefined) return;
+    const proximo = bancoPorForca.shift();
+    if (proximo) { novosTitulares[vaga.id] = proximo._id; idsUsados.add(proximo._id); }
   });
 
   estado.formacaoId = novaFormacaoId;
@@ -1528,35 +1563,85 @@ function renderizarResumoSetas() {
   });
 }
 
+// Composição balanceada padrão do Banco de Reservas (9 vagas — Auto-Preenchimento do Banco):
+// 1 GOL, 2 ZAG, 1 LD, 1 LE, 2 meio-campistas (VOL/MEI), 2 atacantes (ATA/ATE/ATD). Cada balde
+// é preenchido pelo(s) jogador(es) de maior força NA posição indicada; o que sobra de vaga
+// (posição em falta no elenco) é completado por fora, com os melhores jogadores disponíveis
+// de qualquer posição — ver `completarComMelhoresDisponiveis` logo abaixo.
+const COMPOSICAO_PADRAO_BANCO = [
+  { posicoes: ["GOL"], qtd: 1 },
+  { posicoes: ["ZAG"], qtd: 2 },
+  { posicoes: ["LAT.D"], qtd: 1 },
+  { posicoes: ["LAT.E"], qtd: 1 },
+  { posicoes: ["VOL", "MEI"], qtd: 2 },
+  { posicoes: ["ATA", "ATE", "ATD"], qtd: 2 },
+];
+
+/** De uma lista de candidatos, tira até `qtd` dos de maior força cuja `pos` esteja em `posicoes`. */
+function retirarMelhoresPorPosicao(candidatos, posicoes, qtd) {
+  const escolhidos = [];
+  for (let i = candidatos.length - 1; i >= 0 && escolhidos.length < qtd; i--) {
+    if (posicoes.indexOf(candidatos[i].pos) !== -1) {
+      escolhidos.push(candidatos.splice(i, 1)[0]);
+    }
+  }
+  return escolhidos;
+}
+
+/**
+ * Completa uma lista de ids de relacionados até `TAMANHO_BANCO_RELACIONADO`, seguindo a
+ * Composição Padrão do Banco (1 GOL/2 ZAG/1 LD/1 LE/2 meio/2 ataque). Não mexe em quem já
+ * está escolhido — só usa as vagas que sobraram, sempre com os jogadores de maior força do
+ * grupo "Não Relacionados" disponível. Se faltar gente na posição exata de algum balde
+ * (elenco incompleto naquela posição), a vaga cai pro fallback: melhor força disponível de
+ * qualquer posição, garantindo as 9 vagas sempre que o elenco tiver jogadores suficientes.
+ */
+function completarBancoAteCheio(jogadores, idsJaEscolhidos) {
+  const escolhidos = idsJaEscolhidos.slice();
+  const idsUsados = new Set(escolhidos);
+  const disponiveis = jogadores
+    .filter(function (j) { return !idsUsados.has(j._id); })
+    .sort(function (a, b) { return a.forca - b.forca; }); // crescente: retirarMelhoresPorPosicao tira do fim (maior força)
+
+  COMPOSICAO_PADRAO_BANCO.forEach(function (balde) {
+    const vagasLivres = TAMANHO_BANCO_RELACIONADO - escolhidos.length;
+    if (vagasLivres <= 0) return;
+    const qtd = Math.min(balde.qtd, vagasLivres);
+    retirarMelhoresPorPosicao(disponiveis, balde.posicoes, qtd).forEach(function (j) { escolhidos.push(j._id); });
+  });
+
+  // Fallback: sobrou vaga (posição-alvo em falta no elenco) — completa com o melhor força
+  // disponível, de qualquer posição.
+  while (escolhidos.length < TAMANHO_BANCO_RELACIONADO && disponiveis.length > 0) {
+    escolhidos.push(disponiveis.pop()._id);
+  }
+
+  return escolhidos;
+}
+
 /**
  * Escolha PADRÃO de relacionados pra partida (só usada pra "semear" `estado.relacionadosIds`
  * — 1x quando o elenco é escalado, e como fallback pra saves antigos de antes dessa função
  * existir). Depois de semeado, o banco vira 100% manual (o técnico monta e reorganiza pelo
  * tap-to-swap) — essa função nunca mais roda sozinha por trás, senão apagaria escolhas do
- * usuário. Prioriza sempre ter 1 goleiro reserva, o resto é por força.
+ * usuário. Segue a Composição Padrão do Banco (1 GOL/2 ZAG/1 LD/1 LE/2 meio/2 ataque).
  */
 function escolherRelacionadosPadrao(jogadores, titularesMap) {
   const idsTitulares = new Set(Object.values(titularesMap || {}));
   const candidatos = jogadores.filter(function (j) { return !idsTitulares.has(j._id); });
-
-  const goleiros = candidatos.filter(function (j) { return j.pos === "GOL"; })
-    .sort(function (a, b) { return b.forca - a.forca; });
-  const linha = candidatos.filter(function (j) { return j.pos !== "GOL"; })
-    .sort(function (a, b) { return b.forca - a.forca; });
-
-  const escolhidos = [];
-  if (goleiros[0]) escolhidos.push(goleiros[0]._id);
-  linha.forEach(function (j) {
-    if (escolhidos.length < TAMANHO_BANCO_RELACIONADO) escolhidos.push(j._id);
-  });
-  return escolhidos;
+  return completarBancoAteCheio(candidatos, []);
 }
 
-/** Tira da lista de relacionados quem virou titular (ex.: depois de trocar formação/escalação automática). */
+/** Tira da lista de relacionados quem virou titular (ex.: depois de trocar formação/escalação automática),
+ * e completa de volta até as 9 vagas (Auto-Preenchimento do Banco) seguindo a Composição Padrão —
+ * sem essa reposição automática, o banco ficava incompleto toda vez que um reserva virava titular. */
 function sincronizarRelacionadosComTitulares() {
   if (!estado.relacionadosIds) return;
   const idsTitulares = new Set(Object.values(estado.titulares));
-  estado.relacionadosIds = estado.relacionadosIds.filter(function (id) { return !idsTitulares.has(id); });
+  const restantes = estado.relacionadosIds.filter(function (id) { return !idsTitulares.has(id); });
+  const idsIndisponiveis = new Set(Object.values(estado.titulares).concat(restantes));
+  const disponiveis = estado.timeAtual.jogadores.filter(function (j) { return !idsIndisponiveis.has(j._id); });
+  estado.relacionadosIds = completarBancoAteCheio(disponiveis, restantes);
 }
 
 /** Os reservas relacionados pra partida — 100% escolha do técnico (`estado.relacionadosIds`), tamanho fixo em TAMANHO_BANCO_RELACIONADO. */

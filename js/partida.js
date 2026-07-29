@@ -182,6 +182,11 @@ const GRUPOS_POSICAO_SIMILAR = [
 ];
 const INDICE_SETOR_POSICAO = { defesa: 0, meio: 1, ataque: 2 };
 const EFICIENCIA_GOLEIRO_IMPROVISADO = 0.18; // jogador de linha no gol: 18% da capacidade de defesa
+// Regra de "Sem Goleiro" (Correção de bug): jogador de linha improvisado na vaga de GOL sofre
+// -90% nos atributos de defesa (fica com só 10% da capacidade de defesa de um goleiro nato) —
+// separado de EFICIENCIA_GOLEIRO_IMPROVISADO acima (que é sobre EFICIÊNCIA DE CHUTE de um
+// goleiro escalado na linha, um caso diferente) pra não misturar as duas penalidades.
+const FATOR_GOLEIRO_IMPROVISADO_DEFESA = 0.10;
 
 /**
  * Multiplicador de força (0–1) de um jogador atuando na vaga `posVaga`, dado
@@ -489,9 +494,11 @@ function itemDeLinhaAleatorio(timeSimulado) {
  */
 function obterInfoGoleiro(timeSimulado) {
   const item = titularesEmCampo(timeSimulado).find(function (i) { return i.vaga.pos === "GOL"; });
-  if (!item) return { jogador: null, natural: false, fator: 0.1 }; // sem ninguém na vaga: pior que improvisado
+  // Vaga de GOL completamente vazia: `fator` 0 (sem NENHUMA capacidade de defesa) — ver
+  // `processarLadoPartida`, onde isso vira 100% de conversão em qualquer chute no alvo.
+  if (!item) return { jogador: null, natural: false, fator: 0 };
   const natural = item.jogador.pos === "GOL";
-  return { jogador: item.jogador, natural: natural, fator: natural ? 1.0 : EFICIENCIA_GOLEIRO_IMPROVISADO };
+  return { jogador: item.jogador, natural: natural, fator: natural ? 1.0 : FATOR_GOLEIRO_IMPROVISADO_DEFESA };
 }
 
 function registrarEvento(partida, tipo, lado, texto, idJogador) {
@@ -590,7 +597,15 @@ function processarLadoPartida(partida, atacante, defensor, ladoAtacante, permiti
     // muito mais a chutar pra fora do que a acertar o gol.
     const fatorChuteEficiencia = clamp(0.35 + 0.65 * itemFinalizador.eficiencia, 0.35, 1);
     chanceGol *= fatorChuteEficiencia;
-    const janelaNoGol = 0.35 * fatorChuteEficiencia;
+    let janelaNoGol = 0.35 * fatorChuteEficiencia;
+
+    // Regra de "Sem Goleiro" (Correção de bug): vaga de GOL completamente vazia — não existe
+    // NINGUÉM pra fazer a defesa, então toda a janela "no alvo mas defendido" vira gol certo
+    // (só resta a chance de chutar pra fora, que já é sorteada à parte, fora do `if` de cima).
+    if (!infoGoleiro.jogador) {
+      chanceGol = clamp(chanceGol + janelaNoGol, 0, 0.99);
+      janelaNoGol = 0;
+    }
 
     const rolagem = Math.random();
 
