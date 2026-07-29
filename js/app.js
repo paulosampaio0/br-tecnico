@@ -109,7 +109,7 @@ let rodadaSelecaoRodadaAtual = null;
 const estado = {
   timeAtual: null, // { divisaoChave, nome, jogadores }
   tecnico: null, // { nome, nacionalidade } — definido na tela "Novo Jogo" (config. do técnico)
-  formacaoId: "4-4-2",
+  formacaoId: "4-4-2a",
   titulares: {}, // { idDaVaga: _id do jogador }
   tatica: taticaPadrao(),
   setas: {}, // { idDaVaga: ["frente", "meio", ...] } — no máximo 2 chaves por vaga
@@ -521,7 +521,7 @@ async function escalarEsteTime(time) {
   }
 
   estado.timeAtual = { divisaoChave: divisaoAtual, nome: time.nome, jogadores: time.jogadores };
-  estado.formacaoId = "4-4-2";
+  estado.formacaoId = "4-4-2a";
   estado.formacaoPersonalizada = null;
   estado.carreiraPorJogador = {};
   estado.jogosTemporadaPorJogador = {};
@@ -622,25 +622,52 @@ function renderizarInfoSubstituicoes() {
   el.textContent = "🔄 Substituições: " + restantes + " de " + LIMITE_SUBSTITUICOES + " restantes";
 }
 
+/** Id da última formação "de catálogo" usada (nunca a Personalizada) — é o que o dropdown mostra
+ * mesmo com "Personalizar" marcado (a Personalizada guarda esse id como `baseFormacaoId`). */
+function baseFormacaoIdAtual() {
+  if (estado.formacaoId === FORMACAO_PERSONALIZADA_ID) {
+    return (estado.formacaoPersonalizada && FORMACOES[estado.formacaoPersonalizada.baseFormacaoId])
+      ? estado.formacaoPersonalizada.baseFormacaoId
+      : "4-4-2a";
+  }
+  return estado.formacaoId;
+}
+
 function montarSelectFormacao() {
   const select = document.getElementById("select-formacao");
   if (select.childElementCount === 0) {
-    const opcaoPersonalizada = document.createElement("option");
-    opcaoPersonalizada.value = FORMACAO_PERSONALIZADA_ID;
-    opcaoPersonalizada.textContent = "Personalizada";
-    select.appendChild(opcaoPersonalizada);
-
+    let grupoAtual = null;
+    let optgroupEl = null;
     ORDEM_FORMACOES.forEach(function (id) {
+      const info = INFO_FORMACOES[id];
+      if (info.grupo !== grupoAtual) {
+        grupoAtual = info.grupo;
+        optgroupEl = document.createElement("optgroup");
+        optgroupEl.label = grupoAtual;
+        select.appendChild(optgroupEl);
+      }
       const opcao = document.createElement("option");
       opcao.value = id;
-      opcao.textContent = id;
-      select.appendChild(opcao);
+      opcao.textContent = info.nome;
+      optgroupEl.appendChild(opcao);
     });
     select.addEventListener("change", function () {
       trocarFormacao(select.value);
     });
+
+    const checkbox = document.getElementById("chk-personalizar");
+    if (checkbox) {
+      checkbox.addEventListener("change", function () {
+        trocarFormacao(checkbox.checked ? FORMACAO_PERSONALIZADA_ID : baseFormacaoIdAtual());
+      });
+    }
   }
-  select.value = estado.formacaoId;
+
+  select.value = baseFormacaoIdAtual();
+  const personalizarAtivo = estado.formacaoId === FORMACAO_PERSONALIZADA_ID;
+  select.disabled = personalizarAtivo;
+  const checkbox = document.getElementById("chk-personalizar");
+  if (checkbox) checkbox.checked = personalizarAtivo;
 }
 
 function trocarFormacao(novaFormacaoId) {
@@ -662,7 +689,7 @@ function trocarFormacao(novaFormacaoId) {
     } else {
       // Primeira vez: parte da escalação/formação atual (vira "destravável" sem resetar nada).
       estado.formacaoPersonalizada = {
-        baseFormacaoId: FORMACOES[estado.formacaoId] ? estado.formacaoId : "4-4-2",
+        baseFormacaoId: FORMACOES[estado.formacaoId] ? estado.formacaoId : "4-4-2a",
         coords: {},
         titulares: Object.assign({}, estado.titulares),
       };
@@ -675,6 +702,7 @@ function trocarFormacao(novaFormacaoId) {
   estado.setas = {}; // as vagas mudam de função na nova formação, então as setas recomeçam
   sincronizarRelacionadosComTitulares(); // quem virou titular na formação nova sai do banco
   salvarProgresso();
+  montarSelectFormacao();
   renderizarCampo();
   renderizarResumoSetas();
   renderizarBanco();
@@ -784,6 +812,14 @@ function sugerirSubstituicao() {
  */
 function reencaixarFormacaoEmPartida(novaFormacaoId) {
   const vagasAtuais = obterFormacao(estado.formacaoId);
+  // Entrando na Personalizada em partida: se já existe uma Personalizada salva pra essa
+  // formação-base, reaproveita a grade dela (coords incluídas); senão parte da formação atual.
+  const baseParaNova = (estado.formacaoPersonalizada && FORMACOES[estado.formacaoPersonalizada.baseFormacaoId])
+    ? estado.formacaoPersonalizada.baseFormacaoId
+    : (FORMACOES[estado.formacaoId] ? estado.formacaoId : "4-4-2a");
+  if (novaFormacaoId === FORMACAO_PERSONALIZADA_ID && !estado.formacaoPersonalizada) {
+    estado.formacaoPersonalizada = { baseFormacaoId: baseParaNova, coords: {}, titulares: {} };
+  }
   const vagasNovas = obterFormacao(novaFormacaoId);
 
   const porPosicao = {};
@@ -805,6 +841,7 @@ function reencaixarFormacaoEmPartida(novaFormacaoId) {
   estado.titulares = novosTitulares;
   estado.setas = {}; // as vagas mudam de função, então as setas recomeçam
   salvarProgresso();
+  montarSelectFormacao();
   renderizarCampo();
   renderizarResumoSetas();
   renderizarBanco();
@@ -835,11 +872,12 @@ function renderizarCampo() {
 
   const campoEl = campoSimplesEl;
   campoEl.innerHTML = "";
+  campoEl.classList.toggle("campo-personalizando", estado.formacaoId === FORMACAO_PERSONALIZADA_ID);
 
   const dicaEl = document.querySelector(".dica-setas");
   if (dicaEl) {
     dicaEl.textContent = estado.formacaoId === FORMACAO_PERSONALIZADA_ID
-      ? "Arraste um jogador de linha (exceto o goleiro) para qualquer posição do campo — a posição fica salva na Formação Personalizada."
+      ? "Arraste um jogador de linha (exceto o goleiro) para a zona do campo desejada — ele se encaixa automaticamente na faixa (defesa/meio/ataque) mais próxima."
       : "Segure e arraste um jogador (exceto o goleiro) para até 2 direções: isso ativa um estilo especial de atuação para ele.";
   }
 
@@ -1382,7 +1420,12 @@ function finalizarArrastoPosicaoLivre(evento) {
   if (!arrastoPosicao || evento.pointerId !== arrastoPosicao.pointerId) return;
 
   if (arrastoPosicao.arrastouDeVerdade) {
-    salvarCoordenadaPersonalizada(arrastoPosicao.vaga.id, arrastoPosicao.novoX, arrastoPosicao.novoY);
+    // Zona (Modo de Posição Livre — formacoes.js): o X solto fica livre, mas o Y "gruda" numa
+    // das 4 faixas lógicas do campo (defesa / meio-defensivo / meio-ofensivo / ataque), pra
+    // preservar o grid que o Match Engine usa pra calcular força por setor.
+    const zona = encontrarZonaPosicaoLivre(arrastoPosicao.novoY);
+    arrastoPosicao.botao.style.top = zona.centroY + "%";
+    salvarCoordenadaPersonalizada(arrastoPosicao.vaga.id, arrastoPosicao.novoX, zona.centroY, zona.setor);
     arrastoPosicao.botao.classList.remove("vaga-arrastando");
     // Um arrasto de verdade não deve também contar como toque de seleção (tap-to-swap).
     arrastoPosicao.botao.dataset.gestoArrasto = "1";
@@ -1405,10 +1448,10 @@ function limparArrastoPosicaoLivre() {
   arrastoPosicao = null;
 }
 
-/** Persiste a coordenada arrastada na Formação Personalizada do time atual. */
-function salvarCoordenadaPersonalizada(vagaId, x, y) {
+/** Persiste a coordenada arrastada (e a zona/setor onde caiu) na Formação Personalizada do time atual. */
+function salvarCoordenadaPersonalizada(vagaId, x, y, setor) {
   if (!estado.formacaoPersonalizada) return;
-  estado.formacaoPersonalizada.coords[vagaId] = { x: Math.round(x * 10) / 10, y: Math.round(y * 10) / 10 };
+  estado.formacaoPersonalizada.coords[vagaId] = { x: Math.round(x * 10) / 10, y: Math.round(y * 10) / 10, setor: setor };
   salvarProgresso();
 }
 
@@ -2078,8 +2121,8 @@ async function iniciarAmistoso() {
  * `classico` (IA dos Clubes Adversários): joga com intensidade extra a partida inteira.
  */
 function criarTimeSimuladoAutomatico(time, mando, bonusExtraIA, classico) {
-  const titularesMap = autoEscalarMelhores(time.jogadores, "4-4-2");
-  const titulares = resolverTitulares(time.jogadores, "4-4-2", titularesMap);
+  const titularesMap = autoEscalarMelhores(time.jogadores, "4-4-2a");
+  const titulares = resolverTitulares(time.jogadores, "4-4-2a", titularesMap);
   const idsEscalados = new Set(titulares.map(function (item) { return item.jogador._id; }));
   const reservas = time.jogadores.filter(function (j) { return !idsEscalados.has(j._id); });
   return criarTimeSimulado(time.nome, titulares, taticaPadrao(), {}, { mando: mando, bonusExtraIA: !!bonusExtraIA }, null,
@@ -3760,8 +3803,8 @@ async function atualizarRelatorioAdversario() {
   botao.hidden = false;
   botao.textContent = "🔍 Relatório do Auxiliar Técnico — " + nomeAdversario;
 
-  const titularesMap = autoEscalarMelhores(oponenteInfo.jogadores, "4-4-2");
-  const titulares = resolverTitulares(oponenteInfo.jogadores, "4-4-2", titularesMap);
+  const titularesMap = autoEscalarMelhores(oponenteInfo.jogadores, "4-4-2a");
+  const titulares = resolverTitulares(oponenteInfo.jogadores, "4-4-2a", titularesMap);
 
   const porSetor = { defesa: [], meio: [], ataque: [] };
   titulares.forEach(function (item) {
@@ -6478,7 +6521,9 @@ async function continuarJogoSalvo() {
     estado.proximoIdProposta = registro.proximoIdProposta || 1;
 
     estado.timeAtual = { divisaoChave: registro.divisao, nome: time.nome, jogadores: jogadoresDoSave };
-    estado.formacaoId = registro.formacaoId || "4-4-2";
+    // normalizarFormacaoId (formacoes.js) traduz ids curtos de save antigo (ex.: "4-4-2") pro
+    // id novo do catálogo ampliado (ex.: "4-4-2a") — sem isso, save velho "perdia" a formação.
+    estado.formacaoId = normalizarFormacaoId(registro.formacaoId || "4-4-2a");
     estado.titulares = registro.titulares || {};
     // Saves de antes da Formação Personalizada não têm esse campo.
     estado.formacaoPersonalizada = registro.formacaoPersonalizada || null;

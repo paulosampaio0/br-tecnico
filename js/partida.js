@@ -244,7 +244,10 @@ function calcularForcaTime(titularesResolvidos, tatica) {
   const contagem = { defesa: 0, meio: 0, ataque: 0 };
 
   titularesResolvidos.forEach(function (item) {
-    const setor = SETOR_POR_POSICAO[item.vaga.pos];
+    // Formação Personalizada (Modo de Posição Livre): se o técnico arrastou o jogador pra uma
+    // das 4 zonas do campo, `setorEfetivo` (formacoes.js) manda mais que a posição de origem —
+    // é assim que mover gente pra frente/trás realmente muda a força ofensiva/defensiva do time.
+    const setor = item.vaga.setorEfetivo || SETOR_POR_POSICAO[item.vaga.pos];
     if (!setor) return; // goleiro não entra no embate por setor
     const eficiencia = item.eficiencia !== undefined ? item.eficiencia : 1;
     soma[setor] += item.jogador.forca * eficiencia;

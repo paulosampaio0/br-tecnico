@@ -789,6 +789,8 @@ body::before {
 }
 
 .controle-formacao select {
+  flex: 1;
+  min-width: 0;
   min-height: 40px;
   padding: 0 12px;
   border-radius: 8px;
@@ -797,6 +799,29 @@ body::before {
   color: var(--branco);
   font-size: 14px;
   font-weight: 700;
+}
+
+.controle-formacao select:disabled {
+  opacity: 0.5;
+}
+
+/* Toggle "Personalizar" ao lado do dropdown de Formação (Escalação e Mexer no time). */
+.toggle-personalizar {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  white-space: nowrap;
+  font-size: 12px !important;
+  font-weight: 700 !important;
+  color: var(--cinza-texto) !important;
+  cursor: pointer;
+}
+
+.toggle-personalizar input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--neon-verde);
+  cursor: pointer;
 }
 
 /* Botão de dado — Escalação Inteligente (pré-jogo) e Sugestão de Substituição (durante o jogo) */
@@ -1106,11 +1131,29 @@ body::before {
 /* Enquanto o dedo está segurando e arrastando o jogador pra uma nova posição. */
 .vaga.vaga-arrastando {
   z-index: 5;
+  transition: none; /* sem transição durante o próprio arrasto — só depois, ao "grudar" na zona */
 }
 
 .vaga.vaga-arrastando .bolinha {
   transform: scale(1.15);
   box-shadow: 0 0 0 3px rgba(255, 184, 92, 0.6), 0 4px 12px rgba(0, 0, 0, 0.5);
+}
+
+/* Formação Personalizada (Modo de Posição Livre): ao soltar, o jogador desliza suavemente até
+   o centro da zona (defesa/meio-defensivo/meio-ofensivo/ataque) em que caiu. */
+.vaga.vaga-personalizavel {
+  transition: top 0.25s ease, left 0.2s ease;
+}
+
+/* As 4 faixas horizontais invisíveis viram guias visuais sutis só quando o campo está em modo
+   Personalizar — ajuda o técnico a enxergar onde cada zona começa/termina antes de soltar. */
+.campo.campo-personalizando {
+  background-image:
+    linear-gradient(rgba(255, 255, 255, 0.06) 1px, transparent 1px),
+    linear-gradient(rgba(255, 255, 255, 0.06) 1px, transparent 1px);
+  background-size: 100% 22%, 100% 22%;
+  background-position: 0 24%, 0 46%;
+  background-repeat: no-repeat;
 }
 
 .vaga .nome-vaga {
