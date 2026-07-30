@@ -1236,16 +1236,6 @@ function definirCapitao(valorSelect) {
   renderizarCampo();
 }
 
-function montarBarraEnergiaComValor(energia) {
-  const nivel = energia > 80 ? "alta" : energia >= 60 ? "media" : "baixa";
-  const blocoAceso = nivel === "alta" ? "🟩" : nivel === "media" ? "🟨" : "🟥";
-  const TOTAL_BLOCOS = 5;
-  const acesos = Math.max(0, Math.min(TOTAL_BLOCOS, Math.round(energia / 100 * TOTAL_BLOCOS)));
-  const blocos = blocoAceso.repeat(acesos) + "⬜".repeat(TOTAL_BLOCOS - acesos);
-  return "<span class=\"barra-energia-vaga\" title=\"Energia: " + energia + "%\">" + blocos + "</span>" +
-  "<span class=\"numero-energia-vaga energia-vaga-" + nivel + "\">" + energia + "%</span>";
-}
-
 /**
  * Nota "ao vivo" do jogador (rendimento na partida em andamento, 1.0–10.0) — mesma lógica
  * de `calcularNotasPosJogo` (pós-jogo), mas calculada a qualquer momento a partir dos
@@ -1870,15 +1860,18 @@ function criarNodeCompactoJogador(jogador, origem) {
   const tagCapitao = estado.capitaoId === jogador._id ? "<span class=\"tags-compacto-jogador\" title=\"Capitão\">©</span>" : "";
   const tagSuspenso = jogadorEstaSuspenso(jogador._id) ? "<span class=\"tags-compacto-jogador\" title=\"Suspenso\">🚫</span>" : "";
   const tagSaiu = jaSaiu ? "<span class=\"tags-compacto-jogador\" title=\"Já saiu da partida\">🔻</span>" : "";
-  const caracteristicas = [jogador.caracteristica_1, jogador.caracteristica_2]
-    .filter(Boolean).map(abreviarCaracteristica).join(" · ");
 
+  // Player Node compacto (Hierarquia Visual Compacta) — mesmo padrão do campinho: círculo +
+  // selo de estrela, força + seta de fase + nome, barra de energia com % sobreposta, traits.
   botao.innerHTML =
     tagCapitao + tagSuspenso + tagSaiu +
-    "<span class=\"avatar-compacto-jogador " + classeSetorPosicao(jogador.pos) + "\">" + escaparHtml(jogador.pos) + "</span>" +
-    "<span class=\"forca-nome-compacto\">" + montarForcaNomeCurto(jogador) + "</span>" +
-    montarBarraEnergiaComValor(energia) +
-    (caracteristicas ? "<span class=\"caracteristicas-compacto\">" + escaparHtml(caracteristicas) + "</span>" : "");
+    "<span class=\"avatar-compacto-wrap\">" +
+      "<span class=\"avatar-compacto-jogador " + classeSetorPosicao(jogador.pos) + "\">" + escaparHtml(jogador.pos) + "</span>" +
+      montarEstrelaBadgeVaga(jogador) +
+    "</span>" +
+    "<span class=\"forca-nome-compacto\">" + montarForcaNomeCurto(jogador, true, true) + "</span>" +
+    montarBarraEnergiaOverlay(energia) +
+    montarTraitsVaga(jogador);
 
   botao.addEventListener("click", function () {
     // Um arrasto de verdade que acabou de acontecer NESTE botão não deve
