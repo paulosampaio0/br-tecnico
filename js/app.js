@@ -453,8 +453,6 @@ function criarItemJogador(jogador, mostrarEnergia) {
   const item = document.createElement("li");
   item.className = "item-jogador";
 
-  const estrelas = calcularEstrelasPotencial(jogador);
-  const prefixoEstrelas = estrelas > 0 ? "<span class=\"estrelas-potencial\" title=\"Potencial de crescimento\">" + "★".repeat(estrelas) + "</span> " : "";
   const prefixoSuspenso = jogadorEstaSuspenso(jogador._id) ? "<span class=\"tag-suspenso\">🚫 Suspenso</span> " : "";
   const prefixoExpulso = jogadorFoiExpulsoNestaPartida(jogador._id) ? "<span class=\"tag-expulso\">🔴 Expulso</span> " : "";
   const prefixoCapitao = estado.capitaoId === jogador._id
@@ -501,7 +499,7 @@ function criarItemJogador(jogador, mostrarEnergia) {
   item.innerHTML =
     "<span class=\"pos " + classeSetorPosicao(jogador.pos) + "\">" + escaparHtml(jogador.pos) + "</span>" +
     "<span class=\"info\">" +
-      "<span class=\"nome\">" + prefixoExpulso + prefixoSuspenso + prefixoCapitao + prefixoForma + prefixoEstrelas +
+      "<span class=\"nome\">" + prefixoExpulso + prefixoSuspenso + prefixoCapitao + prefixoForma +
         escaparHtml(jogador.nome) + sufixoEstrelaStatus + "</span>" +
       "<span class=\"detalhes\">" +
         jogador.idade + " anos · " + escaparHtml(jogador.nac) + " · " +
@@ -866,15 +864,25 @@ function reencaixarFormacaoEmPartida(novaFormacaoId) {
     novosTitulares[vaga.id] = sobras.splice(indiceEscolhido, 1)[0];
   });
 
-  // Passo 3 — rede de segurança (Validação estrita: sempre 11 titulares): qualquer vaga que
-  // ainda ficou vazia (ex.: elenco incompleto numa posição, ou sobrou vaga sem ninguém pra
-  // encaixar) é preenchida pelo reserva de maior Força disponível no elenco.
+  // Passo 3 — rede de segurança (Validação estrita: sempre até o teto de jogadores em campo):
+  // qualquer vaga que ainda ficou vazia (ex.: elenco incompleto numa posição) é preenchida pelo
+  // reserva de maior Força disponível no elenco — MAS nunca com um jogador expulso nesta
+  // partida (Bugfix — troca de formação com expulsos) e nunca além de `limiteJogadoresEmCampo`
+  // (o time jogando com 1 a menos por expulsão continua com 1 a menos na formação nova; a(s)
+  // vaga(s) que sobrar(em) fica(m) vazia(s) — ver Slots Fixos em `montarLadoCampoDuplo`).
+  const idsExpulsos = new Set(
+    (partidaAtual.jogadoresExpulsos || [])
+      .filter(function (e) { return e.lado === meuLadoNaPartida; })
+      .map(function (e) { return e.idJogador; })
+  );
+  const limiteAtual = partidaAtual.limiteJogadoresEmCampo !== undefined ? partidaAtual.limiteJogadoresEmCampo : 11;
   const idsUsados = new Set(Object.values(novosTitulares));
   const bancoPorForca = estado.timeAtual.jogadores
-    .filter(function (j) { return !idsUsados.has(j._id); })
+    .filter(function (j) { return !idsUsados.has(j._id) && !idsExpulsos.has(j._id); })
     .sort(function (a, b) { return b.forca - a.forca; });
   vagasNovas.forEach(function (vaga) {
     if (novosTitulares[vaga.id] !== undefined) return;
+    if (Object.keys(novosTitulares).length >= limiteAtual) return;
     const proximo = bancoPorForca.shift();
     if (proximo) { novosTitulares[vaga.id] = proximo._id; idsUsados.add(proximo._id); }
   });
@@ -1020,8 +1028,16 @@ function renderizarCampoDuploPartida() {
  */
 function montarLadoCampoDuplo(campoEl, lado) {
   const souEuNesseLado = lado === meuLadoNaPartida;
+  // Slots Fixos (Tratamento de Expulsões): no MEU lado, sempre renderiza TODAS as vagas do
+  // esquema tático atual — mesmo a(s) que ficou(aram) vazia(s) por expulsão — em vez de só as
+  // vagas com jogador (`resolverTitulares` pula vaga sem titular). Isso mantém o buraco tático
+  // visível no campinho, com uma caixa clicável pra reorganizar quem restou em campo.
   const itens = souEuNesseLado
-    ? resolverTitulares(estado.timeAtual.jogadores, estado.formacaoId, estado.titulares)
+    ? obterFormacao(estado.formacaoId).map(function (vaga) {
+        const idJogador = estado.titulares[vaga.id];
+        const jogador = idJogador !== undefined ? encontrarJogadorPorId(estado.timeAtual.jogadores, idJogador) : null;
+        return { vaga: vaga, jogador: jogador };
+      })
     : (lado === "casa" ? timeCasaSimulado : timeForaSimulado).titulares;
 
   // Quem entrou como substituto NESTE lado (só o meu time tem eventos de substituição —
@@ -1038,12 +1054,31 @@ function montarLadoCampoDuplo(campoEl, lado) {
 
     const node = document.createElement(souEuNesseLado ? "button" : "div");
     if (souEuNesseLado) node.type = "button";
+    node.style.left = vaga.x + "%";
+    node.style.top = vaga.y + "%";
+
+    // Caixa vazia de expulsão: a vaga existe no esquema mas ninguém a ocupa agora (jogador
+    // expulso — ver `abrirModalExpulsao`). Clicar nela abre o mesmo seletor de vaga de sempre,
+    // deixando o técnico puxar outro titular em campo pra cobrir o buraco.
+    if (souEuNesseLado && !jogador) {
+      node.type = "button";
+      node.className = "vaga vaga-dupla vaga-minha vaga-expulsao";
+      node.dataset.vagaId = vaga.id;
+      node.innerHTML =
+        "<span class=\"bolinha-wrap\"><span class=\"bolinha bolinha-expulsao\">🟥</span></span>" +
+        "<span class=\"nome-vaga\">Expulso</span>";
+      node.addEventListener("click", function () {
+        if (node.dataset.gestoArrasto === "1") { delete node.dataset.gestoArrasto; return; }
+        abrirSeletorJogador(vaga);
+      });
+      campoEl.appendChild(node);
+      return;
+    }
+
     node.className = "vaga vaga-dupla" + (souEuNesseLado ? " vaga-minha" : " vaga-adversario");
     // Só o MEU lado precisa disso — é por aqui que o drag&drop do Banco (soltar em cima de um
     // titular durante a partida) descobre em qual vaga a substituição deve entrar.
     if (souEuNesseLado) node.dataset.vagaId = vaga.id;
-    node.style.left = vaga.x + "%";
-    node.style.top = vaga.y + "%";
 
     const entrou = idsQueEntraram.has(jogador._id);
     const statusCartao = obterStatusCartaoAoVivo(jogador._id, lado);
@@ -3635,6 +3670,36 @@ function gerarStatsSinteticasTemporada(jogador, nomeTime, divisaoChave, ano) {
   return { gols: gols, assistencias: assistencias, notaMedia: Math.round(notaMedia * 10) / 10, jogos: jogos };
 }
 
+/**
+ * Versão PARCIAL de `gerarStatsSinteticasTemporada` (Sistema de Estrelas durante a temporada):
+ * usa a MESMA semente (determinística — nunca "pisca" de uma consulta pra outra na mesma rodada),
+ * mas escala `gols`/`assistencias`/`jogos` pela fração de rodadas já disputadas, pra os outros
+ * ~19 clubes da divisão não aparecerem com a produção de uma temporada inteira logo na rodada 1.
+ * `notaMedia` NÃO é escalada — não é cumulativa, é a média de desempenho, então usa o valor de
+ * semente direto (mesmo raciocínio de `estado.jogosTemporadaPorJogador`, que também é uma média).
+ */
+function gerarStatsSinteticasParcial(jogador, nomeTime, divisaoChave, ano, rodadasJogadas, totalRodadas) {
+  const cheio = gerarStatsSinteticasTemporada(jogador, nomeTime, divisaoChave, ano);
+  const fracao = totalRodadas > 0 ? clamp(rodadasJogadas / totalRodadas, 0, 1) : 0;
+  return {
+    gols: Math.round(cheio.gols * fracao),
+    assistencias: Math.round(cheio.assistencias * fracao),
+    notaMedia: cheio.notaMedia,
+    jogos: Math.round(cheio.jogos * fracao),
+  };
+}
+
+/** Progresso da temporada numa divisão — quantas rodadas já foram DISPUTADAS (`rodadaAtual` é a
+ *  próxima a jogar) e o total do calendário. Alimenta `gerarStatsSinteticasParcial` (Sistema de
+ *  Estrelas Durante a Temporada) e a tela de Artilharia, pra ambos ficarem proporcionais à rodada
+ *  atual em vez de projetar a temporada inteira desde o início. */
+function obterProgressoRodadaAtual(divisaoChave) {
+  if (!estado.temporada || !estado.temporada[divisaoChave]) return null;
+  const totalRodadas = estado.temporada[divisaoChave].calendario.length;
+  const rodadasJogadas = clamp((estado.temporada.rodadaAtual || 1) - 1, 0, totalRodadas);
+  return { rodadasJogadas: rodadasJogadas, totalRodadas: totalRodadas };
+}
+
 // Vagas por posição pra "eleger" a Seleção do Campeonato (mesmo esquema 4-3-3 da Seleção da Rodada).
 const VAGAS_SELECAO_CAMPEONATO = { GOL: 1, ZAG: 2, "LAT.D": 1, "LAT.E": 1, VOL: 2, MEI: 1, ATA: 1, ATD: 1, ATE: 1 };
 
@@ -3646,7 +3711,7 @@ const VAGAS_SELECAO_CAMPEONATO = { GOL: 1, ZAG: 2, "LAT.D": 1, "LAT.E": 1, VOL: 
  * `jogador` e `nomeTime`, então serve tanto pra só extrair _ids (Sistema de Estrelas) quanto pra
  * exibir uma tabela de verdade (nome, escudo, estrela).
  */
-function montarCandidatosLigaTemporada(dados, divisaoChave, ano) {
+function montarCandidatosLigaTemporada(dados, divisaoChave, ano, progressoParcial) {
   const divisao = dados.divisoes[divisaoChave];
   const meuTimeNome = estado.timeAtual.nome;
   const candidatos = [];
@@ -3665,7 +3730,11 @@ function montarCandidatosLigaTemporada(dados, divisaoChave, ano) {
           notaMedia: notaMedia, jogos: stats.jogos, meu: true,
         });
       } else {
-        const sint = gerarStatsSinteticasTemporada(jogador, time.nome, divisaoChave, ano);
+        // Sistema de Estrelas Durante a Temporada: com `progressoParcial`, os outros ~19 clubes
+        // usam estatística sintética PROPORCIONAL às rodadas já disputadas (não a temporada inteira).
+        const sint = progressoParcial
+          ? gerarStatsSinteticasParcial(jogador, time.nome, divisaoChave, ano, progressoParcial.rodadasJogadas, progressoParcial.totalRodadas)
+          : gerarStatsSinteticasTemporada(jogador, time.nome, divisaoChave, ano);
         candidatos.push({
           jogador: jogador, nomeTime: time.nome, pos: jogador.pos, gols: sint.gols, assistencias: sint.assistencias,
           notaMedia: sint.notaMedia, jogos: sint.jogos, meu: false,
@@ -3682,8 +3751,8 @@ function montarCandidatosLigaTemporada(dados, divisaoChave, ano) {
  * usuário nesta temporada. Devolve só os _ids do MEU time que bateram cada feito — é só isso
  * que o Sistema de Estrelas precisa pra decidir uma promoção.
  */
-function calcularLiderancasDaLiga(dados, divisaoChave, ano) {
-  const candidatos = montarCandidatosLigaTemporada(dados, divisaoChave, ano)
+function calcularLiderancasDaLiga(dados, divisaoChave, ano, progressoParcial) {
+  const candidatos = montarCandidatosLigaTemporada(dados, divisaoChave, ano, progressoParcial)
     .map(function (c) { return Object.assign({}, c, { id: c.meu ? c.jogador._id : null }); });
 
   // Precisa de um mínimo de jogos pra concorrer a um título da liga — evita 1 jogo isolado virar "artilheiro".
@@ -3715,8 +3784,8 @@ function calcularLiderancasDaLiga(dados, divisaoChave, ano) {
  * por `chave` ("gols" ou "assistencias"), com o mínimo de jogos pra entrar no ranking (mesmo
  * critério de `calcularLiderancasDaLiga` — evita 1 jogo isolado virar "artilheiro").
  */
-function montarRankingArtilharia(dados, divisaoChave, ano, chave, limite) {
-  return montarCandidatosLigaTemporada(dados, divisaoChave, ano)
+function montarRankingArtilharia(dados, divisaoChave, ano, chave, limite, progressoParcial) {
+  return montarCandidatosLigaTemporada(dados, divisaoChave, ano, progressoParcial)
     .filter(function (c) { return c.jogos >= 5; })
     .sort(function (a, b) { return b[chave] - a[chave] || b.notaMedia - a.notaMedia; })
     .slice(0, limite || 15);
@@ -3729,13 +3798,17 @@ function montarRankingArtilharia(dados, divisaoChave, ano, chave, limite) {
  * Campeonato >8.5) vale pra qualquer jogador; Prateada só nasce em jovem (<22 anos) com nota
  * média ≥7.1 ou líder de assistências; Easter Egg aos 21 anos estende o prazo até os 23.
  */
-async function atualizarEstrelasDeTemporada() {
+async function atualizarEstrelasDeTemporada(parcial) {
   if (!estado.timeAtual || !estado.statsTemporadaAtualPorJogador) return;
   estado.estrelasPorJogador = estado.estrelasPorJogador || {};
   estado.prateadaLimiteIdadePorJogador = estado.prateadaLimiteIdadePorJogador || {};
 
   const dados = await carregarDados();
-  const liderancas = calcularLiderancasDaLiga(dados, estado.timeAtual.divisaoChave, estado.temporada.ano);
+  // Sistema de Estrelas Durante a Temporada: `parcial` faz os outros ~19 clubes da divisão usarem
+  // estatística sintética proporcional às rodadas já disputadas, em vez de projetar a temporada
+  // inteira já na rodada 1 — assim promoções mid-season refletem a liderança REAL até aqui.
+  const progressoParcial = parcial ? obterProgressoRodadaAtual(estado.timeAtual.divisaoChave) : null;
+  const liderancas = calcularLiderancasDaLiga(dados, estado.timeAtual.divisaoChave, estado.temporada.ano, progressoParcial);
 
   const promovidosDourada = [];
   const promovidosPrateada = [];
@@ -3767,8 +3840,11 @@ async function atualizarEstrelasDeTemporada() {
         promovidosDourada.push(jogador.nome);
         return;
       }
+      // Expiração da Prateada só vale numa chamada de FIM de temporada de verdade — nunca no meio
+      // do campeonato (a idade só muda na evolução de fim de temporada, que roda depois desta
+      // função, então isso é defensivo, mas evita qualquer expiração precoce por engano).
       const limiteIdade = estado.prateadaLimiteIdadePorJogador[idJogador] || 22;
-      if (idade >= limiteIdade && notaMedia < 6.8) {
+      if (!parcial && idade >= limiteIdade && notaMedia < 6.8) {
         delete estado.estrelasPorJogador[idJogador];
         delete estado.prateadaLimiteIdadePorJogador[idJogador];
         expirados.push(jogador.nome);
@@ -4313,6 +4389,10 @@ async function concluirRodadaOficial() {
       partidasRodada = [];
       return;
     }
+  } else {
+    // Sistema de Estrelas Durante a Temporada: recalcula Dourada/Prateada a cada rodada (não só no
+    // fim da temporada), pra jogadores em destaque já aparecerem com a estrela em campo/banco.
+    await atualizarEstrelasDeTemporada(true);
   }
 
   partidaAtual = null;
@@ -4900,7 +4980,6 @@ function renderizarMercado() {
 
   itens.forEach(function (item) {
     const jogador = item.jogador;
-    const estrelas = calcularEstrelasPotencial(jogador);
     // Exibição Global do Sistema de Estrelas: jogador do Mercado nunca é do meu elenco
     // (`listarJogadoresMercado` já exclui meu clube), então só a Estrela emblemática (por nome,
     // segura globalmente) pode aparecer aqui — nunca a dinâmica de `estado.estrelasPorJogador`.
@@ -4914,8 +4993,7 @@ function renderizarMercado() {
     li.innerHTML =
       "<span class=\"pos\">" + escaparHtml(jogador.pos) + "</span>" +
       "<span class=\"info-contrato\">" +
-        "<span class=\"nome-contrato\">" + escaparHtml(jogador.nome) + marcadorEstrela +
-          (estrelas > 0 ? " " + "⭐".repeat(estrelas) : "") + "</span>" +
+        "<span class=\"nome-contrato\">" + escaparHtml(jogador.nome) + marcadorEstrela + "</span>" +
         "<span class=\"detalhes-contrato\">" + escaparHtml(item.nomeTime) + " · " + jogador.idade + " anos · " + formatarForcaMercado(item) +
           " · " + formatarReais(item.preco) +
         "</span>" +
@@ -5816,7 +5894,7 @@ function gerarJovemDaBase() {
 
   const estrelas = calcularEstrelasPotencial(jovem);
   let mensagem = "A base revelou um talento! " + jovem.nome + " (" + jovem.pos + ", força " + jovem.forca + ", " + jovem.idade + " anos" +
-    (estrelas > 0 ? ", " + "⭐".repeat(estrelas) : "") + ") chegou de graça ao elenco.";
+    (estrelas >= 4 ? ", grande potencial!" : "") + ") chegou de graça ao elenco.";
 
   // Joia com bastante potencial já nasce com boom de vendas de camisas (Fase 21).
   const vendaCamisas = calcularVendaCamisasRevelacaoBase(estrelas);
@@ -6286,7 +6364,10 @@ function renderizarArtilharia() {
   document.getElementById("aba-artilheiros").classList.toggle("ativa", chave === "gols");
   document.getElementById("aba-assistencias").classList.toggle("ativa", chave === "assistencias");
 
-  const ranking = montarRankingArtilharia(dadosArtilhariaCache, divisaoArtilhariaAtual, estado.temporada.ano, chave, 15);
+  // Números proporcionais à rodada atual (Sistema de Estrelas Durante a Temporada) — os outros
+  // ~19 clubes da divisão não aparecem com a produção de uma temporada inteira logo de cara.
+  const progressoParcial = obterProgressoRodadaAtual(divisaoArtilhariaAtual);
+  const ranking = montarRankingArtilharia(dadosArtilhariaCache, divisaoArtilhariaAtual, estado.temporada.ano, chave, 15, progressoParcial);
 
   corpoEl.innerHTML = "";
   if (ranking.length === 0) {
@@ -7324,6 +7405,9 @@ function ligarBotoes() {
 
   const btnVerTabela = document.getElementById("btn-ver-tabela");
   if (btnVerTabela) btnVerTabela.addEventListener("click", abrirTelaTabela);
+
+  const btnVerTabelaPosRodada = document.getElementById("btn-ver-tabela-pos-rodada");
+  if (btnVerTabelaPosRodada) btnVerTabelaPosRodada.addEventListener("click", abrirTelaTabela);
 
   const btnVerSelecaoRodada = document.getElementById("btn-ver-selecao-rodada");
   if (btnVerSelecaoRodada) btnVerSelecaoRodada.addEventListener("click", abrirTelaSelecaoRodada);

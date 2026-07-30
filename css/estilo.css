@@ -422,14 +422,8 @@ body::before {
 }
 
 /* ============================================================
-   Evolução — estrelas de potencial e energia (Fase 7)
+   Evolução — energia (Fase 7)
    ============================================================ */
-
-.estrelas-potencial {
-  color: var(--amarelo);
-  font-size: 10px;
-  letter-spacing: -1px;
-}
 
 .item-jogador .energia {
   flex-shrink: 0;
@@ -1142,6 +1136,29 @@ body::before {
   background: rgba(255, 255, 255, 0.15);
   color: var(--cinza-texto);
   border-style: dashed;
+}
+
+/* Caixa/Slot Vazio de Expulsão (Tratamento de Expulsões): a vaga do esquema tático continua
+   visível no campinho duplo mesmo sem ninguém ocupando — clicável pra reorganizar o time. */
+.vaga.vaga-expulsao {
+  opacity: 0.85;
+}
+
+.vaga.vaga-expulsao .bolinha-expulsao {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  border: 2px dashed rgba(255, 90, 90, 0.7);
+  background: rgba(255, 90, 90, 0.12);
+  font-size: 15px;
+}
+
+.vaga.vaga-expulsao .nome-vaga {
+  color: #ff8f8f;
+  font-size: 10px;
 }
 
 /* Tap-to-swap: 1ª seleção armada, esperando o 2º toque pra trocar. */
@@ -2672,6 +2689,30 @@ body::before {
   font-size: 14px;
   font-weight: 800;
   color: #7ee0a5;
+  margin: 0;
+}
+
+.cabecalho-relatorio-rodada {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.btn-ver-tabela-rodada {
+  flex-shrink: 0;
+  background: rgba(61, 220, 122, 0.18);
+  border: 1px solid rgba(61, 220, 122, 0.5);
+  border-radius: 999px;
+  color: #7ee0a5;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 6px 10px;
+  white-space: nowrap;
+}
+
+.btn-ver-tabela-rodada:active {
+  transform: scale(0.96);
 }
 
 .secao-relatorio-temporada h3 {
