@@ -1146,6 +1146,25 @@ body::before {
   pointer-events: none;
 }
 
+/* Player Node do campinho — Selo de Fase (bolinha de forma + seta direcional) sobreposto no
+   canto superior direito externo do círculo de posição. */
+.fase-badge-vaga {
+  position: absolute;
+  top: -4px;
+  right: -12px;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  font-size: 10px;
+  line-height: 1;
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.8));
+  pointer-events: none;
+}
+
+.fase-badge-dot {
+  font-size: 8px;
+}
+
 .vaga.vazia .bolinha {
   background: rgba(255, 255, 255, 0.15);
   color: var(--cinza-texto);

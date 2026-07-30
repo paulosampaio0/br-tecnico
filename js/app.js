@@ -621,8 +621,8 @@ function abrirFormJogador(jogador) {
   document.getElementById("form-jogador-carac1").value = jogador && jogador.caracteristica_1 ? jogador.caracteristica_1 : "";
   document.getElementById("form-jogador-carac2").value = jogador && jogador.caracteristica_2 ? jogador.caracteristica_2 : "";
   document.getElementById("form-jogador-titular").checked = !!(jogador && jogador.tituloEditor);
-  document.getElementById("form-jogador-estrela").checked = !!(jogador && jogador.estrelaEditor);
-  document.getElementById("form-jogador-top-mundial").checked = !!(jogador && jogador.topMundialEditor);
+  document.getElementById("form-jogador-estrela").checked = !!(jogador && jogador.estrelaPrataEditor);
+  document.getElementById("form-jogador-top-mundial").checked = !!(jogador && jogador.estrelaDouradaEditor);
 
   document.getElementById("sobreposicao-form-jogador").hidden = false;
 }
@@ -665,8 +665,8 @@ function salvarFormJogador(evento) {
     caracteristica_1: carac1,
     caracteristica_2: carac2,
     tituloEditor: document.getElementById("form-jogador-titular").checked,
-    estrelaEditor: document.getElementById("form-jogador-estrela").checked,
-    topMundialEditor: document.getElementById("form-jogador-top-mundial").checked,
+    estrelaPrataEditor: document.getElementById("form-jogador-estrela").checked,
+    estrelaDouradaEditor: document.getElementById("form-jogador-top-mundial").checked,
   };
 
   if (jogadorEmEdicaoForm) {
@@ -1204,11 +1204,11 @@ function renderizarCampo() {
       "<span class=\"bolinha-wrap\">" +
         "<span class=\"bolinha" + (jogador ? " " + classeSetorPosicao(jogador.pos) : "") + "\">" + vaga.rotulo + "</span>" +
         (jogador ? montarIndicadoresSetas(vaga, jogador) : "") +
-        (jogador ? montarEstrelaBadgeVaga(jogador) : "") +
+        (jogador ? montarFaseBadgeVaga(jogador._id) : "") +
       "</span>" +
       "<span class=\"nome-vaga\">" +
         (jogador && estado.capitaoId === jogador._id ? "<span class=\"tag-capitao-campo\" title=\"Capitão\">©</span>" : "") +
-        (jogador ? montarForcaNomeCurto(jogador, true, true) : "Vazio") +
+        (jogador ? montarForcaNomeCurto(jogador, true, false, true) : "Vazio") +
       "</span>" +
       (jogador ? montarBarraEnergiaOverlay(obterEnergiaJogador(jogador._id)) : "") +
       (jogador ? montarTraitsVaga(jogador) : "");
@@ -1962,7 +1962,13 @@ function obterEstrelaJogador(jogador) {
   if (!jogador) return null;
   const emblematica = obterEstrelaEmblematica(jogador.nome);
   if (emblematica === "dourada") return "dourada";
-  return (estado.estrelasPorJogador && estado.estrelasPorJogador[jogador._id]) || emblematica;
+  // Baseline definida à mão no Editor de Times (`estrelaDouradaEditor`/`estrelaPrataEditor`) — vale
+  // como piso, igual à emblemática, e nunca é rebaixada pela dinâmica da temporada (`estrelasPorJogador`).
+  if (jogador.estrelaDouradaEditor) return "dourada";
+  const dinamica = estado.estrelasPorJogador && estado.estrelasPorJogador[jogador._id];
+  if (dinamica === "dourada") return "dourada";
+  if (jogador.estrelaPrataEditor) return dinamica || "prateada";
+  return dinamica || emblematica || null;
 }
 
 /** Seta de Fase (forma recente) — "alta" | "neutra" | "baixa"; "neutra" se nunca foi calculada. */
@@ -2004,13 +2010,26 @@ function obterEstrelaJogadorParaEvento(jogador) {
  * como um selo sobreposto no canto do círculo de posição (`montarEstrelaBadgeVaga`), não mais
  * junto do nome — passar `true` evita a estrela aparecer duplicada nesses nós.
  */
-function montarForcaNomeCurto(jogador, ehMeuJogador, omitirEstrela) {
+function montarForcaNomeCurto(jogador, ehMeuJogador, omitirEstrela, omitirForma) {
   const souMeu = ehMeuJogador !== false;
-  const marcadorForma = souMeu ? (MARCADOR_FORMA_COMPACTO[obterFormaJogador(jogador._id)] || "") : "";
+  const marcadorForma = (souMeu && !omitirForma) ? (MARCADOR_FORMA_COMPACTO[obterFormaJogador(jogador._id)] || "") : "";
   const estrela = souMeu ? obterEstrelaJogador(jogador) : obterEstrelaEmblematica(jogador.nome);
   const marcadorEstrela = omitirEstrela ? "" : (MARCADOR_ESTRELA_COMPACTO[estrela] || "");
   return "<span class=\"forca-compacto\">" + jogador.forca + "</span>" + marcadorForma + " " +
     escaparHtml(sobrenomeCurto(jogador.nome)) + marcadorEstrela;
+}
+
+/** Selo de Fase (Sistema de Estrelas) sobreposto no canto superior direito do círculo de posição —
+ *  Player Node do campinho: bolinha colorida (🟢 boa fase / 🔴 má fase) + seta (⬆️/⬇️). */
+function montarFaseBadgeVaga(idJogador) {
+  const forma = obterFormaJogador(idJogador);
+  if (forma === "neutra") return "";
+  const dot = forma === "alta" ? "🟢" : "🔴";
+  const seta = forma === "alta" ? "⬆️" : "⬇️";
+  const rotulo = forma === "alta" ? "Em alta" : "Em baixa";
+  return "<span class=\"fase-badge-vaga\" title=\"" + rotulo + "\">" +
+    "<span class=\"fase-badge-dot\">" + dot + "</span>" + seta +
+  "</span>";
 }
 
 /** Selo da Estrela Dourada/Prateada sobreposto no canto do círculo de posição — Player Node do
@@ -2123,9 +2142,9 @@ function criarNodeCompactoJogador(jogador, origem) {
     tagCapitao + tagSuspenso + tagSaiu +
     "<span class=\"avatar-compacto-wrap\">" +
       "<span class=\"avatar-compacto-jogador " + classeSetorPosicao(jogador.pos) + "\">" + escaparHtml(jogador.pos) + "</span>" +
-      montarEstrelaBadgeVaga(jogador) +
+      montarFaseBadgeVaga(jogador._id) +
     "</span>" +
-    "<span class=\"forca-nome-compacto\">" + montarForcaNomeCurto(jogador, true, true) + "</span>" +
+    "<span class=\"forca-nome-compacto\">" + montarForcaNomeCurto(jogador, true, false, true) + "</span>" +
     montarBarraEnergiaOverlay(energia) +
     montarTraitsVaga(jogador);
 
@@ -2661,10 +2680,11 @@ function calcularTimeSimuladoUsuario() {
     if (forma === "alta") forcaAjustada *= 1.10;
     else if (forma === "baixa") forcaAjustada *= 0.90;
 
-    // Estrela Dourada (+5 de força direta) / Estrela Prateada (Mentoria, +10% com craque em campo).
+    // Bônus de Força (rompe o teto de 48 base): Estrela Dourada +6 / Estrela Prateada +3 de
+    // Força Efetiva, sempre — não depende de ter outro craque em campo.
     const estrela = obterEstrelaJogador(item.jogador);
-    if (estrela === "dourada") forcaAjustada += 5;
-    else if (estrela === "prateada" && existeDouradaTitular) forcaAjustada *= 1.10;
+    if (estrela === "dourada") forcaAjustada += 6;
+    else if (estrela === "prateada") forcaAjustada += 3;
 
     const jogadorAjustado = Object.assign({}, item.jogador, { forca: forcaAjustada });
     // Correção de bug crítica: faltava repassar `eficiencia` (Correção de bug — 2026-07-25, eficiência
@@ -4131,7 +4151,9 @@ async function atualizarEstrelasDeTemporada(parcial) {
     if (estrelaAtual === "dourada") return; // craque consagrado não perde a estrela por 1 temporada ruim
 
     if (estrelaAtual === "prateada") {
-      if (feitoPromocaoDePrateada) {
+      // Restrição do Sistema de Estrelas: NENHUM jogador ganha Estrela Dourada durante a
+      // temporada regular (`parcial` = recálculo de rodada) — só na virada de temporada.
+      if (feitoPromocaoDePrateada && !parcial) {
         estado.estrelasPorJogador[idJogador] = "dourada";
         delete estado.prateadaLimiteIdadePorJogador[idJogador];
         promovidosDourada.push(jogador.nome);
@@ -4149,10 +4171,19 @@ async function atualizarEstrelasDeTemporada(parcial) {
       return;
     }
 
-    // Sem estrela ainda: só artilheiro/maior nota da liga/Seleção >8.5 promovem direto pra Dourada.
-    if (feitoDouradaDireto) {
+    // Sem estrela ainda: só artilheiro/maior nota da liga/Seleção >8.5 promovem direto pra Dourada
+    // — mas nunca no meio da temporada (`parcial`), só na virada de temporada.
+    if (feitoDouradaDireto && !parcial) {
       estado.estrelasPorJogador[idJogador] = "dourada";
       promovidosDourada.push(jogador.nome);
+      return;
+    }
+    // Durante a temporada, o feito que daria Dourada direto ainda rende a Prateada (reconhecimento
+    // imediato do destaque, sem furar a regra de Dourada só no fim de temporada).
+    if (feitoDouradaDireto && parcial) {
+      estado.estrelasPorJogador[idJogador] = "prateada";
+      estado.prateadaLimiteIdadePorJogador[idJogador] = idade === 21 ? 23 : 22;
+      promovidosPrateada.push(jogador.nome);
       return;
     }
 
