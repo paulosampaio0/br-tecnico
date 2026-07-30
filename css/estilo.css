@@ -616,6 +616,7 @@ body::before {
 /* Menu principal horizontal, com rolagem suave e sem barra de rolagem visível */
 .hub-nav {
   display: flex;
+  justify-content: space-evenly;
   gap: 8px;
   overflow-x: auto;
   scrollbar-width: none;
@@ -761,6 +762,26 @@ body::before {
 
 .relatorio-adversario-linha strong {
   color: var(--branco);
+}
+
+.relatorio-adversario-dica-linha {
+  color: var(--amarelo);
+  font-style: italic;
+}
+
+.relatorio-adversario-clicavel {
+  cursor: pointer;
+  text-decoration: underline dotted;
+  text-underline-offset: 3px;
+}
+
+.relatorio-adversario-clicavel:active {
+  opacity: 0.7;
+}
+
+.relatorio-adversario-pos {
+  color: var(--cinza-texto);
+  font-weight: 400;
 }
 
 .titulo-secao-escalacao {
@@ -971,6 +992,13 @@ body::before {
 
 .campo-selecao-rodada {
   aspect-ratio: 3 / 4.6;
+}
+
+.aviso-selecao-rodada {
+  text-align: center;
+  color: var(--cinza-texto);
+  font-size: 14px;
+  padding: 40px 20px;
 }
 
 .no-selecao-rodada {

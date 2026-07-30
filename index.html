@@ -170,13 +170,7 @@
     <button class="btn-voltar-partida" id="btn-voltar-partida" type="button" hidden>Voltar pro jogo ▶</button>
 
     <nav class="hub-nav" id="hub-nav" aria-label="Navegação principal">
-      <button class="hub-nav-item ativo" id="hub-nav-rodada" type="button">
-        <span class="hub-nav-icone" aria-hidden="true"><svg class="icone-svg" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M12 7l3.8 2.8-1.5 4.4h-4.6L8.2 9.8 12 7z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><path d="M12 3v4M12 17v4M4 9l3.5 1.3M20 9l-3.5 1.3M4 15l3.5-1.3M20 15l-3.5-1.3" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg></span><span>Rodada</span>
-      </button>
-      <button class="hub-nav-item" id="btn-voltar-elenco-escalacao" type="button">
-        <span class="hub-nav-icone" aria-hidden="true"><svg class="icone-svg" viewBox="0 0 24 24"><circle cx="8.5" cy="8" r="3" fill="none" stroke="currentColor" stroke-width="1.8"/><circle cx="16" cy="9" r="2.4" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M3.5 19c0-3 2.2-5 5-5s5 2 5 5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><path d="M14.5 19c0-2.3 1.4-4.1 3.5-4.6" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg></span><span>Elenco</span>
-      </button>
-      <button class="hub-nav-item" id="btn-ver-selecao-rodada" type="button">
+      <button class="hub-nav-item ativo" id="btn-ver-selecao-rodada" type="button">
         <span class="hub-nav-icone" aria-hidden="true"><svg class="icone-svg" viewBox="0 0 24 24"><path d="M12 3.5l2.6 5.4 5.9.8-4.3 4.2 1 5.9-5.2-2.8-5.2 2.8 1-5.9-4.3-4.2 5.9-.8L12 3.5z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg></span><span>Seleção</span>
       </button>
       <button class="hub-nav-item" id="btn-ver-tabela" type="button">
@@ -193,9 +187,6 @@
       </button>
       <button class="hub-nav-item" id="btn-ver-infraestrutura" type="button">
         <span class="hub-nav-icone" aria-hidden="true"><svg class="icone-svg" viewBox="0 0 24 24"><ellipse cx="12" cy="12" rx="9" ry="6" fill="none" stroke="currentColor" stroke-width="1.7"/><ellipse cx="12" cy="12" rx="4" ry="2.6" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M3.3 9.5v5M20.7 9.5v5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg></span><span>Infra</span>
-      </button>
-      <button class="hub-nav-item" id="btn-ver-dashboard" type="button">
-        <span class="hub-nav-icone" aria-hidden="true"><svg class="icone-svg" viewBox="0 0 24 24"><path d="M4 19V9M9.5 19V5M15 19v-7M20.5 19V11" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/><line x1="3" y1="20.5" x2="21" y2="20.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg></span><span>Dashboard</span>
       </button>
       <button class="hub-nav-item" id="btn-ver-financas" type="button">
         <span class="hub-nav-icone" aria-hidden="true"><svg class="icone-svg" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M9 15c0 1.4 1.3 2.2 3 2.2s3-.8 3-2c0-1.3-1-1.8-3-2.2-2-.4-3-.9-3-2.2 0-1.2 1.3-2 3-2s3 .8 3 2" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><line x1="12" y1="6.3" x2="12" y2="7.6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><line x1="12" y1="16.4" x2="12" y2="17.7" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg></span><span>Finanças</span>
@@ -219,6 +210,7 @@
     <section class="cartao-relatorio-adversario" id="cartao-relatorio-adversario" hidden>
       <h3>🔍 Relatório do Auxiliar Técnico</h3>
       <p class="relatorio-adversario-linha"><strong>Esquema e estilo:</strong> <span id="relatorio-adversario-esquema">—</span></p>
+      <p class="relatorio-adversario-linha relatorio-adversario-dica-linha">💡 <span id="relatorio-adversario-dica">—</span></p>
       <p class="relatorio-adversario-linha"><strong>Jogador mais perigoso:</strong> <span id="relatorio-adversario-perigoso">—</span></p>
       <p class="relatorio-adversario-linha"><strong>Brecha tática:</strong> <span id="relatorio-adversario-fraqueza">—</span></p>
     </section>
@@ -356,6 +348,8 @@
         <select id="select-rodada-selecao-rodada"></select>
       </div>
     </div>
+
+    <p class="aviso-selecao-rodada" id="aviso-selecao-rodada" hidden>A Seleção da Rodada estará disponível após a conclusão dos jogos.</p>
 
     <div class="campo campo-selecao-rodada" id="campo-selecao-rodada"></div>
 

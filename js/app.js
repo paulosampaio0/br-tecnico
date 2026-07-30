@@ -95,9 +95,10 @@ let auxiliarEstado = {
   rotuloAcaoAtual: null, ultimaChaveExibida: null, timeoutBadge: null,
 };
 
-// Tap-to-swap (Gestão de elenco: banco/não relacionados) — guarda a 1ª seleção enquanto o
-// técnico não toca no 2º jogador. { tipo: "titular", vagaId } | { tipo: "banco"|"naoRelacionado", idJogador }.
-let selecaoTrocaAtual = null;
+// Substituição direta por clique (Gestão de elenco: banco/não relacionados) — guarda quem foi
+// clicado no Banco/Não Relacionados enquanto o seletor de vaga de destino está aberto.
+// { tipo: "banco"|"naoRelacionado", idJogador }.
+let origemEmEdicaoParaEntrar = null;
 
 // Navegação da tela de tabela (Fase 6).
 let divisaoTabelaAtual = "serie_a";
@@ -946,18 +947,14 @@ function renderizarCampo() {
       "</span>" +
       (jogador ? montarBarraEnergiaVaga(jogador) : "");
 
-    if (selecaoTrocaAtual && selecaoTrocaAtual.tipo === "titular" && selecaoTrocaAtual.vagaId === vaga.id) {
-      botao.classList.add("selecionado-troca");
-    }
-
     botao.addEventListener("click", function () {
       // Um arrasto de verdade que acabou de acontecer NESTE botão não deve
-      // também contar como toque de seleção (senão os dois gestos se confundem).
+      // também abrir o seletor (senão os dois gestos se confundem).
       if (botao.dataset.gestoArrasto === "1") {
         delete botao.dataset.gestoArrasto;
         return;
       }
-      alternarSelecaoTroca({ tipo: "titular", vagaId: vaga.id }, botao);
+      abrirSeletorJogador(vaga);
     });
 
     // Formação Personalizada: arrastar reposiciona o jogador livre no campo, em vez de
@@ -1809,12 +1806,13 @@ function criarNodeCompactoJogador(jogador, origem) {
 
   botao.addEventListener("click", function () {
     // Um arrasto de verdade que acabou de acontecer NESTE botão não deve
-    // também contar como toque de seleção (senão os dois gestos se confundem).
+    // também abrir o seletor (senão os dois gestos se confundem).
     if (botao.dataset.gestoArrasto === "1") {
       delete botao.dataset.gestoArrasto;
       return;
     }
-    alternarSelecaoTroca({ tipo: origem.tipo, idJogador: jogador._id }, botao);
+    if (botao.disabled) return;
+    abrirSeletorDeVagaParaJogador(jogador, origem.tipo);
   });
 
   anexarArrastoOrigemCompacta(botao, jogador, origem);
@@ -1844,7 +1842,6 @@ function renderizarBanco() {
   }
 
   renderizarNaoRelacionados();
-  reaplicarSelecaoTrocaVisual();
 }
 
 /**
@@ -1878,40 +1875,61 @@ function renderizarNaoRelacionados() {
   });
 }
 
-/** Depois de qualquer redesenho do banco/não relacionados, reaplica o destaque de quem já
-    estava selecionado pro tap-to-swap (senão o redesenho apagaria a borda mesmo com a
-    seleção ainda "armada" esperando o segundo toque). */
-function reaplicarSelecaoTrocaVisual() {
-  if (!selecaoTrocaAtual || selecaoTrocaAtual.tipo === "titular") return;
-  const el = document.querySelector("[data-id-jogador=\"" + selecaoTrocaAtual.idJogador + "\"]");
-  if (el) el.classList.add("selecionado-troca");
-}
-
-function mesmaSelecaoTroca(a, b) {
-  if (a.tipo !== b.tipo) return false;
-  return a.tipo === "titular" ? a.vagaId === b.vagaId : a.idJogador === b.idJogador;
-}
-
 /**
- * Tap-to-swap: 1º toque arma a seleção (destaca a borda); tocar de novo no mesmo jogador
- * cancela; tocar num jogador DIFERENTE executa a troca na hora — ver `executarTrocaSelecionados`.
+ * Substituição direta por clique (Tarefa 3): ao tocar num jogador do Banco/Não Relacionados,
+ * abre na hora a lista de vagas do time (a do seu setor primeiro) pra colocá-lo em campo —
+ * substitui o antigo "tocar em dois jogadores para trocá-los". Reaproveita o mesmo bottom
+ * sheet do seletor de vaga (`#sobreposicao-seletor`) e o motor de troca (`executarTrocaSelecionados`),
+ * só que partindo do JOGADOR em vez da VAGA.
  */
-function alternarSelecaoTroca(descritor, elemento) {
-  if (!selecaoTrocaAtual) {
-    selecaoTrocaAtual = descritor;
-    if (elemento) elemento.classList.add("selecionado-troca");
-    return;
+function abrirSeletorDeVagaParaJogador(jogador, origemTipo) {
+  origemEmEdicaoParaEntrar = { tipo: origemTipo, idJogador: jogador._id };
+  vagaEmEdicao = null;
+
+  document.getElementById("titulo-seletor").textContent = "Colocar em campo: " + jogador.nome;
+
+  const listaEl = document.getElementById("lista-seletor");
+  listaEl.innerHTML = "";
+
+  if (origemTipo === "naoRelacionado") {
+    const itemBanco = document.createElement("li");
+    itemBanco.className = "item-jogador selecionavel item-vazio";
+    itemBanco.textContent = "📋 Colocar no Banco de Reservas";
+    itemBanco.addEventListener("click", function () {
+      moverNaoRelacionadoParaBancoLivre(jogador._id);
+      fecharSeletorJogador();
+    });
+    listaEl.appendChild(itemBanco);
   }
 
-  if (mesmaSelecaoTroca(selecaoTrocaAtual, descritor)) {
-    selecaoTrocaAtual = null;
-    if (elemento) elemento.classList.remove("selecionado-troca");
-    return;
+  function criarItemVagaDestino(vaga) {
+    const idOcupante = estado.titulares[vaga.id];
+    const ocupante = idOcupante !== undefined ? encontrarJogadorPorId(estado.timeAtual.jogadores, idOcupante) : null;
+    const item = document.createElement("li");
+    item.className = "item-jogador selecionavel";
+    item.innerHTML =
+      "<span class=\"pilula-pos-forca\">" + escaparHtml(vaga.rotulo) + "</span>" +
+      "<span class=\"forca-nome-compacto\">" + (ocupante ? montarForcaNomeCurto(ocupante) : "— Vaga vazia —") + "</span>";
+    item.addEventListener("click", function () {
+      executarTrocaSelecionados(origemEmEdicaoParaEntrar, { tipo: "titular", vagaId: vaga.id });
+      fecharSeletorJogador();
+    });
+    return item;
   }
 
-  const primeiraSelecao = selecaoTrocaAtual;
-  selecaoTrocaAtual = null;
-  executarTrocaSelecionados(primeiraSelecao, descritor);
+  const vagas = obterFormacao(estado.formacaoId);
+  const combinaveis = vagas.filter(function (v) { return v.pos === jogador.pos; });
+  const idsCombinaveis = new Set(combinaveis.map(function (v) { return v.id; }));
+  const outras = vagas.filter(function (v) { return !idsCombinaveis.has(v.id); });
+
+  if (combinaveis.length > 0) {
+    listaEl.appendChild(criarSeparador("Vagas de " + jogador.pos));
+    combinaveis.forEach(function (v) { listaEl.appendChild(criarItemVagaDestino(v)); });
+  }
+  listaEl.appendChild(criarSeparador("Outras vagas do time"));
+  outras.forEach(function (v) { listaEl.appendChild(criarItemVagaDestino(v)); });
+
+  document.getElementById("sobreposicao-seletor").hidden = false;
 }
 
 /**
@@ -2070,7 +2088,7 @@ function resolverDropJogador(origem, jogador, clientX, clientY) {
 function anexarArrastoOrigemCompacta(botao, jogador, origem) {
   // O Banco agora rola na VERTICAL (coluna lateral estreita) — o gesto de arrasto usava
   // justamente o movimento vertical pra virar "arrasto de verdade", o que travava o scroll
-  // nativo da lista em celulares. Banco usa só tap-to-swap (`alternarSelecaoTroca`); o
+  // nativo da lista em celulares. Banco usa só clique direto (`abrirSeletorDeVagaParaJogador`); o
   // arrasto continua disponível pra Não Relacionados, cujo carrossel é horizontal.
   if (origem.tipo === "banco") return;
 
@@ -3968,35 +3986,82 @@ async function atualizarRelatorioAdversario() {
   const titulares = resolverTitulares(oponenteInfo.jogadores, "4-4-2a", titularesMap);
 
   const porSetor = { defesa: [], meio: [], ataque: [] };
+  const porSetorDetalhado = { zaga: [], laterais: [] };
   titulares.forEach(function (item) {
     const setor = SETOR_POR_POSICAO[item.vaga.pos];
     if (setor) porSetor[setor].push(item.jogador.forca);
+    if (item.vaga.pos === "ZAG") porSetorDetalhado.zaga.push(item.jogador.forca);
+    if (item.vaga.pos === "LAT.D" || item.vaga.pos === "LAT.E") porSetorDetalhado.laterais.push(item.jogador.forca);
   });
   const mediaSetor = {};
   Object.keys(porSetor).forEach(function (s) {
     mediaSetor[s] = porSetor[s].length ? porSetor[s].reduce(function (a, b) { return a + b; }, 0) / porSetor[s].length : 0;
   });
 
+  const nomeFormacaoAdv = (INFO_FORMACOES["4-4-2a"] && INFO_FORMACOES["4-4-2a"].nome) || "4-4-2";
+  const contagemSetor = { defesa: 0, meio: 0, ataque: 0 };
+  titulares.forEach(function (item) {
+    const setor = SETOR_POR_POSICAO[item.vaga.pos];
+    if (setor) contagemSetor[setor]++;
+  });
+
   let estiloTexto;
-  if (mediaSetor.ataque - mediaSetor.defesa >= 2) estiloTexto = "4-4-2, time ofensivo — investe forte no ataque.";
-  else if (mediaSetor.defesa - mediaSetor.ataque >= 2) estiloTexto = "4-4-2, time retranqueiro — prioriza a marcação.";
-  else estiloTexto = "4-4-2, time equilibrado entre ataque e defesa.";
+  let dicaTexto;
+  if (mediaSetor.ataque - mediaSetor.defesa >= 2) {
+    estiloTexto = nomeFormacaoAdv + ", time ofensivo — investe forte no ataque.";
+    dicaTexto = "Adversário muito ofensivo; fortifique a defesa e os volantes para reverter.";
+  } else if (mediaSetor.defesa - mediaSetor.ataque >= 2) {
+    estiloTexto = nomeFormacaoAdv + ", time retranqueiro — prioriza a marcação.";
+    dicaTexto = "Adversário retranqueiro; aposte em bola parada e finalizações de fora da área para furar a marcação.";
+  } else if (contagemSetor.meio >= 5) {
+    estiloTexto = nomeFormacaoAdv + ", time equilibrado, com o meio-campo bem populado.";
+    dicaTexto = "O adversário está populando o meio-campo. Recomendamos uma formação com mais jogadores nas pontas/ataque para superá-los.";
+  } else {
+    estiloTexto = nomeFormacaoAdv + ", time equilibrado entre ataque e defesa.";
+    dicaTexto = "Sem desequilíbrios claros no rival — jogue seu estilo normal e aproveite as brechas individuais.";
+  }
   document.getElementById("relatorio-adversario-esquema").textContent = estiloTexto;
+  document.getElementById("relatorio-adversario-dica").textContent = dicaTexto;
 
   const maisPerigoso = titulares
     .filter(function (item) { return ["ATA", "ATD", "ATE", "MEI"].indexOf(item.vaga.pos) !== -1; })
     .sort(function (a, b) { return b.jogador.forca - a.jogador.forca; })[0];
-  document.getElementById("relatorio-adversario-perigoso").textContent = maisPerigoso
-    ? maisPerigoso.jogador.nome + " (" + maisPerigoso.vaga.pos + ")" : "—";
+  const elPerigoso = document.getElementById("relatorio-adversario-perigoso");
+  if (maisPerigoso) {
+    elPerigoso.innerHTML = montarForcaNomeCurto(maisPerigoso.jogador, false) +
+      " <span class=\"relatorio-adversario-pos\">(" + maisPerigoso.vaga.pos + ")</span>";
+    elPerigoso.classList.add("relatorio-adversario-clicavel");
+    elPerigoso.onclick = function () {
+      abrirPerfilAtleta(maisPerigoso.jogador, { meu: false, nomeTime: nomeAdversario, divisaoChave: oponenteInfo && estado.timeAtual.divisaoChave });
+    };
+  } else {
+    elPerigoso.textContent = "—";
+    elPerigoso.classList.remove("relatorio-adversario-clicavel");
+    elPerigoso.onclick = null;
+  }
+
+  const laterais = porSetorDetalhado.laterais;
+  const zaga = porSetorDetalhado.zaga;
+  const mediaLaterais = laterais.length ? laterais.reduce(function (a, b) { return a + b; }, 0) / laterais.length : null;
+  const mediaZaga = zaga.length ? zaga.reduce(function (a, b) { return a + b; }, 0) / zaga.length : null;
 
   const piorSetor = Object.keys(mediaSetor).sort(function (a, b) { return mediaSetor[a] - mediaSetor[b]; })[0];
   const piorJogadorDoSetor = titulares
     .filter(function (item) { return SETOR_POR_POSICAO[item.vaga.pos] === piorSetor; })
     .sort(function (a, b) { return a.jogador.forca - b.jogador.forca; })[0];
-  document.getElementById("relatorio-adversario-fraqueza").textContent = piorJogadorDoSetor
-    ? "O setor de " + NOME_SETOR_RELATORIO[piorSetor] + " é o mais fraco — de olho em " +
-      piorJogadorDoSetor.jogador.nome + " (" + piorJogadorDoSetor.vaga.pos + ")."
-    : "—";
+
+  let brechaTexto;
+  if (piorSetor === "defesa" && mediaLaterais !== null && mediaZaga !== null && mediaLaterais < mediaZaga - 1.5) {
+    brechaTexto = "O adversário possui laterais fracos: priorize atacar pelos lados.";
+  } else if (piorSetor === "defesa" && mediaZaga !== null && (mediaLaterais === null || mediaZaga < mediaLaterais - 1.5)) {
+    brechaTexto = "Zaga lenta: explore as investidas rápidas pelo meio.";
+  } else if (piorJogadorDoSetor) {
+    brechaTexto = "O setor de " + NOME_SETOR_RELATORIO[piorSetor] + " é o mais fraco — de olho em " +
+      piorJogadorDoSetor.jogador.nome + " (" + piorJogadorDoSetor.vaga.pos + ").";
+  } else {
+    brechaTexto = "—";
+  }
+  document.getElementById("relatorio-adversario-fraqueza").textContent = brechaTexto;
 }
 
 function alternarRelatorioAdversario() {
@@ -6059,7 +6124,7 @@ function montarSelecaoDaRodada(dados, divisaoChave, numeroRodada) {
     });
   });
 
-  const vagas = FORMACOES["4-3-3"];
+  const vagas = FORMACOES["4-3-3a"];
   const usados = new Set();
   const escolhidos = [];
 
@@ -6112,9 +6177,28 @@ function criarNoSelecaoRodada(item) {
 
 let dadosSelecaoRodadaCache = null;
 
+/** Última rodada já CONCLUÍDA (rodadaAtual - 1) da divisão informada — trava a Seleção da Rodada
+ *  pra nunca mostrar escalações de jogos que ainda não aconteceram (Correção — vazamento de
+ *  rodadas futuras). Retorna 0 se nenhuma rodada da divisão foi disputada ainda. */
+function ultimaRodadaConcluida(divisaoChave) {
+  if (!estado.temporada || !estado.temporada[divisaoChave]) return 0;
+  const totalRodadas = estado.temporada[divisaoChave].calendario.length;
+  return Math.min(Math.max(0, estado.temporada.rodadaAtual - 1), totalRodadas);
+}
+
 function renderizarSelecaoRodada() {
   const campoEl = document.getElementById("campo-selecao-rodada");
+  const avisoEl = document.getElementById("aviso-selecao-rodada");
   if (!campoEl || !dadosSelecaoRodadaCache) return;
+
+  const semRodadaDisponivel = !rodadaSelecaoRodadaAtual || rodadaSelecaoRodadaAtual < 1;
+  if (avisoEl) avisoEl.hidden = !semRodadaDisponivel;
+  campoEl.hidden = semRodadaDisponivel;
+  if (semRodadaDisponivel) {
+    campoEl.innerHTML = "";
+    return;
+  }
+
   campoEl.innerHTML = "";
   montarSelecaoDaRodada(dadosSelecaoRodadaCache, divisaoSelecaoRodadaAtual, rodadaSelecaoRodadaAtual)
     .forEach(function (item) { campoEl.appendChild(criarNoSelecaoRodada(item)); });
@@ -6136,24 +6220,29 @@ function montarFiltrosSelecaoRodada(dados) {
   }
   if (selectDivisao) selectDivisao.value = divisaoSelecaoRodadaAtual;
 
-  const totalRodadas = estado.temporada && estado.temporada[divisaoSelecaoRodadaAtual]
-    ? estado.temporada[divisaoSelecaoRodadaAtual].calendario.length
-    : 38;
-  if (!rodadaSelecaoRodadaAtual || rodadaSelecaoRodadaAtual > totalRodadas) {
-    const rodadaAtual = estado.temporada ? estado.temporada.rodadaAtual : 1;
-    rodadaSelecaoRodadaAtual = Math.min(Math.max(1, rodadaAtual - 1), totalRodadas) || 1;
+  // Só oferece rodadas já CONCLUÍDAS — nunca a rodada atual (ainda não jogada) nem futuras.
+  const ultimaConcluida = ultimaRodadaConcluida(divisaoSelecaoRodadaAtual);
+  if (!rodadaSelecaoRodadaAtual || rodadaSelecaoRodadaAtual > ultimaConcluida) {
+    rodadaSelecaoRodadaAtual = ultimaConcluida;
   }
 
   const selectRodada = document.getElementById("select-rodada-selecao-rodada");
   if (selectRodada) {
     selectRodada.innerHTML = "";
-    for (let i = 1; i <= totalRodadas; i++) {
+    selectRodada.disabled = ultimaConcluida < 1;
+    for (let i = 1; i <= ultimaConcluida; i++) {
       const opcao = document.createElement("option");
       opcao.value = i;
       opcao.textContent = i + "ª R";
       selectRodada.appendChild(opcao);
     }
-    selectRodada.value = rodadaSelecaoRodadaAtual;
+    if (ultimaConcluida < 1) {
+      const opcao = document.createElement("option");
+      opcao.value = "";
+      opcao.textContent = "—";
+      selectRodada.appendChild(opcao);
+    }
+    selectRodada.value = rodadaSelecaoRodadaAtual || "";
   }
 }
 
@@ -6567,6 +6656,7 @@ function estaEmPartidaAtiva() {
 
 function abrirSeletorJogador(vaga) {
   vagaEmEdicao = vaga.id;
+  origemEmEdicaoParaEntrar = null;
 
   document.getElementById("titulo-seletor").textContent = "Vaga: " + vaga.rotulo;
 
@@ -6727,6 +6817,7 @@ function fecharSeletorJogador() {
   if (partidaAtual && partidaAtual.status === "penalti") return;
   document.getElementById("sobreposicao-seletor").hidden = true;
   vagaEmEdicao = null;
+  origemEmEdicaoParaEntrar = null;
 }
 
 /* ---------- Continuar jogo salvo ---------- */
@@ -7203,22 +7294,6 @@ function ligarBotoes() {
   if (btnEscalar) {
     btnEscalar.addEventListener("click", function () {
       if (timeExibidoNoElenco) escalarEsteTime(timeExibidoNoElenco);
-    });
-  }
-
-  const btnVoltarElencoEscalacao = document.getElementById("btn-voltar-elenco-escalacao");
-  if (btnVoltarElencoEscalacao) {
-    btnVoltarElencoEscalacao.addEventListener("click", function () {
-      abrirTelaElenco(estado.timeAtual);
-    });
-  }
-
-  // Item "Rodada" do menu do hub: já é a própria tela de escalação, então só rola até a área de escalar/tática.
-  const hubNavRodada = document.getElementById("hub-nav-rodada");
-  if (hubNavRodada) {
-    hubNavRodada.addEventListener("click", function () {
-      const ancora = document.getElementById("ancora-rodada");
-      if (ancora) ancora.scrollIntoView({ behavior: "smooth", block: "start" });
     });
   }
 
