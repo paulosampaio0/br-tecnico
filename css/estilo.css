@@ -1132,6 +1132,18 @@ body::before {
 .seta-indicador.esquerda { left: -12px; top: 50%; transform: translateY(-50%); }
 .seta-indicador.direita { right: -12px; top: 50%; transform: translateY(-50%); }
 
+/* Player Node do campinho (Hierarquia Visual Compacta) — selo da Estrela Dourada/Prateada
+   sobreposto no canto superior direito do círculo de posição. */
+.estrela-badge-vaga {
+  position: absolute;
+  top: -4px;
+  right: -6px;
+  font-size: 12px;
+  line-height: 1;
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.8));
+  pointer-events: none;
+}
+
 .vaga.vazia .bolinha {
   background: rgba(255, 255, 255, 0.15);
   color: var(--cinza-texto);
@@ -1244,6 +1256,57 @@ body::before {
 .numero-energia-vaga.energia-vaga-alta { color: #7ee0a5; }
 .numero-energia-vaga.energia-vaga-media { color: #ffb85c; }
 .numero-energia-vaga.energia-vaga-baixa { color: #ff8f8f; }
+
+/* Player Node do campinho (Stamina Overlay) — barra de energia com a porcentagem centralizada
+   e sobreposta ao preenchimento, substituindo a barrinha de blocos nos nós do campo (editor de
+   escalação e Mexer no time); Banco/Não Relacionados continuam com `.barra-energia-vaga` acima. */
+.barra-energia-overlay {
+  position: relative;
+  display: block;
+  width: 60px;
+  height: 14px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.15);
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  overflow: hidden;
+}
+
+.barra-energia-overlay-preenchimento {
+  position: absolute;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  border-radius: 4px;
+  transition: width 0.2s ease;
+}
+
+.barra-energia-overlay-alta .barra-energia-overlay-preenchimento { background: #3ddc7a; }
+.barra-energia-overlay-media .barra-energia-overlay-preenchimento { background: #ffb85c; }
+.barra-energia-overlay-baixa .barra-energia-overlay-preenchimento { background: #ff6b6b; }
+
+.barra-energia-overlay-texto {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  font-size: 9px;
+  font-weight: bold;
+  color: #ffffff;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8);
+  white-space: nowrap;
+}
+
+/* Player Node do campinho — 2 características mais marcantes do jogador, abaixo da barra de
+   energia (ex.: "DRI • FIN"). */
+.traits-vaga {
+  display: block;
+  margin-top: 2px;
+  font-size: 9px;
+  color: #e0e0e0;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.9);
+  text-transform: uppercase;
+  white-space: nowrap;
+}
 
 /* ============================================================
    Campo tático — Mexer no time (abas Meu Time / Adversário)
@@ -2696,7 +2759,16 @@ body::before {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  flex-wrap: wrap;
   gap: 8px;
+}
+
+.acoes-relatorio-rodada {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px;
+  margin-left: auto;
 }
 
 .btn-ver-tabela-rodada {

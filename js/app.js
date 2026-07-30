@@ -948,12 +948,14 @@ function renderizarCampo() {
       "<span class=\"bolinha-wrap\">" +
         "<span class=\"bolinha" + (jogador ? " " + classeSetorPosicao(jogador.pos) : "") + "\">" + vaga.rotulo + "</span>" +
         (jogador ? montarIndicadoresSetas(vaga, jogador) : "") +
+        (jogador ? montarEstrelaBadgeVaga(jogador) : "") +
       "</span>" +
       "<span class=\"nome-vaga\">" +
         (jogador && estado.capitaoId === jogador._id ? "<span class=\"tag-capitao-campo\" title=\"Capitão\">©</span>" : "") +
-        (jogador ? montarForcaNomeCurto(jogador) : "Vazio") +
+        (jogador ? montarForcaNomeCurto(jogador, true, true) : "Vazio") +
       "</span>" +
-      (jogador ? montarBarraEnergiaVaga(jogador) : "");
+      (jogador ? montarBarraEnergiaOverlay(obterEnergiaJogador(jogador._id)) : "") +
+      (jogador ? montarTraitsVaga(jogador) : "");
 
     botao.addEventListener("click", function () {
       // Um arrasto de verdade que acabou de acontecer NESTE botão não deve
@@ -1093,13 +1095,15 @@ function montarLadoCampoDuplo(campoEl, lado) {
       "<span class=\"bolinha-wrap\">" +
         "<span class=\"bolinha " + classeSetorPosicao(jogador.pos) + "\">" + obterNumeroCamisa(jogador) + "</span>" +
         (souEuNesseLado ? montarIndicadoresSetas(vaga, jogador) : "") +
+        montarEstrelaBadgeVaga(jogador, souEuNesseLado) +
       "</span>" +
       "<span class=\"nome-vaga\">" +
         (souEuNesseLado && estado.capitaoId === jogador._id ? "<span class=\"tag-capitao-campo\" title=\"Capitão\">©</span>" : "") +
-        montarForcaNomeCurto(jogador, souEuNesseLado) +
+        montarForcaNomeCurto(jogador, souEuNesseLado, true) +
       "</span>" +
       (icones ? "<span class=\"icones-evento-partida-wrap\">" + icones + "</span>" : "") +
-      montarBarraEnergiaComValor(energia);
+      montarBarraEnergiaOverlay(energia) +
+      montarTraitsVaga(jogador);
 
     if (souEuNesseLado) {
       node.addEventListener("click", function () {
@@ -1230,11 +1234,6 @@ function definirCapitao(valorSelect) {
   estado.capitaoId = valorSelect === "" ? null : Number(valorSelect);
   salvarProgresso();
   renderizarCampo();
-}
-
-/** Barrinha de energia (blocos coloridos) embaixo da bolinha, pra ver o cansaço direto no campo (ex.: ao "mexer no time"). */
-function montarBarraEnergiaVaga(jogador) {
-  return montarBarraEnergiaComValor(obterEnergiaJogador(jogador._id));
 }
 
 function montarBarraEnergiaComValor(energia) {
@@ -1707,10 +1706,17 @@ function classeSetorPosicao(pos) {
   return "setor-ataque"; // ATE, ATD, ATA
 }
 
-/** Estrela Dourada/Prateada deste jogador (dinâmica do save, ou emblemática do banco de dados). */
+/**
+ * Estrela Dourada/Prateada deste jogador (dinâmica do save, ou emblemática do banco de dados).
+ * Correção — Estrela Emblemática nunca é rebaixada: a Dourada por nome (Neymar, Endrick etc.)
+ * sempre vence, mesmo se `estado.estrelasPorJogador` tiver uma entrada "prateada" pra ele (save
+ * antigo, ou algum ponto que ainda não passa pela checagem de `atualizarEstrelasDeTemporada`).
+ */
 function obterEstrelaJogador(jogador) {
   if (!jogador) return null;
-  return (estado.estrelasPorJogador && estado.estrelasPorJogador[jogador._id]) || obterEstrelaEmblematica(jogador.nome);
+  const emblematica = obterEstrelaEmblematica(jogador.nome);
+  if (emblematica === "dourada") return "dourada";
+  return (estado.estrelasPorJogador && estado.estrelasPorJogador[jogador._id]) || emblematica;
 }
 
 /** Seta de Fase (forma recente) — "alta" | "neutra" | "baixa"; "neutra" se nunca foi calculada. */
@@ -1747,13 +1753,48 @@ function obterEstrelaJogadorParaEvento(jogador) {
   return MARCADOR_ESTRELA_COMPACTO[estrela] || "";
 }
 
-function montarForcaNomeCurto(jogador, ehMeuJogador) {
+/**
+ * `omitirEstrela` (Player Node compacto do campinho): o nó do jogador no campo mostra a estrela
+ * como um selo sobreposto no canto do círculo de posição (`montarEstrelaBadgeVaga`), não mais
+ * junto do nome — passar `true` evita a estrela aparecer duplicada nesses nós.
+ */
+function montarForcaNomeCurto(jogador, ehMeuJogador, omitirEstrela) {
   const souMeu = ehMeuJogador !== false;
   const marcadorForma = souMeu ? (MARCADOR_FORMA_COMPACTO[obterFormaJogador(jogador._id)] || "") : "";
   const estrela = souMeu ? obterEstrelaJogador(jogador) : obterEstrelaEmblematica(jogador.nome);
-  const marcadorEstrela = MARCADOR_ESTRELA_COMPACTO[estrela] || "";
+  const marcadorEstrela = omitirEstrela ? "" : (MARCADOR_ESTRELA_COMPACTO[estrela] || "");
   return "<span class=\"forca-compacto\">" + jogador.forca + "</span>" + marcadorForma + " " +
     escaparHtml(sobrenomeCurto(jogador.nome)) + marcadorEstrela;
+}
+
+/** Selo da Estrela Dourada/Prateada sobreposto no canto do círculo de posição — Player Node do
+ *  campinho (Hierarquia Visual Compacta, item 1: Círculo de Posição + Estrela). */
+function montarEstrelaBadgeVaga(jogador, ehMeuJogador) {
+  const souMeu = ehMeuJogador !== false;
+  const estrela = souMeu ? obterEstrelaJogador(jogador) : obterEstrelaEmblematica(jogador.nome);
+  if (!estrela) return "";
+  const emoji = estrela === "dourada" ? "⭐" : "🥈";
+  const rotulo = estrela === "dourada" ? "Estrela Dourada" : "Estrela Prateada";
+  return "<span class=\"estrela-badge-vaga\" title=\"" + rotulo + "\">" + emoji + "</span>";
+}
+
+/** As 2 características mais marcantes do jogador, abreviadas (ex.: "DRI • FIN") — Player Node
+ *  do campinho (Hierarquia Visual Compacta, item 4), mesmo código curto do Banco/Não Relacionados. */
+function montarTraitsVaga(jogador) {
+  const traits = [jogador.caracteristica_1, jogador.caracteristica_2].filter(Boolean).map(abreviarCaracteristica);
+  if (traits.length === 0) return "";
+  return "<span class=\"traits-vaga\">" + escaparHtml(traits.join(" • ")) + "</span>";
+}
+
+/** Barra de energia com a porcentagem sobreposta ao preenchimento (Stamina Overlay) — Player
+ *  Node do campinho. Faixas de cor próprias (≥70 verde, 40-69 amarela, <40 vermelha). */
+function montarBarraEnergiaOverlay(energia) {
+  const nivel = energia >= 70 ? "alta" : energia >= 40 ? "media" : "baixa";
+  const largura = Math.max(0, Math.min(100, energia));
+  return "<span class=\"barra-energia-overlay barra-energia-overlay-" + nivel + "\" title=\"Energia: " + energia + "%\">" +
+    "<span class=\"barra-energia-overlay-preenchimento\" style=\"width:" + largura + "%\"></span>" +
+    "<span class=\"barra-energia-overlay-texto\">" + energia + "%</span>" +
+  "</span>";
 }
 
 /** Código curto (3 letras) de uma característica, pro texto compacto do card (ex.: "Cabeceio" -> "CAB"). */
@@ -3816,6 +3857,13 @@ async function atualizarEstrelasDeTemporada(parcial) {
 
   estado.timeAtual.jogadores.forEach(function (jogador) {
     const idJogador = jogador._id;
+    // Correção — Estrela Emblemática nunca deve ser rebaixada: um craque como Neymar/Endrick já
+    // é Dourado permanente por nome (`obterEstrelaEmblematica`); sem essa checagem, o Gatilho de
+    // Novas Promessas podia gravar "prateada" pra ele em `estado.estrelasPorJogador`, e como a
+    // estrela dinâmica tem prioridade na exibição (`obterEstrelaJogador`), ele aparecia rebaixado
+    // pra Prateada em vez da Dourada emblemática. Craque emblemático não precisa de promoção — já
+    // nasceu no topo — então nem entra nesse cálculo.
+    if (obterEstrelaEmblematica(jogador.nome) === "dourada") return;
     const idade = jogador.idade; // idade NESTA temporada que está terminando (evoluirJogador só soma +1 depois)
     const stats = estado.statsTemporadaAtualPorJogador[idJogador];
     if (!stats || stats.jogos === 0) return; // não jogou nada — sem gatilho nesta temporada
@@ -3868,14 +3916,21 @@ async function atualizarEstrelasDeTemporada(parcial) {
     }
   });
 
+  // Um único alerta combinado (em vez de até 3 seguidos) — evita que o técnico precise fechar
+  // vários pop-ups em sequência a cada rodada, o que também reduz o risco de um toque de fechar
+  // "vazar" sobre outro botão da tela seguinte (ex.: os atalhos do banner de Fim da Rodada).
+  const partesAlerta = [];
   if (promovidosDourada.length > 0) {
-    alert("⭐ Nova Estrela Dourada! " + promovidosDourada.join(", ") + " se consagrou nesta temporada.");
+    partesAlerta.push("⭐ Nova Estrela Dourada! " + promovidosDourada.join(", ") + " se consagrou.");
   }
   if (promovidosPrateada.length > 0) {
-    alert("🥈 Nova Promessa! " + promovidosPrateada.join(", ") + " ganhou a Estrela Prateada.");
+    partesAlerta.push("🥈 Nova Promessa! " + promovidosPrateada.join(", ") + " ganhou a Estrela Prateada.");
   }
   if (expirados.length > 0) {
-    alert("A Estrela Prateada de " + expirados.join(", ") + " expirou — não deslancharam a tempo.");
+    partesAlerta.push("A Estrela Prateada de " + expirados.join(", ") + " expirou — não deslancharam a tempo.");
+  }
+  if (partesAlerta.length > 0) {
+    alert(partesAlerta.join("\n\n"));
   }
 }
 
@@ -7408,6 +7463,9 @@ function ligarBotoes() {
 
   const btnVerTabelaPosRodada = document.getElementById("btn-ver-tabela-pos-rodada");
   if (btnVerTabelaPosRodada) btnVerTabelaPosRodada.addEventListener("click", abrirTelaTabela);
+
+  const btnVerSelecaoRodadaPosRodada = document.getElementById("btn-ver-selecao-rodada-pos-rodada");
+  if (btnVerSelecaoRodadaPosRodada) btnVerSelecaoRodadaPosRodada.addEventListener("click", abrirTelaSelecaoRodada);
 
   const btnVerSelecaoRodada = document.getElementById("btn-ver-selecao-rodada");
   if (btnVerSelecaoRodada) btnVerSelecaoRodada.addEventListener("click", abrirTelaSelecaoRodada);
