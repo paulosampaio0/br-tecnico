@@ -42,15 +42,52 @@
 
   </main>
 
-  <!-- Tela: Editor (ferramentas a implementar em uma próxima sessão) -->
+  <!-- Tela: Editor — escolher o clube pra editar o elenco -->
   <main class="tela tela-editor" id="tela-editor" hidden>
 
     <header class="cabecalho cabecalho-lista">
       <button class="btn-voltar" id="btn-voltar-editor" type="button" aria-label="Voltar">←</button>
-      <h2 class="titulo-lista">Editor</h2>
+      <h2 class="titulo-lista">Editor de Times</h2>
     </header>
 
-    <p class="mensagem-editor-em-breve">🛠️ As ferramentas de edição chegam em breve.</p>
+    <div class="tabela-editor-times-wrap">
+      <table class="tabela-editor-times">
+        <thead>
+          <tr><th>País</th><th>Time</th><th>Nível</th></tr>
+        </thead>
+        <tbody id="corpo-tabela-editor-times"></tbody>
+      </table>
+    </div>
+
+    <footer class="rodape-editor-times">
+      <button class="btn btn-primario" id="btn-editor-editar-jogadores" type="button" disabled>Editar Jogadores</button>
+    </footer>
+
+  </main>
+
+  <!-- Tela: Editor — elenco do time escolhido (CRUD de jogadores) -->
+  <main class="tela tela-editor-elenco" id="tela-editor-elenco" hidden>
+
+    <header class="cabecalho cabecalho-lista">
+      <button class="btn-voltar" id="btn-voltar-editor-elenco" type="button" aria-label="Voltar">←</button>
+      <h2 class="titulo-lista">Elenco</h2>
+    </header>
+
+    <p class="faixa-editor-time" id="faixa-editor-time">Time (0 jogadores)</p>
+
+    <ul class="lista lista-editor-jogadores" id="lista-editor-jogadores"></ul>
+
+    <footer class="rodape-editor-jogadores">
+      <button class="btn-icone-editor" id="btn-editor-adicionar-jogador" type="button" title="Adicionar jogador">
+        <span aria-hidden="true">👤+</span><span class="rotulo-btn-icone-editor">Adicionar</span>
+      </button>
+      <button class="btn-icone-editor" id="btn-editor-editar-jogador" type="button" title="Editar jogador" disabled>
+        <span aria-hidden="true">👤✏️</span><span class="rotulo-btn-icone-editor">Editar</span>
+      </button>
+      <button class="btn-icone-editor btn-icone-editor-excluir" id="btn-editor-excluir-jogador" type="button" title="Excluir jogador" disabled>
+        <span aria-hidden="true">👤❌</span><span class="rotulo-btn-icone-editor">Excluir</span>
+      </button>
+    </footer>
 
   </main>
 
@@ -867,6 +904,78 @@
       <h3 id="titulo-expulsao">🔴 Cartão vermelho!</h3>
       <p id="texto-expulsao"></p>
       <button class="btn btn-primario btn-expulsao-confirmar" id="btn-confirmar-expulsao" type="button">Continuar ▶</button>
+    </div>
+  </div>
+
+  <!-- Editor de Times: formulário de adicionar/editar jogador -->
+  <div class="sobreposicao" id="sobreposicao-form-jogador" hidden>
+    <div class="folha-seletor folha-form-jogador">
+      <header class="cabecalho-seletor">
+        <h3 id="titulo-form-jogador">Adicionar jogador</h3>
+        <button class="btn-fechar" id="btn-fechar-form-jogador" type="button" aria-label="Fechar">✕</button>
+      </header>
+      <form class="form-jogador" id="form-jogador">
+        <label class="campo-form-jogador">
+          <span>Nome</span>
+          <input type="text" id="form-jogador-nome" maxlength="60" required />
+        </label>
+        <label class="campo-form-jogador">
+          <span>País do jogador</span>
+          <select id="form-jogador-nac"></select>
+        </label>
+        <label class="campo-form-jogador">
+          <span>Posição</span>
+          <select id="form-jogador-pos"></select>
+        </label>
+        <label class="campo-form-jogador">
+          <span>Lado</span>
+          <select id="form-jogador-pe">
+            <option value="direito">Direito</option>
+            <option value="esquerdo">Esquerdo</option>
+            <option value="ambidestro">Ambos</option>
+          </select>
+        </label>
+        <label class="campo-form-jogador">
+          <span>Idade</span>
+          <select id="form-jogador-idade"></select>
+        </label>
+        <label class="campo-form-jogador">
+          <span>Força (28 a 48)</span>
+          <input type="number" id="form-jogador-forca" min="28" max="48" required />
+        </label>
+        <div class="linha-dupla-form-jogador">
+          <label class="campo-form-jogador">
+            <span>Característica 1</span>
+            <select id="form-jogador-carac1"></select>
+          </label>
+          <label class="campo-form-jogador">
+            <span>Característica 2</span>
+            <select id="form-jogador-carac2"></select>
+          </label>
+        </div>
+        <div class="linha-checkboxes-form-jogador">
+          <label class="checkbox-form-jogador"><input type="checkbox" id="form-jogador-titular" /> Titular</label>
+          <label class="checkbox-form-jogador"><input type="checkbox" id="form-jogador-estrela" /> Estrela</label>
+          <label class="checkbox-form-jogador"><input type="checkbox" id="form-jogador-top-mundial" /> Top Mundial</label>
+        </div>
+        <p class="erro-form-jogador" id="erro-form-jogador" hidden></p>
+        <div class="acoes-form-jogador">
+          <button type="button" class="btn btn-secundario" id="btn-cancelar-form-jogador">Cancelar</button>
+          <button type="submit" class="btn btn-primario" id="btn-salvar-form-jogador">Salvar</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Editor de Times: confirmação de exclusão de jogador -->
+  <div class="sobreposicao sobreposicao-excluir-jogador" id="sobreposicao-excluir-jogador" hidden>
+    <div class="cartao-expulsao cartao-confirmar-exclusao">
+      <h3>Confirmar Exclusão</h3>
+      <p id="texto-confirmar-exclusao-jogador"></p>
+      <div class="acoes-form-jogador">
+        <button type="button" class="btn btn-secundario" id="btn-cancelar-excluir-jogador">Cancelar</button>
+        <button type="button" class="btn btn-perigo" id="btn-confirmar-excluir-jogador">Confirmar Exclusão</button>
+      </div>
     </div>
   </div>
 

@@ -75,6 +75,13 @@ function taticaPadrao() {
 // Estado do técnico durante a sessão atual.
 let divisaoAtual = "serie_a";
 let timeExibidoNoElenco = null; // time visto na tela de elenco (para o botão "Escalar")
+
+// Editor de Times — estado da sessão (não é salvo; as edições em si vivem em `dados.js`).
+let dadosEditorCache = null;
+let timeSelecionadoEditor = null; // time marcado na lista de clubes (Fase 1), antes de confirmar
+let timeEditorElencoAtual = null; // time cujo elenco está aberto (Fase 2/3)
+let jogadorSelecionadoEditor = null; // jogador marcado na lista do elenco
+let jogadorEmEdicaoForm = null; // null = Adicionar; objeto do jogador = Editar
 let vagaEmEdicao = null; // id da vaga que o seletor de jogador está preenchendo
 let arrasto = null; // informações do arrasto de seta em andamento (ou null)
 
@@ -446,6 +453,255 @@ function abrirTelaElenco(time) {
     });
     listaEl.appendChild(item);
   });
+}
+
+/* ============================================================
+   Editor de Times — Fase 1: escolher o clube
+   ============================================================ */
+
+/** Tela inicial do Editor: tabela com TODOS os clubes das duas divisões (País/Time/Nível). */
+async function abrirTelaEditor() {
+  mostrarTela("tela-editor");
+  dadosEditorCache = await carregarDados();
+  // Reaponta pro objeto certo se o técnico voltou aqui depois de editar o elenco (o `cacheDados`
+  // pode ter sido reconstruído do zero — ver `reconstruirCacheDados` em dados.js).
+  if (timeSelecionadoEditor) timeSelecionadoEditor = buscarTimePorNome(dadosEditorCache, timeSelecionadoEditor.nome);
+  atualizarBotaoEditorEditarJogadores();
+  renderizarListaEditorTimes();
+}
+
+function renderizarListaEditorTimes() {
+  const corpoEl = document.getElementById("corpo-tabela-editor-times");
+  if (!corpoEl || !dadosEditorCache) return;
+  corpoEl.innerHTML = "";
+
+  const todosOsTimes = [];
+  listarDivisoes(dadosEditorCache).forEach(function (divisao) {
+    divisao.times.forEach(function (time) { todosOsTimes.push(time); });
+  });
+  todosOsTimes.sort(function (a, b) { return a.nome.localeCompare(b.nome, "pt-BR"); });
+
+  todosOsTimes.forEach(function (time) {
+    const tr = document.createElement("tr");
+    tr.innerHTML =
+      "<td>🇧🇷</td>" +
+      "<td>" + escaparHtml(time.nome) + "</td>" +
+      "<td class=\"col-nivel\">" + calcularNivelTime(time) + "</td>";
+    if (timeSelecionadoEditor && timeSelecionadoEditor.nome === time.nome) {
+      tr.classList.add("linha-editor-selecionada");
+    }
+    tr.addEventListener("click", function () {
+      timeSelecionadoEditor = time;
+      renderizarListaEditorTimes();
+      atualizarBotaoEditorEditarJogadores();
+    });
+    corpoEl.appendChild(tr);
+  });
+}
+
+function atualizarBotaoEditorEditarJogadores() {
+  const botao = document.getElementById("btn-editor-editar-jogadores");
+  if (botao) botao.disabled = !timeSelecionadoEditor;
+}
+
+/* ============================================================
+   Editor de Times — Fase 2/3: elenco do clube + CRUD de jogadores
+   ============================================================ */
+
+function abrirTelaEditorElenco(time) {
+  timeEditorElencoAtual = time;
+  jogadorSelecionadoEditor = null;
+  mostrarTela("tela-editor-elenco");
+  renderizarEditorElenco();
+  atualizarBotoesEditorJogador();
+}
+
+function renderizarEditorElenco() {
+  const faixaEl = document.getElementById("faixa-editor-time");
+  const listaEl = document.getElementById("lista-editor-jogadores");
+  if (!faixaEl || !listaEl || !timeEditorElencoAtual) return;
+
+  faixaEl.textContent = timeEditorElencoAtual.nome + " (" + timeEditorElencoAtual.jogadores.length + " jogadores)";
+
+  listaEl.innerHTML = "";
+  ordenarElenco(timeEditorElencoAtual.jogadores).forEach(function (jogador) {
+    const item = criarItemJogador(jogador, false);
+    item.classList.add("selecionavel");
+    if (jogadorSelecionadoEditor && jogadorSelecionadoEditor._id === jogador._id) {
+      item.classList.add("item-editor-selecionado");
+    }
+    item.addEventListener("click", function () {
+      jogadorSelecionadoEditor = jogador;
+      renderizarEditorElenco();
+      atualizarBotoesEditorJogador();
+    });
+    listaEl.appendChild(item);
+  });
+}
+
+function atualizarBotoesEditorJogador() {
+  const btnEditar = document.getElementById("btn-editor-editar-jogador");
+  const btnExcluir = document.getElementById("btn-editor-excluir-jogador");
+  if (btnEditar) btnEditar.disabled = !jogadorSelecionadoEditor;
+  if (btnExcluir) btnExcluir.disabled = !jogadorSelecionadoEditor;
+}
+
+/** Depois de qualquer CRUD (`dados.js` reconstrói `cacheDados` do zero), reaponta os objetos
+ *  que o Editor guarda em memória pro time/jogador certos na NOVA geração do objeto de dados. */
+function ressincronizarEditorAposCrud() {
+  dadosEditorCache = cacheDados;
+  timeEditorElencoAtual = buscarTimePorNome(cacheDados, timeEditorElencoAtual.nome);
+  jogadorSelecionadoEditor = null;
+}
+
+/* ---------- Formulário de Adicionar/Editar jogador ---------- */
+
+/** Popula (1x) os selects do formulário — reaproveita o vocabulário já usado no resto do jogo. */
+function montarSelectsFormJogador() {
+  const selectNac = document.getElementById("form-jogador-nac");
+  if (selectNac && selectNac.options.length === 0) {
+    Object.keys(MAPA_NACIONALIDADE).forEach(function (codigo) {
+      const opcao = document.createElement("option");
+      opcao.value = codigo;
+      opcao.textContent = MAPA_NACIONALIDADE[codigo];
+      selectNac.appendChild(opcao);
+    });
+  }
+
+  const selectPos = document.getElementById("form-jogador-pos");
+  if (selectPos && selectPos.options.length === 0) {
+    ORDEM_POSICOES.forEach(function (pos) {
+      const opcao = document.createElement("option");
+      opcao.value = pos;
+      opcao.textContent = (ROTULO_POSICAO_COMPLETO[pos] || pos) + " (" + pos + ")";
+      selectPos.appendChild(opcao);
+    });
+  }
+
+  const selectIdade = document.getElementById("form-jogador-idade");
+  if (selectIdade && selectIdade.options.length === 0) {
+    for (let idade = 16; idade <= 40; idade++) {
+      const opcao = document.createElement("option");
+      opcao.value = idade;
+      opcao.textContent = idade + " anos";
+      selectIdade.appendChild(opcao);
+    }
+  }
+
+  const nomesCaracteristicas = Object.keys(CODIGO_CARACTERISTICA);
+  [document.getElementById("form-jogador-carac1"), document.getElementById("form-jogador-carac2")].forEach(function (select) {
+    if (!select || select.options.length > 0) return;
+    const vazia = document.createElement("option");
+    vazia.value = "";
+    vazia.textContent = "— Nenhuma —";
+    select.appendChild(vazia);
+    nomesCaracteristicas.forEach(function (nome) {
+      const opcao = document.createElement("option");
+      opcao.value = nome;
+      opcao.textContent = nome;
+      select.appendChild(opcao);
+    });
+  });
+}
+
+/** Abre o formulário — `jogador` null pra Adicionar, ou o objeto do jogador pra Editar (pré-preenchido). */
+function abrirFormJogador(jogador) {
+  montarSelectsFormJogador();
+  jogadorEmEdicaoForm = jogador || null;
+
+  document.getElementById("titulo-form-jogador").textContent = jogador ? "Editar jogador" : "Adicionar jogador";
+  document.getElementById("erro-form-jogador").hidden = true;
+
+  document.getElementById("form-jogador-nome").value = jogador ? jogador.nome : "";
+  document.getElementById("form-jogador-nac").value = jogador ? jogador.nac : "BRA";
+  document.getElementById("form-jogador-pos").value = jogador ? jogador.pos : ORDEM_POSICOES[0];
+  document.getElementById("form-jogador-pe").value = jogador && jogador.pe ? jogador.pe : "direito";
+  document.getElementById("form-jogador-idade").value = jogador ? jogador.idade : 23;
+  document.getElementById("form-jogador-forca").value = jogador ? jogador.forca : 35;
+  document.getElementById("form-jogador-carac1").value = jogador && jogador.caracteristica_1 ? jogador.caracteristica_1 : "";
+  document.getElementById("form-jogador-carac2").value = jogador && jogador.caracteristica_2 ? jogador.caracteristica_2 : "";
+  document.getElementById("form-jogador-titular").checked = !!(jogador && jogador.tituloEditor);
+  document.getElementById("form-jogador-estrela").checked = !!(jogador && jogador.estrelaEditor);
+  document.getElementById("form-jogador-top-mundial").checked = !!(jogador && jogador.topMundialEditor);
+
+  document.getElementById("sobreposicao-form-jogador").hidden = false;
+}
+
+function fecharFormJogador() {
+  document.getElementById("sobreposicao-form-jogador").hidden = true;
+  jogadorEmEdicaoForm = null;
+}
+
+function salvarFormJogador(evento) {
+  evento.preventDefault();
+  const erroEl = document.getElementById("erro-form-jogador");
+  erroEl.hidden = true;
+
+  const nome = document.getElementById("form-jogador-nome").value.trim();
+  const forca = Number(document.getElementById("form-jogador-forca").value);
+
+  if (!nome) {
+    erroEl.textContent = "Informe o nome do jogador.";
+    erroEl.hidden = false;
+    return;
+  }
+  if (!forca || forca < 28 || forca > 48) {
+    erroEl.textContent = "Força precisa ser um número entre 28 e 48.";
+    erroEl.hidden = false;
+    return;
+  }
+
+  const carac1 = document.getElementById("form-jogador-carac1").value || undefined;
+  let carac2 = document.getElementById("form-jogador-carac2").value || undefined;
+  if (carac2 && carac2 === carac1) carac2 = undefined; // não repete a mesma característica 2x
+
+  const campos = {
+    nome: nome,
+    nac: document.getElementById("form-jogador-nac").value,
+    pos: document.getElementById("form-jogador-pos").value,
+    pe: document.getElementById("form-jogador-pe").value,
+    idade: Number(document.getElementById("form-jogador-idade").value),
+    forca: forca,
+    caracteristica_1: carac1,
+    caracteristica_2: carac2,
+    tituloEditor: document.getElementById("form-jogador-titular").checked,
+    estrelaEditor: document.getElementById("form-jogador-estrela").checked,
+    topMundialEditor: document.getElementById("form-jogador-top-mundial").checked,
+  };
+
+  if (jogadorEmEdicaoForm) {
+    editarJogadorNoElenco(timeEditorElencoAtual.nome, jogadorEmEdicaoForm, campos);
+  } else {
+    adicionarJogadorAoElenco(timeEditorElencoAtual.nome, campos);
+  }
+
+  ressincronizarEditorAposCrud();
+  fecharFormJogador();
+  renderizarEditorElenco();
+  atualizarBotoesEditorJogador();
+}
+
+/* ---------- Confirmação de exclusão ---------- */
+
+function abrirConfirmarExcluirJogadorEditor() {
+  if (!jogadorSelecionadoEditor) return;
+  document.getElementById("texto-confirmar-exclusao-jogador").textContent =
+    "Tem certeza que deseja excluir o jogador " + jogadorSelecionadoEditor.nome + " do elenco?";
+  document.getElementById("sobreposicao-excluir-jogador").hidden = false;
+}
+
+function fecharConfirmarExcluirJogadorEditor() {
+  document.getElementById("sobreposicao-excluir-jogador").hidden = true;
+}
+
+function confirmarExcluirJogadorEditor() {
+  if (!jogadorSelecionadoEditor || !timeEditorElencoAtual) return;
+  removerJogadorDoElencoEditor(timeEditorElencoAtual.nome, jogadorSelecionadoEditor);
+
+  ressincronizarEditorAposCrud();
+  fecharConfirmarExcluirJogadorEditor();
+  renderizarEditorElenco();
+  atualizarBotoesEditorJogador();
 }
 
 /** Cria o <li> de exibição de um jogador (reaproveitado na lista e no banco). */
@@ -7375,12 +7631,64 @@ function ligarBotoes() {
   const btnContinuar = document.getElementById("btn-continuar");
   if (btnContinuar) btnContinuar.addEventListener("click", continuarJogoSalvo);
 
-  // Editor: só a tela-placeholder por enquanto — as ferramentas de verdade entram depois.
+  // Editor de Times: Fase 1 (lista de clubes) + Fase 2/3 (elenco e CRUD de jogadores).
   const btnEditor = document.getElementById("btn-editor");
-  if (btnEditor) btnEditor.addEventListener("click", function () { mostrarTela("tela-editor"); });
+  if (btnEditor) btnEditor.addEventListener("click", abrirTelaEditor);
 
   const btnVoltarEditor = document.getElementById("btn-voltar-editor");
   if (btnVoltarEditor) btnVoltarEditor.addEventListener("click", function () { mostrarTela("tela-inicio"); });
+
+  const btnEditorEditarJogadores = document.getElementById("btn-editor-editar-jogadores");
+  if (btnEditorEditarJogadores) {
+    btnEditorEditarJogadores.addEventListener("click", function () {
+      if (timeSelecionadoEditor) abrirTelaEditorElenco(timeSelecionadoEditor);
+    });
+  }
+
+  const btnVoltarEditorElenco = document.getElementById("btn-voltar-editor-elenco");
+  if (btnVoltarEditorElenco) btnVoltarEditorElenco.addEventListener("click", abrirTelaEditor);
+
+  const btnEditorAdicionarJogador = document.getElementById("btn-editor-adicionar-jogador");
+  if (btnEditorAdicionarJogador) btnEditorAdicionarJogador.addEventListener("click", function () { abrirFormJogador(null); });
+
+  const btnEditorEditarJogador = document.getElementById("btn-editor-editar-jogador");
+  if (btnEditorEditarJogador) {
+    btnEditorEditarJogador.addEventListener("click", function () {
+      if (jogadorSelecionadoEditor) abrirFormJogador(jogadorSelecionadoEditor);
+    });
+  }
+
+  const btnEditorExcluirJogador = document.getElementById("btn-editor-excluir-jogador");
+  if (btnEditorExcluirJogador) btnEditorExcluirJogador.addEventListener("click", abrirConfirmarExcluirJogadorEditor);
+
+  const btnFecharFormJogador = document.getElementById("btn-fechar-form-jogador");
+  if (btnFecharFormJogador) btnFecharFormJogador.addEventListener("click", fecharFormJogador);
+
+  const btnCancelarFormJogador = document.getElementById("btn-cancelar-form-jogador");
+  if (btnCancelarFormJogador) btnCancelarFormJogador.addEventListener("click", fecharFormJogador);
+
+  const formJogador = document.getElementById("form-jogador");
+  if (formJogador) formJogador.addEventListener("submit", salvarFormJogador);
+
+  const sobreposicaoFormJogador = document.getElementById("sobreposicao-form-jogador");
+  if (sobreposicaoFormJogador) {
+    sobreposicaoFormJogador.addEventListener("click", function (evento) {
+      if (evento.target === sobreposicaoFormJogador) fecharFormJogador();
+    });
+  }
+
+  const btnCancelarExcluirJogador = document.getElementById("btn-cancelar-excluir-jogador");
+  if (btnCancelarExcluirJogador) btnCancelarExcluirJogador.addEventListener("click", fecharConfirmarExcluirJogadorEditor);
+
+  const btnConfirmarExcluirJogador = document.getElementById("btn-confirmar-excluir-jogador");
+  if (btnConfirmarExcluirJogador) btnConfirmarExcluirJogador.addEventListener("click", confirmarExcluirJogadorEditor);
+
+  const sobreposicaoExcluirJogador = document.getElementById("sobreposicao-excluir-jogador");
+  if (sobreposicaoExcluirJogador) {
+    sobreposicaoExcluirJogador.addEventListener("click", function (evento) {
+      if (evento.target === sobreposicaoExcluirJogador) fecharConfirmarExcluirJogadorEditor();
+    });
+  }
 
   const btnVoltarNovoJogo = document.getElementById("btn-voltar-novo-jogo");
   if (btnVoltarNovoJogo) {

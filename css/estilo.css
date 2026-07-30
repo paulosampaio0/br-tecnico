@@ -196,7 +196,9 @@ body::before {
    ============================================================ */
 
 .tela-times,
-.tela-elenco {
+.tela-elenco,
+.tela-editor,
+.tela-editor-elenco {
   justify-content: flex-start;
   align-items: stretch;
   text-align: left;
@@ -4342,4 +4344,242 @@ body::before {
 .item-nota-detalhe.craque-do-jogo .nome-nota-detalhe {
   color: var(--amarelo);
   font-weight: 700;
+}
+
+/* ============================================================
+   Editor de Times — Fase 1 (lista de clubes) e Fase 2/3 (elenco + CRUD)
+   ============================================================ */
+
+.tabela-editor-times-wrap {
+  overflow-x: auto;
+  overflow-y: auto;
+  flex: 1;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.tabela-editor-times {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.tabela-editor-times th,
+.tabela-editor-times td {
+  padding: 10px 8px;
+  text-align: left;
+}
+
+.tabela-editor-times th {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--cinza-texto);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  position: sticky;
+  top: 0;
+}
+
+.tabela-editor-times tbody tr {
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.tabela-editor-times tbody tr:active {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.tabela-editor-times tbody tr.linha-editor-selecionada {
+  background: rgba(255, 210, 63, 0.18);
+}
+
+.tabela-editor-times .col-nivel {
+  font-weight: 800;
+  color: var(--amarelo);
+  font-variant-numeric: tabular-nums;
+}
+
+.rodape-editor-times {
+  padding-top: 10px;
+}
+
+.rodape-editor-times .btn {
+  width: auto;
+  min-width: 180px;
+  margin-left: auto;
+  padding: 0 20px;
+  display: block;
+}
+
+.faixa-editor-time {
+  background: linear-gradient(180deg, rgba(61, 220, 122, 0.22), rgba(61, 220, 122, 0.08));
+  border: 1px solid rgba(61, 220, 122, 0.4);
+  border-radius: 10px;
+  padding: 10px 14px;
+  font-family: var(--fonte-titulo);
+  font-weight: 700;
+  color: #7ee0a5;
+  text-align: center;
+}
+
+.lista-editor-jogadores {
+  flex: 1;
+}
+
+.item-jogador.item-editor-selecionado {
+  border-color: var(--amarelo);
+  background: rgba(255, 210, 63, 0.12);
+}
+
+.rodape-editor-jogadores {
+  display: flex;
+  gap: 8px;
+  padding-top: 6px;
+}
+
+.btn-icone-editor {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  min-height: var(--toque-min);
+  padding: 8px 4px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--branco);
+  font-size: 17px;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.btn-icone-editor .rotulo-btn-icone-editor {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--cinza-texto);
+}
+
+.btn-icone-editor:active:not(:disabled) {
+  transform: scale(0.96);
+}
+
+.btn-icone-editor:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.btn-icone-editor-excluir {
+  border-color: rgba(255, 90, 90, 0.35);
+}
+
+.btn-icone-editor-excluir:not(:disabled) .rotulo-btn-icone-editor {
+  color: #ff8f8f;
+}
+
+/* Modal de formulário (Adicionar/Editar jogador) — mesma folha de baixo do seletor de jogador. */
+.folha-form-jogador {
+  overflow-y: auto;
+}
+
+.form-jogador {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.campo-form-jogador {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--cinza-texto);
+}
+
+.campo-form-jogador input,
+.campo-form-jogador select {
+  min-height: var(--toque-min);
+  padding: 0 12px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--branco);
+  font-size: 15px;
+  font-family: var(--fonte-corpo, inherit);
+}
+
+.linha-dupla-form-jogador {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.linha-checkboxes-form-jogador {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.checkbox-form-jogador {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--branco);
+}
+
+.checkbox-form-jogador input {
+  width: 18px;
+  height: 18px;
+}
+
+.erro-form-jogador {
+  color: #ff8f8f;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.acoes-form-jogador {
+  display: flex;
+  gap: 10px;
+}
+
+.acoes-form-jogador .btn {
+  flex: 1;
+}
+
+.btn-perigo {
+  background: linear-gradient(180deg, #ff5a5a, #b32020);
+  color: #fff;
+  box-shadow: 0 6px 16px rgba(179, 32, 32, 0.4);
+}
+
+.cartao-confirmar-exclusao {
+  text-align: left;
+}
+
+.cartao-confirmar-exclusao h3 {
+  color: var(--branco);
+  text-align: center;
+}
+
+.cartao-confirmar-exclusao p {
+  text-align: center;
+}
+
+/* Tags informativas do Editor (Titular/Estrela/Top Mundial) — só visuais, mostradas no card do
+   jogador dentro da tela de elenco do Editor. */
+.tag-editor-info {
+  display: inline-block;
+  margin-right: 4px;
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.1);
+  font-size: 9px;
+  font-weight: 700;
+  color: var(--cinza-texto);
 }

@@ -12,6 +12,9 @@ const CAMINHO_DADOS = "dados/elencos_2026.json";
 const ORDEM_POSICOES = ["GOL", "ZAG", "LAT.D", "LAT.E", "VOL", "MEI", "ATD", "ATE", "ATA"];
 
 let cacheDados = null;
+// JSON bruto, exatamente como veio do arquivo — NUNCA é mutado. `cacheDados` é sempre
+// reconstruído a partir dele (clone) + as edições do Editor de Times (ver "Camada de Edição").
+let cacheDadosBrutos = null;
 
 /**
  * Busca o arquivo de elencos (uma vez só; as próximas chamadas
@@ -25,9 +28,146 @@ async function carregarDados() {
   if (!resposta.ok) {
     throw new Error("Não foi possível carregar " + CAMINHO_DADOS + " (HTTP " + resposta.status + ")");
   }
-  cacheDados = await resposta.json();
-  atribuirIdsJogadores(cacheDados);
+  cacheDadosBrutos = await resposta.json();
+  reconstruirCacheDados();
   return cacheDados;
+}
+
+/* ============================================================
+   Editor de Times — camada de edição (Fase "Editor")
+   O jogo não tem backend: `dados/elencos_2026.json` é um arquivo estático, só de leitura.
+   Pra permitir adicionar/editar/excluir jogadores de QUALQUER clube (não só o do usuário) e essas
+   mudanças sobreviverem a um reload, guardamos só a DIFERENÇA (overrides) no localStorage —
+   `cacheDadosBrutos` nunca muda. A cada `reconstruirCacheDados()`, clonamos os dados brutos e
+   reaplicamos os overrides por cima, na mesma ordem — por isso os `_id` (índice no array,
+   ver `atribuirIdsJogadores`) continuam ESTÁVEIS entre sessões, mesmo com exclusões no meio do
+   elenco: a exclusão sempre remove o mesmo jogador de origem (`_origIdx`), então o resultado final
+   do array é sempre idêntico pra um mesmo conjunto de edições salvas.
+   ============================================================ */
+const CHAVE_OVERRIDES_EDITOR = "br-tecnico:editor:v1";
+
+/** Overrides salvos: { [nomeTime]: { editados: {[origIdx]: camposAlterados}, removidos: [origIdx,...], adicionados: [jogadorNovo,...] } } */
+function carregarOverridesEditor() {
+  try {
+    return JSON.parse(localStorage.getItem(CHAVE_OVERRIDES_EDITOR)) || {};
+  } catch (erro) {
+    return {};
+  }
+}
+
+function salvarOverridesEditor(overrides) {
+  localStorage.setItem(CHAVE_OVERRIDES_EDITOR, JSON.stringify(overrides));
+}
+
+/** Aplica os overrides salvos por cima de um clone fresco dos dados brutos. */
+function aplicarOverridesEditor(dados) {
+  const overrides = carregarOverridesEditor();
+  Object.values(dados.divisoes).forEach(function (divisao) {
+    divisao.times.forEach(function (time) {
+      const over = overrides[time.nome];
+
+      // Edições (por índice ORIGINAL — ver comentário da seção) aplicadas antes de qualquer
+      // remoção, enquanto o array ainda está na ordem/posições originais.
+      let jogadores = time.jogadores.map(function (jogador, indice) {
+        const base = Object.assign({}, jogador, { _origIdx: indice });
+        const edicao = over && over.editados && over.editados[indice];
+        return edicao ? Object.assign(base, edicao) : base;
+      });
+
+      if (over && over.removidos && over.removidos.length) {
+        const removidosSet = new Set(over.removidos);
+        jogadores = jogadores.filter(function (jogador) { return !removidosSet.has(jogador._origIdx); });
+      }
+
+      if (over && over.adicionados && over.adicionados.length) {
+        jogadores = jogadores.concat(over.adicionados.map(function (jogador) {
+          return Object.assign({}, jogador);
+        }));
+      }
+
+      time.jogadores = jogadores;
+    });
+  });
+
+  // Estrela Editor: jogadores marcados como "Estrela" no formulário viram Estrela Dourada globalmente
+  // (mesmo mecanismo de `JOGADORES_EMBLEMATICOS`, por nome — reaproveita o Sistema de Estrelas já existente).
+  Object.values(overrides).forEach(function (over) {
+    [].concat(over.adicionados || [], Object.values(over.editados || {})).forEach(function (jogador) {
+      if (jogador && jogador.estrelaEditor && jogador.nome) JOGADORES_EMBLEMATICOS.add(jogador.nome);
+    });
+  });
+}
+
+/** Reconstrói `cacheDados` a partir de `cacheDadosBrutos` + overrides do Editor — chamar sempre
+ *  que uma edição for salva, pra refletir na hora sem precisar recarregar a página. */
+function reconstruirCacheDados() {
+  cacheDados = JSON.parse(JSON.stringify(cacheDadosBrutos));
+  aplicarOverridesEditor(cacheDados);
+  atribuirIdsJogadores(cacheDados);
+}
+
+/** Nível geral do time (Editor de Times) — média de força do elenco, arredondada. */
+function calcularNivelTime(time) {
+  if (!time.jogadores.length) return 0;
+  const soma = time.jogadores.reduce(function (s, j) { return s + j.forca; }, 0);
+  return Math.round(soma / time.jogadores.length);
+}
+
+/** Adiciona um jogador novo ao elenco de `nomeTime` (Editor de Times) e persiste. */
+function adicionarJogadorAoElenco(nomeTime, jogadorNovo) {
+  const overrides = carregarOverridesEditor();
+  overrides[nomeTime] = overrides[nomeTime] || {};
+  overrides[nomeTime].adicionados = overrides[nomeTime].adicionados || [];
+  const chave = "novo-" + Date.now() + "-" + Math.floor(Math.random() * 1e6);
+  overrides[nomeTime].adicionados.push(Object.assign({}, jogadorNovo, { _novoKey: chave }));
+  salvarOverridesEditor(overrides);
+  reconstruirCacheDados();
+}
+
+/** Edita um jogador já existente no elenco de `nomeTime` (Editor de Times) e persiste.
+ *  `jogador` precisa ser o objeto vindo de `cacheDados` (tem `_origIdx` OU `_novoKey`). */
+function editarJogadorNoElenco(nomeTime, jogador, camposAlterados) {
+  const overrides = carregarOverridesEditor();
+  overrides[nomeTime] = overrides[nomeTime] || {};
+
+  if (jogador._novoKey) {
+    // Jogador que só existe como adição do Editor — edita o próprio registro em `adicionados`.
+    overrides[nomeTime].adicionados = (overrides[nomeTime].adicionados || []).map(function (j) {
+      return j._novoKey === jogador._novoKey ? Object.assign({}, j, camposAlterados) : j;
+    });
+  } else {
+    overrides[nomeTime].editados = overrides[nomeTime].editados || {};
+    overrides[nomeTime].editados[jogador._origIdx] = Object.assign(
+      {}, overrides[nomeTime].editados[jogador._origIdx], camposAlterados
+    );
+  }
+
+  salvarOverridesEditor(overrides);
+  reconstruirCacheDados();
+}
+
+/** Remove um jogador do elenco de `nomeTime` (Editor de Times) e persiste.
+ *  Nome com sufixo "Editor" pra não colidir com `removerJogadorDoElenco(idJogador)` de app.js
+ *  (função totalmente diferente — libera um jogador do elenco do PRÓPRIO usuário). */
+function removerJogadorDoElencoEditor(nomeTime, jogador) {
+  const overrides = carregarOverridesEditor();
+  overrides[nomeTime] = overrides[nomeTime] || {};
+
+  if (jogador._novoKey) {
+    // Nunca existiu nos dados brutos — só tira da lista de adições, não precisa marcar "removido".
+    overrides[nomeTime].adicionados = (overrides[nomeTime].adicionados || [])
+      .filter(function (j) { return j._novoKey !== jogador._novoKey; });
+  } else {
+    overrides[nomeTime].removidos = overrides[nomeTime].removidos || [];
+    if (overrides[nomeTime].removidos.indexOf(jogador._origIdx) === -1) {
+      overrides[nomeTime].removidos.push(jogador._origIdx);
+    }
+    // Se havia uma edição pendente pra esse índice, não faz mais sentido — o jogador nem existe mais.
+    if (overrides[nomeTime].editados) delete overrides[nomeTime].editados[jogador._origIdx];
+  }
+
+  salvarOverridesEditor(overrides);
+  reconstruirCacheDados();
 }
 
 /**
