@@ -38,6 +38,7 @@
 
 html, body {
   height: 100%;
+  color-scheme: dark;
 }
 
 body {
@@ -49,6 +50,14 @@ body {
   background-color: var(--verde-campo);
   min-height: 100dvh;
   -webkit-font-smoothing: antialiased;
+  /* Números (força, valores, %) alinhados em largura fixa — evita "dança" de dígitos
+     em listas e comparações (tabela, mercado, financeiro). */
+  font-variant-numeric: tabular-nums;
+}
+
+/* Títulos nunca terminam com uma palavra sozinha na última linha. */
+h1, h2, h3 {
+  text-wrap: balance;
 }
 
 /* Faixas de gramado por cima do fundo */
@@ -104,6 +113,18 @@ body::before {
 @keyframes surgir-tela {
   from { opacity: 0; }
   to { opacity: 1; }
+}
+
+/* Quem prefere menos movimento (configuração do SO): encurta/paralisa todas as
+   animações e transições do jogo em vez de simplesmente desligar (mantém o
+   estado final visível, só sem o movimento). */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
 }
 
 /* ---------- Cabeçalho ---------- */
@@ -3738,7 +3759,9 @@ body::before {
   background-size: 16px;
 }
 
-.campo-config select option {
+/* Lista de opções nativa do <select> (Windows/Chrome cai no branco do SO por padrão) —
+   estilo escuro consistente em todo o jogo, não só na tela de configuração. */
+select option {
   background: #0d1a2b;
   color: var(--branco);
 }
@@ -4662,4 +4685,314 @@ body::before {
   font-size: 9px;
   font-weight: 700;
   color: var(--cinza-texto);
+}
+
+/* ============================================================
+   Elenco de Juniores (Base)
+   ============================================================ */
+
+.lista-elenco-base {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.item-junior-base {
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.item-junior-base.selecionado {
+  border-color: var(--amarelo);
+  background: rgba(255, 214, 0, 0.08);
+}
+
+.junior-linha-topo {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.junior-nome {
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.junior-estrelas {
+  flex-shrink: 0;
+  font-size: 12px;
+  color: var(--amarelo);
+  letter-spacing: -1px;
+}
+
+.junior-valor {
+  flex-shrink: 0;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--cinza-texto);
+}
+
+.junior-linha-baixo {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 6px;
+  font-size: 11px;
+  color: var(--cinza-texto);
+}
+
+.item-junior-base .pos {
+  flex-shrink: 0;
+  width: 38px;
+  height: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+  background: var(--verde-claro);
+  color: var(--branco);
+  font-size: 10px;
+  font-weight: 800;
+}
+.item-junior-base .pos.setor-goleiro { background: var(--amarelo); color: #3a2b00; }
+.item-junior-base .pos.setor-defesa { background: #3b82f6; color: #fff; }
+.item-junior-base .pos.setor-meio { background: var(--neon-verde); color: #04220f; }
+.item-junior-base .pos.setor-ataque { background: #ff5a3c; color: #2a0b02; }
+
+.junior-idade {
+  flex-shrink: 0;
+}
+
+.junior-traits {
+  flex-shrink: 0;
+  font-weight: 700;
+}
+
+.junior-dev {
+  flex: 1;
+  min-width: 60px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
+}
+
+.junior-dev-barra {
+  flex: 1;
+  height: 6px;
+  min-width: 30px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.1);
+  overflow: hidden;
+}
+
+.junior-dev-barra-preenchimento {
+  display: block;
+  height: 100%;
+  background: var(--neon-verde);
+}
+
+.junior-salario {
+  flex-shrink: 0;
+}
+
+.lista-candidatos-peneira {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+.item-candidato-peneira {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: rgba(255, 214, 0, 0.06);
+  border: 1px dashed rgba(255, 214, 0, 0.3);
+  font-size: 12px;
+}
+
+.candidato-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.barra-acoes-base {
+  position: sticky;
+  bottom: 0;
+  display: flex;
+  gap: 8px;
+  padding: 10px 0 calc(env(safe-area-inset-bottom) + 4px);
+  background: linear-gradient(to top, var(--fundo-app, #0b1a12) 70%, transparent);
+}
+
+.barra-acoes-base .btn {
+  flex: 1;
+}
+
+/* ============================================================
+   Obras no Estádio por setor
+   ============================================================ */
+
+.secao-obras-estadio {
+  margin-top: 12px;
+}
+
+.obra-capacidade-total {
+  font-size: 13px;
+  color: var(--cinza-texto);
+  margin-bottom: 6px;
+}
+
+.obra-subtitulo {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--cinza-texto);
+  margin: 8px 0 4px;
+}
+
+.obra-lista-setores {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 13px;
+  list-style: none;
+  padding: 0;
+}
+
+.obra-aviso-andamento {
+  margin-top: 10px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: rgba(255, 214, 0, 0.1);
+  border: 1px solid rgba(255, 214, 0, 0.3);
+  font-size: 12px;
+  font-weight: 700;
+  text-align: center;
+}
+
+.obra-grade-setores {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.obra-campo-setor {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.obra-campo-setor label {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--amarelo);
+}
+
+.obra-campo-setor input {
+  height: 38px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--branco);
+  padding: 0 10px;
+  font-size: 14px;
+}
+
+.obra-maximo-setor {
+  font-size: 10px;
+  color: var(--cinza-texto);
+}
+
+.obra-orcamento-resultado {
+  margin-top: 10px;
+  padding: 10px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.05);
+  text-align: center;
+}
+
+/* ============================================================
+   Finanças — Gestão avançada (Patrocínio / Crédito / Sócio-torcedor)
+   ============================================================ */
+
+.secao-gestao-avancada {
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  padding: 4px 12px 12px;
+}
+
+.secao-gestao-avancada summary {
+  padding: 10px 0;
+  font-weight: 700;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.secao-gestao-avancada > section {
+  margin-top: 10px;
+}
+
+.secao-gestao-avancada h3 {
+  font-size: 14px;
+  margin-bottom: 4px;
+}
+
+.patrocinio-atual,
+.credito-dica,
+.credito-divida-atual,
+.credito-parcela-prevista,
+.socio-status {
+  font-size: 12px;
+  color: var(--cinza-texto);
+  margin-bottom: 6px;
+}
+
+.lista-ofertas-patrocinio {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.item-oferta-patrocinio {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.05);
+  font-size: 12px;
+}
+
+.oferta-patrocinio-nome {
+  flex-basis: 100%;
+  font-weight: 700;
+}
+
+.oferta-patrocinio-detalhe {
+  flex: 1;
+  color: var(--cinza-texto);
+}
+
+.lista-emprestimos-ativos {
+  margin-top: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
 }

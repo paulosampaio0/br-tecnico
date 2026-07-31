@@ -282,6 +282,60 @@ const CONFIG_FINANCEIRO = {
   capitaoComebackBonusAtaqueMaximo: 2.2, // no auge da liderança (fator 1.0)
   capitaoComebackBonusDefesaMaximo: 1.2, // reduz a "pane defensiva" enquanto tenta virar
   capitaoAusentePenalidadeDefesa: 1.2, // sem capitão (ou expulso) perdendo: mais vulnerável a goleada
+
+  // --- Elenco de Juniores (Base como tela própria) ---
+
+  juniorVagasBase: 6, // vagas no elenco de juniores com Base nível 1
+  juniorVagasPorNivelBase: 2, // +2 vagas por nível de infraestrutura da Base acima do 1
+  juniorGanhoDesenvolvimentoPorRodada: 3, // % de desenvolvimento ganho por rodada oficial, no nível 1
+  juniorBonusDesenvolvimentoPorNivelBase: 0.18, // +18% de ganho por nível da Base acima do 1
+  juniorBonusDesenvolvimentoPorNivelCT: 0.12, // +12% de ganho por nível do CT acima do 1
+  juniorIdadeMaximaNoElenco: 21, // quem chega nessa idade sem ser promovido sai do clube
+  juniorRuidoAvaliacaoMaximo: 4, // erro máximo (pra mais ou pra menos) na força estimada, sem olheiro nenhum
+  juniorFatorSalarioSobreValor: 0.006, // salário mensal do júnior = valor de mercado estimado × este fator
+  custoPeneiraFatorSobreCaixaInicial: 0.012, // custo da 1ª peneira da temporada
+  custoPeneiraFatorAcrescimoPorPeneira: 0.5, // +50% de custo a cada peneira repetida na mesma temporada
+  peneiraQtdCandidatosBase: 3, // candidatos oferecidos com Base nível 1
+  peneiraQtdCandidatosPorNivelBase: 1, // +1 candidato por nível da Base acima do 1
+
+  // --- Obras no estádio por setor ---
+
+  estadioSetorTetos: { geral: 18000, arquibancada: 80000, cadeiras: 9000, camarotes: 700 },
+  estadioSetorProporcaoInicial: { geral: 0.15, arquibancada: 0.75, cadeiras: 0.09, camarotes: 0.01 },
+  estadioSetorMultiplicadorPreco: { geral: 0.5, arquibancada: 1, cadeiras: 2.2, camarotes: 12 },
+  estadioSetorOcupacaoBase: { geral: 0.9, arquibancada: 0.7, cadeiras: 0.55, camarotes: 0.35 },
+  estadioSetorCustoPorLugar: { geral: 0.0009, arquibancada: 0.0018, cadeiras: 0.006, camarotes: 0.09 }, // R$mi por lugar, obra à vista
+  estadioSetorManutencaoPorLugarPorRodada: { geral: 0.000006, arquibancada: 0.000009, cadeiras: 0.00003, camarotes: 0.0006 }, // R$mi/rodada
+  estadioObraRodadasPorLugares: 5000, // 1 rodada de prazo a cada 5000 lugares pedidos, arredondado pra cima
+  estadioObraRodadasMinimo: 1,
+  estadioObraRodadasMaximo: 12,
+
+  // --- Patrocínio negociado ---
+
+  patrocinioSeguroFatorFixo: 1.05,
+  patrocinioSeguroFatorBonus: 0.3,
+  patrocinioEquilibradoFatorFixo: 0.85,
+  patrocinioEquilibradoFatorBonus: 0.85,
+  patrocinioAgressivoFatorFixo: 0.55,
+  patrocinioAgressivoFatorBonus: 1.8,
+
+  // --- Empréstimo bancário ---
+
+  emprestimoOpcoesValorFatorSobreCaixaInicial: [0.15, 0.3, 0.5],
+  emprestimoTetoDividaFatorSobreCaixaInicial: 0.6,
+  emprestimoPrazosRodadas: [12, 24, 36],
+  emprestimoJurosPorPrazo: { 12: 0.012, 24: 0.009, 36: 0.007 }, // juros por rodada sobre o saldo devedor
+
+  // --- Sócio-torcedor ---
+
+  socioPlanos: {
+    basico: { nome: "Básico", mensalidade: 0.006, atracao: 1.2 },
+    ouro: { nome: "Ouro", mensalidade: 0.015, atracao: 0.8 },
+    diamante: { nome: "Diamante", mensalidade: 0.035, atracao: 0.4 },
+  },
+  socioFatorMaximoSobreCapacidade: 0.25, // teto de sócios = 25% da capacidade do estádio
+  socioAjustePorRodada: 0.08, // velocidade de convergência do nº de sócios rumo ao alvo
+  socioPisoPublicoFatorSobreSocios: 0.6, // sócios garantem esse piso de público (fração dos sócios) mesmo em jogo fraco
 };
 
 /** Premiação (R$ milhões) da posição final de um clube na divisão em que jogou a temporada. */
@@ -442,6 +496,89 @@ function calcularCapacidadeEstadio(jogadores, divisaoChave) {
   return Math.round(clampFrac(capacidade, CONFIG_FINANCEIRO.capacidadeEstadioMinima, CONFIG_FINANCEIRO.capacidadeEstadioMaxima));
 }
 
+/* ============================================================
+   Estádio por setor (Geral / Arquibancada / Cadeiras / Camarotes)
+   ============================================================ */
+
+/** Reparte uma capacidade total nos 4 setores, na proporção-padrão (Migração de saves antigos). */
+function criarSetoresEstadioIniciais(capacidadeTotal) {
+  const proporcao = CONFIG_FINANCEIRO.estadioSetorProporcaoInicial;
+  const setores = {};
+  Object.keys(proporcao).forEach(function (setor) {
+    setores[setor] = Math.round(capacidadeTotal * proporcao[setor]);
+  });
+  return setores;
+}
+
+function somarCapacidadeSetores(setores) {
+  return Object.keys(setores).reduce(function (total, setor) { return total + setores[setor]; }, 0);
+}
+
+/** Quantos lugares ainda cabem em cada setor até o teto. */
+function calcularVagasDisponiveisSetores(setores) {
+  const tetos = CONFIG_FINANCEIRO.estadioSetorTetos;
+  const vagas = {};
+  Object.keys(tetos).forEach(function (setor) {
+    vagas[setor] = Math.max(0, tetos[setor] - (setores[setor] || 0));
+  });
+  return vagas;
+}
+
+/** Custo total (R$mi, à vista) e prazo (rodadas) de uma obra pedindo `lugaresPorSetor` novos lugares. */
+function calcularOrcamentoObraEstadio(lugaresPorSetor) {
+  const custoPorLugar = CONFIG_FINANCEIRO.estadioSetorCustoPorLugar;
+  let custoTotal = 0;
+  let totalLugares = 0;
+  Object.keys(lugaresPorSetor).forEach(function (setor) {
+    const qtd = Math.max(0, lugaresPorSetor[setor] || 0);
+    custoTotal += qtd * (custoPorLugar[setor] || 0);
+    totalLugares += qtd;
+  });
+  custoTotal = Math.round(custoTotal * 100) / 100;
+  const rodadas = totalLugares > 0
+    ? clampFrac(Math.ceil(totalLugares / CONFIG_FINANCEIRO.estadioObraRodadasPorLugares), CONFIG_FINANCEIRO.estadioObraRodadasMinimo, CONFIG_FINANCEIRO.estadioObraRodadasMaximo)
+    : 0;
+  return { custoTotal: custoTotal, rodadas: rodadas, totalLugares: totalLugares };
+}
+
+/** Manutenção de todos os setores numa rodada (R$mi) — some com os custos fixos. */
+function calcularManutencaoEstadioPorRodada(setores) {
+  const custoPorLugar = CONFIG_FINANCEIRO.estadioSetorManutencaoPorLugarPorRodada;
+  let total = 0;
+  Object.keys(setores).forEach(function (setor) {
+    total += (setores[setor] || 0) * (custoPorLugar[setor] || 0);
+  });
+  return Math.round(total * 100) / 100;
+}
+
+/** Público de um jogo em casa, setor a setor — cada um com sua própria ocupação base. */
+function calcularPublicoPorSetor(setores, faixaPreco, moralTorcida, aproveitamento, pisoSociosPorSetor) {
+  const ocupacaoBase = CONFIG_FINANCEIRO.estadioSetorOcupacaoBase;
+  const ajustePreco = { barato: 1.1, normal: 1, caro: 0.82 }[faixaPreco] || 1;
+  const fatorMoral = 0.7 + (moralTorcida / 100) * 0.5;
+  const fatorDesempenho = 0.8 + (aproveitamento !== undefined ? aproveitamento : 0.5) * 0.5;
+  const publicoPorSetor = {};
+  Object.keys(setores).forEach(function (setor) {
+    const ocupacao = clampFrac((ocupacaoBase[setor] || 0.6) * ajustePreco * fatorMoral * fatorDesempenho, 0.05, 0.99);
+    let publico = Math.round((setores[setor] || 0) * ocupacao);
+    const piso = pisoSociosPorSetor && pisoSociosPorSetor[setor] ? Math.round(pisoSociosPorSetor[setor]) : 0;
+    publico = Math.min(setores[setor] || 0, Math.max(publico, piso));
+    publicoPorSetor[setor] = publico;
+  });
+  return publicoPorSetor;
+}
+
+/** Receita de bilheteria (R$mi) somando os 4 setores, cada um com seu multiplicador sobre o preço-base. */
+function calcularReceitaBilheteriaPorSetor(publicoPorSetor, faixaPreco) {
+  const precoBase = CONFIG_FINANCEIRO.precoIngressoPorFaixa[faixaPreco] || CONFIG_FINANCEIRO.precoIngressoPorFaixa.normal;
+  const multiplicador = CONFIG_FINANCEIRO.estadioSetorMultiplicadorPreco;
+  let receita = 0;
+  Object.keys(publicoPorSetor).forEach(function (setor) {
+    receita += publicoPorSetor[setor] * precoBase * (multiplicador[setor] || 1);
+  });
+  return Math.round((receita / 1000000) * 100) / 100;
+}
+
 /**
  * Público de um jogo em casa: parte da ocupação típica da faixa de preço
  * escolhida, ajustada pra cima ou pra baixo pela moral da torcida (0-100) e
@@ -517,15 +654,167 @@ function calcularFatorReputacaoPatrocinio(estrelasReputacao) {
 /** Estado financeiro inicial de um clube, criado quando o técnico assume o time. */
 function criarFinancasIniciais(jogadores, divisaoChave) {
   const caixaInicial = calcularCaixaInicial(jogadores, divisaoChave);
+  const capacidadeTotal = calcularCapacidadeEstadio(jogadores, divisaoChave);
   return {
     caixa: caixaInicial,
     caixaInicialClube: caixaInicial, // referência de "porte" pros custos fixos, não muda rodada a rodada
-    capacidadeEstadio: calcularCapacidadeEstadio(jogadores, divisaoChave),
+    capacidadeEstadio: capacidadeTotal,
+    setoresEstadio: criarSetoresEstadioIniciais(capacidadeTotal), // Obras no Estádio por setor
+    obraEstadio: null, // { setores: {...pedidos}, custoTotal, rodadasRestantes } — 1 obra por vez
     moralTorcida: CONFIG_FINANCEIRO.moralTorcidaInicial,
     patrocinioValorTemporada: 0, // definido em definirPatrocinioDaTemporada() no início de cada temporada
     patrocinioPorRodada: 0,
     historico: [], // [{ rodada, cotaTv, patrocinio, bilheteria, publico, souCasa, folha, custosFixos, receita, despesa, saldo, caixaDepois }]
   };
+}
+
+/** Garante que `financas` tem os campos de estádio-por-setor — cobre saves de antes dessa fase. */
+function garantirSetoresEstadio(financas) {
+  if (!financas.setoresEstadio) {
+    financas.setoresEstadio = criarSetoresEstadioIniciais(financas.capacidadeEstadio || CONFIG_FINANCEIRO.capacidadeEstadioMinima);
+  }
+  if (financas.obraEstadio === undefined) financas.obraEstadio = null;
+}
+
+/** Avança a obra do estádio em 1 rodada; ao concluir, os lugares entram nos setores. Devolve um aviso, ou null. */
+function avancarObraEstadio(financas) {
+  if (!financas.obraEstadio) return null;
+  financas.obraEstadio.rodadasRestantes -= 1;
+  if (financas.obraEstadio.rodadasRestantes > 0) return null;
+
+  const setoresPedidos = financas.obraEstadio.setores;
+  Object.keys(setoresPedidos).forEach(function (setor) {
+    financas.setoresEstadio[setor] = (financas.setoresEstadio[setor] || 0) + setoresPedidos[setor];
+  });
+  financas.capacidadeEstadio = somarCapacidadeSetores(financas.setoresEstadio);
+  const totalLugares = Object.keys(setoresPedidos).reduce(function (t, s) { return t + setoresPedidos[s]; }, 0);
+  financas.obraEstadio = null;
+  return "🏟 Obra concluída! +" + totalLugares.toLocaleString("pt-BR") + " lugares no estádio.";
+}
+
+/* ============================================================
+   Patrocínio negociado
+   ============================================================ */
+
+/**
+ * 3 propostas de patrocínio (Seguro / Equilibrado / Agressivo) a partir do valor-base de TEMPORADA
+ * já calculado (o mesmo número que `definirPatrocinioDaTemporada` usava direto). `totalRodadas`
+ * é quem converte esse total em valor por rodada — sem isso o valor fica 38x maior do que devia.
+ */
+function gerarOfertasPatrocinio(valorBaseTemporada, totalRodadas) {
+  const nomes = ["Seguro", "Equilibrado", "Agressivo"];
+  const fixoKeys = ["patrocinioSeguroFatorFixo", "patrocinioEquilibradoFatorFixo", "patrocinioAgressivoFatorFixo"];
+  const bonusKeys = ["patrocinioSeguroFatorBonus", "patrocinioEquilibradoFatorBonus", "patrocinioAgressivoFatorBonus"];
+  const patrocinadores = ["Grupo Atlântico", "Nortel Seguros", "Bravo Bank", "Vetor Telecom", "Costa Energia", "Prime Varejo"];
+  const rodadas = totalRodadas > 0 ? totalRodadas : 38;
+  return nomes.map(function (perfil, i) {
+    const valorTemporadaPerfil = valorBaseTemporada * CONFIG_FINANCEIRO[fixoKeys[i]];
+    return {
+      perfil: perfil,
+      nome: patrocinadores[Math.floor(Math.random() * patrocinadores.length)] + " (" + perfil + ")",
+      valorPorRodada: Math.round((valorTemporadaPerfil / rodadas) * 100) / 100,
+      bonusMeta: Math.round(valorBaseTemporada * CONFIG_FINANCEIRO[bonusKeys[i]] * 100) / 100,
+      temporadasRestantes: 1 + Math.floor(Math.random() * 3),
+    };
+  });
+}
+
+/* ============================================================
+   Empréstimo bancário
+   ============================================================ */
+
+/** Opções de valor disponíveis, já limitadas pelo teto de dívida (reputação sobe o teto, dívida existente reduz). */
+function calcularOpcoesEmprestimo(caixaInicialClube, dividaAtual, estrelasReputacao) {
+  const fatorReputacao = 0.7 + (estrelasReputacao || 3) * 0.15; // 3 estrelas = neutro (1.15)
+  const teto = Math.max(0, caixaInicialClube * CONFIG_FINANCEIRO.emprestimoTetoDividaFatorSobreCaixaInicial * fatorReputacao - dividaAtual);
+  return CONFIG_FINANCEIRO.emprestimoOpcoesValorFatorSobreCaixaInicial
+    .map(function (fator) { return Math.round(caixaInicialClube * fator * 100) / 100; })
+    .filter(function (valor) { return valor <= teto; });
+}
+
+/** Parcela por rodada de um empréstimo (amortização simples: juros sobre saldo + saldo/prazo). */
+function calcularParcelaEmprestimo(valor, prazoRodadas) {
+  const juros = CONFIG_FINANCEIRO.emprestimoJurosPorPrazo[prazoRodadas] || 0.01;
+  const amortizacao = valor / prazoRodadas;
+  return Math.round((amortizacao + valor * juros) * 100) / 100;
+}
+
+function criarEmprestimo(id, valor, prazoRodadas) {
+  return {
+    id: id, valorTomado: valor, saldoDevedor: valor,
+    jurosPorRodada: CONFIG_FINANCEIRO.emprestimoJurosPorPrazo[prazoRodadas] || 0.01,
+    parcelaPorRodada: calcularParcelaEmprestimo(valor, prazoRodadas),
+    rodadasRestantes: prazoRodadas,
+  };
+}
+
+/** Cobra a parcela de todos os empréstimos bancários ativos numa rodada; devolve o total pago e remove os quitados. */
+function processarEmprestimosBancariosNaRodada(emprestimos) {
+  let totalParcelas = 0;
+  const restantes = [];
+  (emprestimos || []).forEach(function (emp) {
+    const juros = Math.round(emp.saldoDevedor * emp.jurosPorRodada * 100) / 100;
+    const amortizacao = Math.min(emp.saldoDevedor, emp.parcelaPorRodada - juros);
+    emp.saldoDevedor = Math.round(Math.max(0, emp.saldoDevedor - amortizacao) * 100) / 100;
+    emp.rodadasRestantes -= 1;
+    totalParcelas += emp.parcelaPorRodada;
+    if (emp.saldoDevedor > 0 && emp.rodadasRestantes > 0) restantes.push(emp);
+  });
+  emprestimos.length = 0;
+  restantes.forEach(function (e) { emprestimos.push(e); });
+  return Math.round(totalParcelas * 100) / 100;
+}
+
+/* ============================================================
+   Sócio-torcedor
+   ============================================================ */
+
+/** Nº-alvo de sócios pra este momento do clube (moral, reputação, posição na tabela, capacidade). */
+function calcularAlvoSocios(plano, capacidadeEstadio, moralTorcida, estrelasReputacao, fracaoPosicaoTabela) {
+  const infoPlano = CONFIG_FINANCEIRO.socioPlanos[plano];
+  if (!infoPlano) return 0;
+  const teto = capacidadeEstadio * CONFIG_FINANCEIRO.socioFatorMaximoSobreCapacidade;
+  const fatorMoral = 0.5 + (moralTorcida / 100) * 0.7;
+  const fatorReputacao = 0.6 + (estrelasReputacao || 3) * 0.12;
+  const fatorTabela = 0.7 + (fracaoPosicaoTabela !== undefined ? fracaoPosicaoTabela : 0.5) * 0.5;
+  return Math.round(teto * infoPlano.atracao * fatorMoral * fatorReputacao * fatorTabela / 1.4);
+}
+
+/** Move o nº atual de sócios em direção ao alvo (convergência gradual, não instantânea). */
+function atualizarSociosPorRodada(socios, alvo) {
+  const diferenca = alvo - socios;
+  return Math.round(socios + diferenca * CONFIG_FINANCEIRO.socioAjustePorRodada);
+}
+
+/** Receita da mensalidade dos sócios numa rodada (rateada — mensalidade é por mês). */
+function calcularReceitaSociosPorRodada(socios, plano) {
+  const infoPlano = CONFIG_FINANCEIRO.socioPlanos[plano];
+  if (!infoPlano) return 0;
+  return Math.round((socios * infoPlano.mensalidade / CONFIG_FINANCEIRO.rodadasPorMes) * 100) / 100;
+}
+
+/** Piso de público por setor garantido pelos sócios (distribuído proporcionalmente ao tamanho de cada setor). */
+function calcularPisoPublicoSociosPorSetor(setores, socios) {
+  const capacidadeTotal = somarCapacidadeSetores(setores) || 1;
+  const piso = {};
+  Object.keys(setores).forEach(function (setor) {
+    const fracaoSetor = setores[setor] / capacidadeTotal;
+    piso[setor] = socios * fracaoSetor * CONFIG_FINANCEIRO.socioPisoPublicoFatorSobreSocios;
+  });
+  return piso;
+}
+
+/* ============================================================
+   Elenco de Juniores — folha salarial
+   ============================================================ */
+
+/** Folha salarial de todo o elenco de juniores numa rodada (independente do custoBase de estrutura). */
+function calcularFolhaJuniorPorRodada(elencoBase) {
+  if (!elencoBase || elencoBase.length === 0) return 0;
+  const total = elencoBase.reduce(function (soma, junior) {
+    return soma + calcularValorMercado(junior) * CONFIG_FINANCEIRO.juniorFatorSalarioSobreValor;
+  }, 0);
+  return Math.round((total / CONFIG_FINANCEIRO.rodadasPorMes) * 100) / 100;
 }
 
 /**
@@ -546,26 +835,47 @@ function aplicarFinancasDaRodada(financas, contexto) {
   const souCasa = !!contexto.souCasa;
   const faixaPreco = contexto.faixaPrecoIngresso || "normal";
 
+  garantirSetoresEstadio(financas);
+
   const cotaTv = obterCotaTvPorRodada(divisaoChave);
   const patrocinio = financas.patrocinioPorRodada || 0;
   const folha = calcularFolhaSalarialPorRodada(jogadores, contexto.contratos);
-  const custosFixos = calcularCustosFixosPorRodada(financas.caixaInicialClube);
+  const custosFixos = calcularCustosFixosPorRodada(financas.caixaInicialClube) + calcularManutencaoEstadioPorRodada(financas.setoresEstadio);
   const custoBase = contexto.investimentoBaseAtivo ? calcularCustoBasePorRodada(financas.caixaInicialClube) : 0;
+  const folhaJunior = calcularFolhaJuniorPorRodada(contexto.elencoBase);
+  const parcelasEmprestimo = contexto.emprestimos ? processarEmprestimosBancariosNaRodada(contexto.emprestimos) : 0;
+
+  // Sócio-torcedor: nº de sócios converge pro alvo do momento e paga mensalidade rateada.
+  let receitaSocios = 0;
+  let pisoSociosPorSetor = null;
+  if (contexto.socioTorcedor && contexto.socioTorcedor.ativo) {
+    const alvo = calcularAlvoSocios(
+      contexto.socioTorcedor.plano, financas.capacidadeEstadio, financas.moralTorcida,
+      contexto.estrelasReputacao, contexto.fracaoPosicaoTabela
+    );
+    contexto.socioTorcedor.socios = atualizarSociosPorRodada(contexto.socioTorcedor.socios || 0, alvo);
+    receitaSocios = calcularReceitaSociosPorRodada(contexto.socioTorcedor.socios, contexto.socioTorcedor.plano);
+    pisoSociosPorSetor = calcularPisoPublicoSociosPorSetor(financas.setoresEstadio, contexto.socioTorcedor.socios);
+  }
 
   let publico = 0;
   let bilheteria = 0;
   if (souCasa) {
-    publico = calcularPublicoJogo(financas.capacidadeEstadio, faixaPreco, financas.moralTorcida, contexto.aproveitamento);
-    bilheteria = calcularReceitaBilheteria(publico, faixaPreco);
+    const publicoPorSetor = calcularPublicoPorSetor(financas.setoresEstadio, faixaPreco, financas.moralTorcida, contexto.aproveitamento, pisoSociosPorSetor);
+    publico = Object.keys(publicoPorSetor).reduce(function (t, s) { return t + publicoPorSetor[s]; }, 0);
+    bilheteria = calcularReceitaBilheteriaPorSetor(publicoPorSetor, faixaPreco);
     // Estrela Dourada — Receita Comercial: +15% de bilheteria com um craque titular em casa.
     if (contexto.bonusEstrelaDourada) bilheteria = Math.round(bilheteria * 1.15 * 100) / 100;
   }
 
-  const receita = Math.round((cotaTv + patrocinio + bilheteria) * 100) / 100;
-  const despesa = Math.round((folha + custosFixos + custoBase) * 100) / 100;
+  const receita = Math.round((cotaTv + patrocinio + bilheteria + receitaSocios) * 100) / 100;
+  const despesa = Math.round((folha + folhaJunior + custosFixos + custoBase + parcelasEmprestimo) * 100) / 100;
   const saldo = Math.round((receita - despesa) * 100) / 100;
 
   financas.caixa = Math.round((financas.caixa + saldo) * 100) / 100;
+
+  // Obra do estádio em andamento: avança 1 rodada; ao concluir, os lugares entram nos setores.
+  const avisoObra = avancarObraEstadio(financas);
 
   // Moral da torcida: reage ao preço do ingresso (só sentido nos jogos em casa) e ao resultado.
   let moral = financas.moralTorcida;
@@ -576,9 +886,10 @@ function aplicarFinancasDaRodada(financas, contexto) {
 
   const resumo = {
     rodada: contexto.numeroRodada, cotaTv: cotaTv, patrocinio: patrocinio, bilheteria: bilheteria,
-    publico: publico, souCasa: souCasa, folha: folha, custosFixos: custosFixos, custoBase: custoBase,
+    receitaSocios: receitaSocios, publico: publico, souCasa: souCasa, folha: folha, folhaJunior: folhaJunior,
+    custosFixos: custosFixos, custoBase: custoBase, parcelasEmprestimo: parcelasEmprestimo,
     receita: receita, despesa: despesa, saldo: saldo, caixaDepois: financas.caixa,
-    moralTorcida: financas.moralTorcida,
+    moralTorcida: financas.moralTorcida, avisoObra: avisoObra,
   };
   financas.historico.push(resumo);
   if (financas.historico.length > 20) financas.historico.shift(); // não deixa o histórico crescer sem limite

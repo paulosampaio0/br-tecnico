@@ -34,6 +34,47 @@ async function carregarDados() {
 }
 
 /* ============================================================
+   Pools de nomes por nacionalidade (Elenco de Juniores / Peneira)
+   Construídos a partir dos próprios nomes de `elencos_2026.json` — sem listas
+   hardcoded novas: quebra "Fulano de Tal" em primeiro-nome + resto, agrupa por
+   `nac`, e cacheia. Se um "nome" não tiver espaço, o próprio nome inteiro vira
+   sobrenome também (fallback razoável pra apelidos de 1 palavra tipo "Kaique").
+   ============================================================ */
+let cachePoolsDeNomes = null;
+
+function obterPoolsDeNomes() {
+  if (cachePoolsDeNomes) return cachePoolsDeNomes;
+  if (!cacheDadosBrutos) return { BRA: { primeiros: ["Kaique", "Ryan", "Lucas"], sobrenomes: ["Silva", "Santos", "Oliveira"] } };
+
+  const pools = {};
+  Object.values(cacheDadosBrutos.divisoes).forEach(function (divisao) {
+    divisao.times.forEach(function (time) {
+      time.jogadores.forEach(function (jogador) {
+        const nac = jogador.nac || "BRA";
+        if (!pools[nac]) pools[nac] = { primeiros: [], sobrenomes: [] };
+        const partes = (jogador.nome || "").trim().split(/\s+/);
+        const primeiro = partes[0];
+        const resto = partes.length > 1 ? partes.slice(1).join(" ") : partes[0];
+        if (primeiro) pools[nac].primeiros.push(primeiro);
+        if (resto) pools[nac].sobrenomes.push(resto);
+      });
+    });
+  });
+  cachePoolsDeNomes = pools;
+  return pools;
+}
+
+/** Sorteia um nome plausível de uma nacionalidade — cai pra BRA se o pool não existir ou for pequeno demais. */
+function gerarNomePorNacionalidade(nac) {
+  const pools = obterPoolsDeNomes();
+  let pool = pools[nac];
+  if (!pool || pool.primeiros.length < 5) pool = pools.BRA || { primeiros: ["Kaique"], sobrenomes: ["Silva"] };
+  const primeiro = pool.primeiros[Math.floor(Math.random() * pool.primeiros.length)];
+  const sobrenome = pool.sobrenomes[Math.floor(Math.random() * pool.sobrenomes.length)];
+  return primeiro + " " + sobrenome;
+}
+
+/* ============================================================
    Editor de Times — camada de edição (Fase "Editor")
    O jogo não tem backend: `dados/elencos_2026.json` é um arquivo estático, só de leitura.
    Pra permitir adicionar/editar/excluir jogadores de QUALQUER clube (não só o do usuário) e essas

@@ -259,6 +259,13 @@ function salvarProgresso() {
     estrelasPorJogador: estado.estrelasPorJogador,
     prateadaLimiteIdadePorJogador: estado.prateadaLimiteIdadePorJogador,
     formaPorJogador: estado.formaPorJogador,
+    elencoBase: estado.elencoBase,
+    peneirasNaTemporada: estado.peneirasNaTemporada,
+    emprestimos: estado.emprestimos,
+    proximoIdEmprestimo: estado.proximoIdEmprestimo,
+    socioTorcedor: estado.socioTorcedor,
+    patrocinio: estado.patrocinio,
+    ofertasPatrocinio: estado.ofertasPatrocinio,
     atualizadoEm: new Date().toISOString(),
   };
   try {
@@ -832,6 +839,13 @@ async function escalarEsteTime(time) {
   estado.jogadoresAVenda = {};
   estado.dashboard = { vendaAtletasTemporada: 0, vendaCamisasTemporada: 0, comprasTemporada: 0 };
   estado.historicoTemporadas = [];
+  estado.elencoBase = [];
+  estado.peneirasNaTemporada = 0;
+  estado.emprestimos = [];
+  estado.proximoIdEmprestimo = 1;
+  estado.socioTorcedor = { ativo: false, plano: "basico", socios: 0 };
+  estado.patrocinio = null;
+  estado.ofertasPatrocinio = [];
 
   await garantirTemporada();
   salvarProgresso();
@@ -4237,10 +4251,45 @@ async function garantirTemporada() {
   if (estado.financas) {
     const totalRodadas = estado.temporada[estado.timeAtual.divisaoChave].calendario.length;
     const estrelas = obterEstrelasReputacao(estado.reputacao.pontos);
-    definirPatrocinioDaTemporada(estado.financas, estado.timeAtual.jogadores, estado.timeAtual.divisaoChave, totalRodadas, 0.5, estrelas);
+    renovarPatrocinioDaTemporada(totalRodadas, 0.5, estrelas);
   }
 
   await garantirMetaDaDiretoria(dados);
+}
+
+/**
+ * Renova o patrocínio no início de uma temporada (Gestão avançada — Patrocínio negociado).
+ * Gera 3 ofertas (Seguro/Equilibrado/Agressivo) pro usuário escolher na tela de Finanças; se
+ * ele não escolher nada, o jogo assume a Equilibrada sozinho — quem ignora não perde nada.
+ * Um contrato de patrocínio já vigente com temporadas restantes é simplesmente rateado de novo.
+ */
+function renovarPatrocinioDaTemporada(totalRodadas, aproveitamentoTemporadaAnterior, estrelasReputacao) {
+  if (estado.patrocinio && estado.patrocinio.temporadasRestantes > 1) {
+    estado.patrocinio.temporadasRestantes -= 1;
+    estado.financas.patrocinioValorTemporada = Math.round(estado.patrocinio.valorPorRodada * totalRodadas * 100) / 100;
+    estado.financas.patrocinioPorRodada = estado.patrocinio.valorPorRodada;
+    return;
+  }
+
+  const valorBase = calcularPatrocinioTemporada(estado.timeAtual.jogadores, estado.timeAtual.divisaoChave, aproveitamentoTemporadaAnterior, estrelasReputacao);
+  estado.ofertasPatrocinio = gerarOfertasPatrocinio(valorBase, totalRodadas);
+  // Padrão: assume a Equilibrada sozinho — o usuário pode trocar em Finanças > Gestão avançada.
+  escolherOfertaPatrocinio(1, totalRodadas);
+}
+
+function escolherOfertaPatrocinio(indiceOferta, totalRodadasOverride) {
+  const oferta = estado.ofertasPatrocinio[indiceOferta];
+  if (!oferta) return;
+  const totalRodadas = totalRodadasOverride || (estado.temporada ? estado.temporada[estado.timeAtual.divisaoChave].calendario.length : 38);
+  estado.patrocinio = {
+    nome: oferta.nome, valorPorRodada: oferta.valorPorRodada, bonusMeta: oferta.bonusMeta,
+    temporadasRestantes: oferta.temporadasRestantes,
+  };
+  estado.financas.patrocinioValorTemporada = Math.round(oferta.valorPorRodada * totalRodadas * 100) / 100;
+  estado.financas.patrocinioPorRodada = oferta.valorPorRodada;
+  estado.ofertasPatrocinio = [];
+  salvarProgresso();
+  renderizarFinancas();
 }
 
 /**
@@ -4656,7 +4705,11 @@ async function concluirRodadaOficial() {
     const aproveitamento = linhaTabelaAntes && linhaTabelaAntes.jogos > 0
       ? linhaTabelaAntes.pontos / (linhaTabelaAntes.jogos * 3) : 0.5;
 
-    aplicarFinancasDaRodada(estado.financas, {
+    const ordenadaAntes = ordenarTabela(temporadaDivisao.tabela);
+    const indiceAntes = ordenadaAntes.findIndex(function (t) { return t.nome === estado.timeAtual.nome; });
+    const fracaoPosicaoTabela = indiceAntes === -1 ? 0.5 : 1 - indiceAntes / Math.max(1, ordenadaAntes.length - 1);
+
+    const resumoRodada = aplicarFinancasDaRodada(estado.financas, {
       jogadores: estado.timeAtual.jogadores,
       divisaoChave: divisaoChave,
       numeroRodada: numeroRodada,
@@ -4667,7 +4720,13 @@ async function concluirRodadaOficial() {
       contratos: estado.contratos,
       investimentoBaseAtivo: estado.investimentoBase,
       bonusEstrelaDourada: existeEstrelaDouradaNaEscalacaoAtual(),
+      elencoBase: estado.elencoBase,
+      emprestimos: estado.emprestimos,
+      socioTorcedor: estado.socioTorcedor,
+      estrelasReputacao: estado.reputacao && estado.reputacao.pontos !== null ? obterEstrelasReputacao(estado.reputacao.pontos) : 3,
+      fracaoPosicaoTabela: fracaoPosicaoTabela,
     });
+    if (resumoRodada.avisoObra) alert(resumoRodada.avisoObra);
 
     // Confiança da torcida no técnico (Fase 20) reage ao resultado, igual à felicidade — mas de forma mais lenta.
     if (estado.torcida) {
@@ -4680,6 +4739,7 @@ async function concluirRodadaOficial() {
   }
 
   gerarRevelacaoDaBaseSeAplicavel();
+  evoluirBasePorRodada();
 
   if (verificarSaudeFinanceira()) {
     // Demitido no meio do caminho — a carreira nesse clube acabou aqui, não tem rodada pra fechar.
@@ -4867,6 +4927,12 @@ async function processarFimDeTemporada() {
   // jogador (jogos/gols/cartões acumulados), antes do ano virar — e zera os acumuladores.
   fecharTemporadaNoHistoricoDosJogadores();
 
+  // Elenco de Juniores: todo mundo envelhece 1 ano; quem chega no limite sem ser promovido sai do clube.
+  const saidasDaBase = envelhecerElencoBaseNaVirada();
+  if (saidasDaBase.length > 0) {
+    alert("🌱 Elenco de Juniores: " + saidasDaBase.join(", ") + " chegou(aram) no limite de idade sem ser promovido(s) e deixou(aram) o clube.");
+  }
+
   // Evolução do MEU elenco: todo mundo fica 1 ano mais velho, a força sobe ou cai.
   // Nível do Centro de Treinamento (Fase 18) amplia o ganho — ou reduz a perda dos veteranos.
   // Estrela Prateada (Evolução Acelerada) dá +50% no ganho/perda de força deste jogador.
@@ -4932,11 +4998,16 @@ async function processarFimDeTemporada() {
     estado.timeAtual.divisaoChave = "serie_a";
   }
 
+  // Bônus de meta do patrocínio (Gestão avançada — Patrocínio negociado) — paga antes de renovar o contrato.
+  if (estado.patrocinio && estado.patrocinio.bonusMeta > 0 && metaCumprida) {
+    estado.financas.caixa = Math.round((estado.financas.caixa + estado.patrocinio.bonusMeta) * 100) / 100;
+  }
+
   // Renova o patrocínio pra temporada nova, já considerando a divisão atualizada, o desempenho passado e a reputação nova.
   if (estado.financas) {
     const totalRodadasNovas = estado.temporada[estado.timeAtual.divisaoChave].calendario.length;
     const estrelasNovas = estado.reputacao ? obterEstrelasReputacao(estado.reputacao.pontos) : 3;
-    definirPatrocinioDaTemporada(estado.financas, estado.timeAtual.jogadores, estado.timeAtual.divisaoChave, totalRodadasNovas, aproveitamentoAnterior, estrelasNovas);
+    renovarPatrocinioDaTemporada(totalRodadasNovas, aproveitamentoAnterior, estrelasNovas);
   }
 
   // Nova meta e novo orçamento de contratações pra temporada que está começando (Fase 14).
@@ -5028,6 +5099,7 @@ function renderizarFinancas() {
   renderizarReputacao();
   renderizarIndicadoresTorcida();
   renderizarRankingCamisas();
+  renderizarGestaoAvancada();
 
   const moralEl = document.getElementById("financas-moral-torcida");
   if (moralEl) {
@@ -5053,9 +5125,12 @@ function renderizarFinancas() {
     if (ultimaRodada.souCasa) {
       linhas.push(["🎟 Bilheteria (" + ultimaRodada.publico.toLocaleString("pt-BR") + " no estádio)", ultimaRodada.bilheteria]);
     }
+    if (ultimaRodada.receitaSocios) linhas.push(["🎟 Sócio-torcedor", ultimaRodada.receitaSocios]);
     linhas.push(["👕 Folha salarial", -ultimaRodada.folha]);
     linhas.push(["🏟 Custos fixos", -ultimaRodada.custosFixos]);
     if (ultimaRodada.custoBase) linhas.push(["🌱 Investimento na base", -ultimaRodada.custoBase]);
+    if (ultimaRodada.folhaJunior) linhas.push(["🌱 Salário dos juniores", -ultimaRodada.folhaJunior]);
+    if (ultimaRodada.parcelasEmprestimo) linhas.push(["🏦 Parcela do empréstimo", -ultimaRodada.parcelasEmprestimo]);
 
     linhas.forEach(function (linha) {
       const li = document.createElement("li");
@@ -5088,6 +5163,148 @@ function renderizarFinancas() {
       listaHistoricoEl.appendChild(li);
     });
   }
+}
+
+/* ---------- Finanças: Gestão avançada (Patrocínio / Crédito / Sócio-torcedor) ---------- */
+
+function renderizarGestaoAvancada() {
+  renderizarPatrocinioAvancado();
+  renderizarCreditoAvancado();
+  renderizarSocioAvancado();
+}
+
+function renderizarPatrocinioAvancado() {
+  const textoEl = document.getElementById("patrocinio-atual-texto");
+  const listaEl = document.getElementById("lista-ofertas-patrocinio");
+  if (!textoEl || !listaEl) return;
+
+  if (estado.patrocinio) {
+    textoEl.textContent = estado.patrocinio.nome + " — " + formatarReais(estado.patrocinio.valorPorRodada) + "/rodada" +
+      (estado.patrocinio.bonusMeta > 0 ? " + " + formatarReais(estado.patrocinio.bonusMeta) + " se bater a meta" : "") +
+      " (" + estado.patrocinio.temporadasRestantes + (estado.patrocinio.temporadasRestantes === 1 ? " temporada restante" : " temporadas restantes") + ")";
+  } else {
+    textoEl.textContent = "Nenhum patrocínio fechado ainda.";
+  }
+
+  listaEl.innerHTML = "";
+  listaEl.hidden = !estado.ofertasPatrocinio || estado.ofertasPatrocinio.length === 0;
+  (estado.ofertasPatrocinio || []).forEach(function (oferta, indice) {
+    const li = document.createElement("li");
+    li.className = "item-oferta-patrocinio";
+    li.innerHTML =
+      "<span class=\"oferta-patrocinio-nome\">" + escaparHtml(oferta.nome) + "</span>" +
+      "<span class=\"oferta-patrocinio-detalhe\">" + formatarReais(oferta.valorPorRodada) + "/rodada + " +
+        formatarReais(oferta.bonusMeta) + " se bater a meta · " + oferta.temporadasRestantes + "x</span>" +
+      "<button type=\"button\" class=\"btn btn-secundario btn-escolher-patrocinio\">Escolher</button>";
+    li.querySelector(".btn-escolher-patrocinio").addEventListener("click", function () { escolherOfertaPatrocinio(indice); });
+    listaEl.appendChild(li);
+  });
+}
+
+function renderizarCreditoAvancado() {
+  const selectValor = document.getElementById("select-valor-emprestimo");
+  const selectPrazo = document.getElementById("select-prazo-emprestimo");
+  const parcelaEl = document.getElementById("credito-parcela-prevista");
+  const dividaEl = document.getElementById("credito-divida-atual");
+  const listaEl = document.getElementById("lista-emprestimos-ativos");
+  if (!selectValor || !estado.financas) return;
+
+  const dividaAtual = (estado.emprestimos || []).reduce(function (t, e) { return t + e.saldoDevedor; }, 0);
+  if (dividaEl) dividaEl.textContent = dividaAtual > 0 ? "Dívida atual: " + formatarReais(dividaAtual) : "Sem dívida ativa.";
+
+  const estrelas = estado.reputacao && estado.reputacao.pontos !== null ? obterEstrelasReputacao(estado.reputacao.pontos) : 3;
+  const opcoes = calcularOpcoesEmprestimo(estado.financas.caixaInicialClube, dividaAtual, estrelas);
+  selectValor.innerHTML = "";
+  if (opcoes.length === 0) {
+    selectValor.innerHTML = "<option value=\"\">Sem crédito disponível</option>";
+    selectValor.disabled = true;
+  } else {
+    selectValor.disabled = false;
+    opcoes.forEach(function (valor) {
+      const opt = document.createElement("option");
+      opt.value = valor;
+      opt.textContent = formatarReais(valor);
+      selectValor.appendChild(opt);
+    });
+  }
+
+  const atualizarParcelaPrevista = function () {
+    if (!selectValor.value) { parcelaEl.textContent = ""; return; }
+    const parcela = calcularParcelaEmprestimo(Number(selectValor.value), Number(selectPrazo.value));
+    parcelaEl.textContent = "Parcela: " + formatarReais(parcela) + "/rodada";
+  };
+  atualizarParcelaPrevista();
+  selectValor.onchange = atualizarParcelaPrevista;
+  selectPrazo.onchange = atualizarParcelaPrevista;
+
+  const btnPedir = document.getElementById("btn-pedir-emprestimo");
+  if (btnPedir) {
+    btnPedir.disabled = opcoes.length === 0 || (estado.diretoria && estado.diretoria.contratacoesBloqueadas);
+    btnPedir.onclick = function () { pedirEmprestimoBancario(Number(selectValor.value), Number(selectPrazo.value)); };
+  }
+
+  if (listaEl) {
+    listaEl.innerHTML = "";
+    (estado.emprestimos || []).forEach(function (emp) {
+      const li = document.createElement("li");
+      li.className = "item-vazio";
+      li.textContent = "Saldo: " + formatarReais(emp.saldoDevedor) + " · parcela " + formatarReais(emp.parcelaPorRodada) +
+        "/rodada · " + emp.rodadasRestantes + " rodada(s) restante(s)";
+      listaEl.appendChild(li);
+    });
+  }
+}
+
+function pedirEmprestimoBancario(valor, prazoRodadas) {
+  if (!valor || !prazoRodadas) return;
+  if (!estado.emprestimos) estado.emprestimos = [];
+  if (!estado.proximoIdEmprestimo) estado.proximoIdEmprestimo = 1;
+  const emprestimo = criarEmprestimo(estado.proximoIdEmprestimo++, valor, prazoRodadas);
+  estado.emprestimos.push(emprestimo);
+  estado.financas.caixa = Math.round((estado.financas.caixa + valor) * 100) / 100;
+  salvarProgresso();
+  renderizarFinancas();
+  atualizarTopoHub();
+}
+
+function renderizarSocioAvancado() {
+  const statusEl = document.getElementById("socio-status-texto");
+  const opcoesEl = document.getElementById("opcoes-plano-socio");
+  const btnAtivar = document.getElementById("btn-ativar-socio");
+  const btnDesativar = document.getElementById("btn-desativar-socio");
+  if (!statusEl || !estado.socioTorcedor) return;
+
+  const socio = estado.socioTorcedor;
+  statusEl.textContent = socio.ativo
+    ? socio.socios.toLocaleString("pt-BR") + " sócios no plano " + (CONFIG_FINANCEIRO.socioPlanos[socio.plano] || {}).nome
+    : "Programa desativado.";
+
+  if (opcoesEl) {
+    opcoesEl.innerHTML = "";
+    Object.keys(CONFIG_FINANCEIRO.socioPlanos).forEach(function (chave) {
+      const info = CONFIG_FINANCEIRO.socioPlanos[chave];
+      const botao = document.createElement("button");
+      botao.type = "button";
+      botao.className = "opcao" + (socio.plano === chave ? " ativa" : "");
+      botao.innerHTML = info.nome + "<small>" + formatarReais(info.mensalidade) + "/mês</small>";
+      botao.addEventListener("click", function () { definirPlanoSocio(chave); });
+      opcoesEl.appendChild(botao);
+    });
+  }
+  if (btnAtivar) btnAtivar.classList.toggle("ativa", socio.ativo);
+  if (btnDesativar) btnDesativar.classList.toggle("ativa", !socio.ativo);
+}
+
+function definirPlanoSocio(plano) {
+  estado.socioTorcedor.plano = plano;
+  salvarProgresso();
+  renderizarFinancas();
+}
+
+function definirSocioTorcedorAtivo(ativo) {
+  estado.socioTorcedor.ativo = ativo;
+  salvarProgresso();
+  renderizarFinancas();
 }
 
 /* ---------- Tela: contratos do elenco (Fase 11) ---------- */
@@ -6240,77 +6457,18 @@ function renderizarDiretoria() {
 }
 
 /* ---------- Categoria de base (Fase 15) ---------- */
-
-const NOMES_JOVEM_BASE = [
-  "Kaique", "Ryan", "Ericlis", "Vitin", "Pedrinho", "Gabriel", "Matheusinho", "Robinho", "Juninho", "Lucas",
-  "Bruno", "Rafinha", "Wendell", "Talles", "Igor", "Yuri", "Caio", "Emerson", "Denner", "Patrick",
-];
-const SOBRENOMES_JOVEM_BASE = [
-  "Silva", "Santos", "Oliveira", "Souza", "Costa", "Pereira", "Ferreira", "Almeida", "Ribeiro", "Carvalho",
-  "Gomes", "Martins", "Rocha", "Araújo", "Nascimento",
-];
-const CARACTERISTICAS_LINHA_JOVEM_BASE = ["Marcação", "Passe", "Cabeceio", "Cruzamento", "Velocidade", "Desarme", "Armação", "Drible", "Finalização", "Resistência"];
-const CARACTERISTICAS_GOL_JOVEM_BASE = ["Reflexo", "Colocação", "Defesa de Pênalti", "Saída do gol"];
+/* A criação/evolução/promoção de juniores mora em js/base.js (Elenco de Juniores). Aqui só
+   fica o que é 100% de Finanças: o liga/desliga do investimento e a renderização do bloco. */
 
 function sortearItem(lista) { return lista[Math.floor(Math.random() * lista.length)]; }
 
-function gerarNomeJovemBase() {
-  return sortearItem(NOMES_JOVEM_BASE) + " " + sortearItem(SOBRENOMES_JOVEM_BASE);
-}
-
-/** Duas características distintas, coerentes com a posição (goleiro só pega características de goleiro). */
-function sortearCaracteristicasJovemBase(pos) {
-  const pool = (pos === "GOL" ? CARACTERISTICAS_GOL_JOVEM_BASE : CARACTERISTICAS_LINHA_JOVEM_BASE).slice();
-  const embaralhado = pool.sort(function () { return Math.random() - 0.5; });
-  return [embaralhado[0], embaralhado[1]];
-}
-
-/** Cria e adiciona ao elenco um jovem "de graça" (sem custo de compra, só salário) revelado pela base. */
-function gerarJovemDaBase() {
-  // Nível das Categorias de Base (Fase 18) eleva o piso e o teto de força dos jovens revelados.
-  const nivelBase = estado.infraestrutura ? estado.infraestrutura.base : 1;
-  const bonusForcaBase = Math.max(0, nivelBase - 1) * CONFIG_FINANCEIRO.infraBaseBonusForcaPorNivel;
-
-  const idade = CONFIG_FINANCEIRO.idadeMinimaRevelacaoBase +
-    Math.floor(Math.random() * (CONFIG_FINANCEIRO.idadeMaximaRevelacaoBase - CONFIG_FINANCEIRO.idadeMinimaRevelacaoBase + 1));
-  const forca = Math.round(CONFIG_FINANCEIRO.forcaMinimaRevelacaoBase + bonusForcaBase +
-    Math.random() * (CONFIG_FINANCEIRO.forcaMaximaRevelacaoBase - CONFIG_FINANCEIRO.forcaMinimaRevelacaoBase));
-  const pos = sortearItem(ORDEM_POSICOES);
-  const caracteristicas = sortearCaracteristicasJovemBase(pos);
-
-  const novoId = estado.proximoIdMercado++;
-  const jovem = {
-    _id: novoId, nome: gerarNomeJovemBase(), pos: pos, idade: idade, nac: "BRA",
-    pe: Math.random() < 0.75 ? "direito" : (Math.random() < 0.5 ? "esquerdo" : "ambos"),
-    valor_mi: 0, forca: forca, caracteristica_1: caracteristicas[0], caracteristica_2: caracteristicas[1],
-  };
-
-  estado.timeAtual.jogadores.push(jovem);
-  estado.jogadoresComprados.push(jovem); // mesma trilha de persistência dos jogadores que vêm de fora do arquivo de dados
-  estado.contratos[novoId] = criarContratoInicial(jovem);
-  estado.energiaPorJogador[novoId] = 100;
-  estado.moralPorJogador[novoId] = CONFIG_FINANCEIRO.moralInicial;
-
-  const estrelas = calcularEstrelasPotencial(jovem);
-  let mensagem = "A base revelou um talento! " + jovem.nome + " (" + jovem.pos + ", força " + jovem.forca + ", " + jovem.idade + " anos" +
-    (estrelas >= 4 ? ", grande potencial!" : "") + ") chegou de graça ao elenco.";
-
-  // Joia com bastante potencial já nasce com boom de vendas de camisas (Fase 21).
-  const vendaCamisas = calcularVendaCamisasRevelacaoBase(estrelas);
-  if (vendaCamisas > 0) {
-    creditarVendaCamisas(novoId, vendaCamisas);
-    mensagem += " 🎽 A torcida se empolgou: +" + formatarReais(vendaCamisas) + " em vendas de camisas.";
-  }
-  alert(mensagem);
-}
-
-/** Só com o investimento ativo: sorteia se a base revela um jovem nesta rodada oficial. */
+/** Só com o investimento ativo: sorteia se a base revela um junior nesta rodada oficial (empurra pra `estado.elencoBase`). */
 function gerarRevelacaoDaBaseSeAplicavel() {
   if (!estado.investimentoBase) return;
   const nivelBase = estado.infraestrutura ? estado.infraestrutura.base : 1;
   const chance = CONFIG_FINANCEIRO.chanceRevelacaoBasePorRodada +
     Math.max(0, nivelBase - 1) * CONFIG_FINANCEIRO.infraBaseBonusChancePorNivel;
-  if (Math.random() < chance) gerarJovemDaBase();
+  if (Math.random() < chance) revelarJuniorGratisNaBase();
 }
 
 function definirInvestimentoBase(ativo) {
@@ -6400,6 +6558,105 @@ function renderizarInfraestrutura() {
   });
 
   renderizarOlheiros();
+  renderizarObrasEstadio();
+}
+
+/* ---------- Obras no Estádio por setor ---------- */
+
+const ROTULO_SETOR_ESTADIO = { geral: "Geral", arquibancada: "Arquibancada", cadeiras: "Cadeiras", camarotes: "Camarotes" };
+let orcamentoObraPendente = null;
+
+function renderizarObrasEstadio() {
+  const financas = estado.financas;
+  if (!financas) return;
+  garantirSetoresEstadio(financas);
+
+  const capacidadeEl = document.getElementById("obra-capacidade-total");
+  if (capacidadeEl) capacidadeEl.textContent = somarCapacidadeSetores(financas.setoresEstadio).toLocaleString("pt-BR") + " lugares";
+
+  const listaAtualEl = document.getElementById("obra-lista-setores-atual");
+  if (listaAtualEl) {
+    listaAtualEl.innerHTML = "";
+    Object.keys(ROTULO_SETOR_ESTADIO).forEach(function (setor) {
+      const li = document.createElement("li");
+      li.textContent = ROTULO_SETOR_ESTADIO[setor] + ": " + (financas.setoresEstadio[setor] || 0).toLocaleString("pt-BR");
+      listaAtualEl.appendChild(li);
+    });
+  }
+
+  const avisoEl = document.getElementById("obra-aviso-andamento");
+  const formularioEl = document.getElementById("obra-formulario");
+  const resultadoEl = document.getElementById("obra-orcamento-resultado");
+
+  if (financas.obraEstadio) {
+    if (avisoEl) {
+      avisoEl.hidden = false;
+      avisoEl.textContent = "🚧 Obra em andamento — " + financas.obraEstadio.rodadasRestantes + " rodada(s) restante(s).";
+    }
+    if (formularioEl) formularioEl.hidden = true;
+    if (resultadoEl) resultadoEl.hidden = true;
+    return;
+  }
+  if (avisoEl) avisoEl.hidden = true;
+  if (formularioEl) formularioEl.hidden = false;
+
+  const vagas = calcularVagasDisponiveisSetores(financas.setoresEstadio);
+  Object.keys(ROTULO_SETOR_ESTADIO).forEach(function (setor) {
+    const maxEl = document.getElementById("obra-maximo-" + setor);
+    const inputEl = document.getElementById("input-obra-" + setor);
+    if (maxEl) maxEl.textContent = "Máximo mais " + (vagas[setor] || 0).toLocaleString("pt-BR");
+    if (inputEl) inputEl.max = vagas[setor] || 0;
+  });
+
+  if (!orcamentoObraPendente && resultadoEl) resultadoEl.hidden = true;
+}
+
+function pedirOrcamentoObra() {
+  const vagas = calcularVagasDisponiveisSetores(estado.financas.setoresEstadio);
+  const pedidos = {};
+  let algumPedido = false;
+  Object.keys(ROTULO_SETOR_ESTADIO).forEach(function (setor) {
+    const inputEl = document.getElementById("input-obra-" + setor);
+    const qtd = Math.max(0, Math.min(vagas[setor] || 0, Math.round(Number(inputEl.value) || 0)));
+    if (qtd > 0) algumPedido = true;
+    pedidos[setor] = qtd;
+  });
+  if (!algumPedido) {
+    alert("Digite quantos lugares construir em pelo menos um setor.");
+    return;
+  }
+
+  const orcamento = calcularOrcamentoObraEstadio(pedidos);
+  orcamentoObraPendente = { setores: pedidos, custoTotal: orcamento.custoTotal, rodadas: orcamento.rodadas };
+
+  const textoEl = document.getElementById("obra-orcamento-texto");
+  if (textoEl) {
+    textoEl.textContent = "Custo: " + formatarReais(orcamento.custoTotal) + " à vista · Prazo: " + orcamento.rodadas +
+      (orcamento.rodadas === 1 ? " rodada" : " rodadas");
+  }
+  const resultadoEl = document.getElementById("obra-orcamento-resultado");
+  if (resultadoEl) resultadoEl.hidden = false;
+}
+
+function confirmarObraEstadio() {
+  if (!orcamentoObraPendente) return;
+  if (orcamentoObraPendente.custoTotal > estado.financas.caixa) {
+    alert("Caixa insuficiente pra essa obra (" + formatarReais(orcamentoObraPendente.custoTotal) + ").");
+    return;
+  }
+  estado.financas.caixa = Math.round((estado.financas.caixa - orcamentoObraPendente.custoTotal) * 100) / 100;
+  estado.financas.obraEstadio = {
+    setores: orcamentoObraPendente.setores, custoTotal: orcamentoObraPendente.custoTotal,
+    rodadasRestantes: orcamentoObraPendente.rodadas,
+  };
+  orcamentoObraPendente = null;
+  salvarProgresso();
+  renderizarInfraestrutura();
+}
+
+function cancelarObraEstadio() {
+  orcamentoObraPendente = null;
+  renderizarInfraestrutura();
 }
 
 /* ---------- Olheiros (Fase 19) ---------- */
@@ -7402,6 +7659,16 @@ async function continuarJogoSalvo() {
     estado.dashboard = registro.dashboard || { vendaAtletasTemporada: 0, vendaCamisasTemporada: 0, comprasTemporada: 0 };
     estado.historicoTemporadas = registro.historicoTemporadas || [];
 
+    // Saves de antes do Elenco de Juniores/Obras/Gestão avançada não têm esses campos.
+    estado.elencoBase = registro.elencoBase || [];
+    estado.peneirasNaTemporada = registro.peneirasNaTemporada || 0;
+    estado.emprestimos = registro.emprestimos || [];
+    estado.proximoIdEmprestimo = registro.proximoIdEmprestimo || 1;
+    estado.socioTorcedor = registro.socioTorcedor || { ativo: false, plano: "basico", socios: 0 };
+    estado.patrocinio = registro.patrocinio || null;
+    estado.ofertasPatrocinio = registro.ofertasPatrocinio || [];
+    if (estado.financas) garantirSetoresEstadio(estado.financas);
+
     // Saves de antes das Estrelas Dourada/Prateada e da Forma não têm esses campos.
     estado.estrelasPorJogador = registro.estrelasPorJogador || {};
     estado.prateadaLimiteIdadePorJogador = registro.prateadaLimiteIdadePorJogador || {};
@@ -7928,6 +8195,12 @@ function ligarBotoes() {
   const btnDesativarBase = document.getElementById("btn-desativar-base");
   if (btnDesativarBase) btnDesativarBase.addEventListener("click", function () { definirInvestimentoBase(false); });
 
+  const btnAtivarSocio = document.getElementById("btn-ativar-socio");
+  if (btnAtivarSocio) btnAtivarSocio.addEventListener("click", function () { definirSocioTorcedorAtivo(true); });
+
+  const btnDesativarSocio = document.getElementById("btn-desativar-socio");
+  if (btnDesativarSocio) btnDesativarSocio.addEventListener("click", function () { definirSocioTorcedorAtivo(false); });
+
   const btnVerDashboard = document.getElementById("btn-ver-dashboard");
   if (btnVerDashboard) btnVerDashboard.addEventListener("click", abrirTelaDashboard);
 
@@ -7945,6 +8218,30 @@ function ligarBotoes() {
 
   const btnContratarOlheiro = document.getElementById("btn-contratar-olheiro");
   if (btnContratarOlheiro) btnContratarOlheiro.addEventListener("click", contratarOlheiro);
+
+  const btnPedirOrcamentoObra = document.getElementById("btn-pedir-orcamento-obra");
+  if (btnPedirOrcamentoObra) btnPedirOrcamentoObra.addEventListener("click", pedirOrcamentoObra);
+
+  const btnConfirmarObra = document.getElementById("btn-confirmar-obra");
+  if (btnConfirmarObra) btnConfirmarObra.addEventListener("click", confirmarObraEstadio);
+
+  const btnCancelarObra = document.getElementById("btn-cancelar-obra");
+  if (btnCancelarObra) btnCancelarObra.addEventListener("click", cancelarObraEstadio);
+
+  const btnVerBase = document.getElementById("btn-ver-base");
+  if (btnVerBase) btnVerBase.addEventListener("click", abrirTelaBase);
+
+  const btnVoltarEscalacaoBase = document.getElementById("btn-voltar-escalacao-base");
+  if (btnVoltarEscalacaoBase) btnVoltarEscalacaoBase.addEventListener("click", abrirTelaEscalacao);
+
+  const btnFazerPeneira = document.getElementById("btn-fazer-peneira");
+  if (btnFazerPeneira) btnFazerPeneira.addEventListener("click", fazerPeneira);
+
+  const btnPromoverJunior = document.getElementById("btn-promover-junior");
+  if (btnPromoverJunior) btnPromoverJunior.addEventListener("click", function () { if (estado.juniorSelecionadoId) promoverJunior(estado.juniorSelecionadoId); });
+
+  const btnDispensarJunior = document.getElementById("btn-dispensar-junior");
+  if (btnDispensarJunior) btnDispensarJunior.addEventListener("click", function () { if (estado.juniorSelecionadoId) dispensarJunior(estado.juniorSelecionadoId); });
 
   const btnVerMercado = document.getElementById("btn-ver-mercado");
   if (btnVerMercado) btnVerMercado.addEventListener("click", abrirTelaMercado);
