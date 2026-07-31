@@ -2014,9 +2014,10 @@ function montarForcaNomeCurto(jogador, ehMeuJogador, omitirEstrela, omitirForma)
   const souMeu = ehMeuJogador !== false;
   const marcadorForma = (souMeu && !omitirForma) ? (MARCADOR_FORMA_COMPACTO[obterFormaJogador(jogador._id)] || "") : "";
   const estrela = souMeu ? obterEstrelaJogador(jogador) : obterEstrelaEmblematica(jogador.nome);
-  const marcadorEstrela = omitirEstrela ? "" : (MARCADOR_ESTRELA_COMPACTO[estrela] || "");
-  return "<span class=\"forca-compacto\">" + jogador.forca + "</span>" + marcadorForma + " " +
-    escaparHtml(sobrenomeCurto(jogador.nome)) + marcadorEstrela;
+  const marcadorEstrela = omitirEstrela ? "" : (MARCADOR_ESTRELA_COMPACTO[estrela] || "").trim();
+  return "<span class=\"forca-compacto\">" + jogador.forca + "</span>" + marcadorForma +
+    "<span class=\"player-name\">" + escaparHtml(sobrenomeCurto(jogador.nome)) + "</span>" +
+    (marcadorEstrela ? "<span class=\"player-star\">" + marcadorEstrela + "</span>" : "");
 }
 
 /** Selo de Fase (Sistema de Estrelas) sobreposto no canto superior direito do círculo de posição —
