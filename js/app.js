@@ -172,7 +172,7 @@ const estado = {
 // Filtros e resultado da busca no Mercado, e proposta em andamento (Fase 12).
 let filtrosMercado = {
   posicao: "", estrela: "", forcaMinima: "", forcaMaxima: "", idadeMaxima: "", precoMaximo: "",
-  statusContrato: "", ordenacao: "forca_desc", busca: "",
+  ordenacao: "forca_desc", busca: "",
 };
 let propostaMercadoAberta = null; // { jogador, nomeTime, divisaoChave, precoPedido, contraproposta } ou null
 let propostaEmprestimoAberta = null; // { jogador, nomeTime, divisaoChave } ou null — Fase 17
@@ -5243,7 +5243,6 @@ function lerFiltrosMercado() {
   filtrosMercado.forcaMaxima = (document.getElementById("input-forca-maxima-mercado") || {}).value || "";
   filtrosMercado.idadeMaxima = (document.getElementById("input-idade-maxima-mercado") || {}).value || "";
   filtrosMercado.precoMaximo = (document.getElementById("input-preco-maximo-mercado") || {}).value || "";
-  filtrosMercado.statusContrato = (document.getElementById("select-status-contrato-mercado") || {}).value || "";
   filtrosMercado.ordenacao = (document.getElementById("select-ordenacao-mercado") || {}).value || "forca_desc";
   filtrosMercado.busca = (document.getElementById("input-busca-mercado") || {}).value || "";
 }
@@ -5300,7 +5299,6 @@ function renderizarMercado() {
       if (filtrosMercado.estrela === "dourada" && estrela !== "dourada") return false;
       if (filtrosMercado.estrela === "prateada" && estrela !== "prateada") return false;
       if (filtrosMercado.estrela === "nenhuma" && estrela) return false;
-      if (filtrosMercado.statusContrato === "avenda" && !(estado.jogadoresAVenda && estado.jogadoresAVenda[jogador._id])) return false;
       return true;
     })
     .map(function (item) {
