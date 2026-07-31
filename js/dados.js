@@ -89,11 +89,13 @@ function aplicarOverridesEditor(dados) {
     });
   });
 
-  // Estrela Editor: jogadores marcados como "Estrela" no formulário viram Estrela Dourada globalmente
-  // (mesmo mecanismo de `JOGADORES_EMBLEMATICOS`, por nome — reaproveita o Sistema de Estrelas já existente).
+  // Estrela Editor: jogadores marcados como "Estrela Dourada" no formulário viram Estrela Dourada
+  // globalmente (mesmo mecanismo de `JOGADORES_EMBLEMATICOS`, por nome — reaproveita o Sistema de
+  // Estrelas já existente). Campo renomeado de `estrelaEditor` pra `estrelaDouradaEditor` na
+  // reformulação de Estrelas Prata/Dourada — corrigido aqui pra voltar a funcionar.
   Object.values(overrides).forEach(function (over) {
     [].concat(over.adicionados || [], Object.values(over.editados || {})).forEach(function (jogador) {
-      if (jogador && jogador.estrelaEditor && jogador.nome) JOGADORES_EMBLEMATICOS.add(jogador.nome);
+      if (jogador && jogador.estrelaDouradaEditor && jogador.nome) JOGADORES_EMBLEMATICOS.add(jogador.nome);
     });
   });
 }
