@@ -673,11 +673,33 @@
     <section class="secao-filtros-mercado" id="secao-filtros-mercado">
       <div class="linha-filtros-mercado">
         <select id="select-posicao-mercado"></select>
-        <input type="number" id="input-forca-minima-mercado" placeholder="Força mín." min="0" max="48" />
+        <select id="select-estrela-mercado">
+          <option value="">Estrela: todas</option>
+          <option value="dourada">Apenas Estrela Dourada ⭐</option>
+          <option value="prateada">Apenas Estrela Prata 🥈</option>
+          <option value="nenhuma">Sem estrela</option>
+        </select>
+      </div>
+      <div class="linha-filtros-mercado">
+        <input type="number" id="input-forca-minima-mercado" placeholder="Força mín." min="0" max="54" />
+        <input type="number" id="input-forca-maxima-mercado" placeholder="Força máx." min="0" max="54" />
       </div>
       <div class="linha-filtros-mercado">
         <input type="number" id="input-idade-maxima-mercado" placeholder="Idade máx." min="0" max="45" />
         <input type="number" id="input-preco-maximo-mercado" placeholder="Preço máx. (R$mi)" min="0" step="0.5" />
+      </div>
+      <div class="linha-filtros-mercado">
+        <select id="select-status-contrato-mercado">
+          <option value="">Status: todos</option>
+          <option value="avenda">Listados para transferência</option>
+        </select>
+        <select id="select-ordenacao-mercado">
+          <option value="forca_desc">Maior força</option>
+          <option value="preco_asc">Menor preço</option>
+          <option value="preco_desc">Maior preço</option>
+          <option value="idade_desc">Maior idade</option>
+          <option value="idade_asc">Menor idade</option>
+        </select>
       </div>
       <input type="text" id="input-busca-mercado" class="campo-busca-mercado" placeholder="Buscar por nome…" />
     </section>

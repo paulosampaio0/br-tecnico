@@ -170,7 +170,10 @@ const estado = {
 };
 
 // Filtros e resultado da busca no Mercado, e proposta em andamento (Fase 12).
-let filtrosMercado = { posicao: "", forcaMinima: "", idadeMaxima: "", precoMaximo: "", busca: "" };
+let filtrosMercado = {
+  posicao: "", estrela: "", forcaMinima: "", forcaMaxima: "", idadeMaxima: "", precoMaximo: "",
+  statusContrato: "", ordenacao: "forca_desc", busca: "",
+};
 let propostaMercadoAberta = null; // { jogador, nomeTime, divisaoChave, precoPedido, contraproposta } ou null
 let propostaEmprestimoAberta = null; // { jogador, nomeTime, divisaoChave } ou null — Fase 17
 
@@ -4261,6 +4264,7 @@ async function garantirMetaDaDiretoria(dadosJaCarregados) {
   estado.diretoria.meta = definirMetaTemporada(fracaoRank, estado.timeAtual.divisaoChave);
   estado.diretoria.orcamentoContratacoes = calcularOrcamentoContratacoes(estado.financas.caixaInicialClube);
   estado.diretoria.orcamentoGasto = 0;
+  estado.diretoria.limiteFolhaSalarialMensal = calcularLimiteFolhaSalarial(estado.financas.caixaInicialClube);
 }
 
 function criarNovaTemporada(timesSerieA, timesSerieB, ano) {
@@ -4943,6 +4947,7 @@ async function processarFimDeTemporada() {
     estado.diretoria.orcamentoContratacoes =
       calcularOrcamentoProximaTemporada(estado.financas.caixaInicialClube, relatorioMeta ? relatorioMeta.cumprida : true);
     estado.diretoria.orcamentoGasto = 0;
+    estado.diretoria.limiteFolhaSalarialMensal = calcularLimiteFolhaSalarial(estado.financas.caixaInicialClube);
   }
 }
 
@@ -5201,22 +5206,9 @@ function formatarForcaMercado(item) {
   return "força " + faixa.minimo + "–" + faixa.maximo + " (estimado)";
 }
 
-/** Info da janela atual: se está aberta agora e, se fechada, quando volta a abrir. */
+/** Reformulação do Mercado: a janela fica sempre aberta — mantido só pra não quebrar quem chama. */
 function obterInfoJanelaMercado() {
-  const temporadaDivisao = estado.temporada[estado.timeAtual.divisaoChave];
-  const totalRodadas = temporadaDivisao.calendario.length;
-  const numeroRodada = estado.temporada.rodadaAtual;
-  const duracao = CONFIG_FINANCEIRO.duracaoJanelaEmRodadas;
-  const meio = Math.floor(totalRodadas / 2);
-
-  const aberta = janelaDeMercadoAberta(numeroRodada, totalRodadas);
-  let textoFechada = "";
-  if (!aberta) {
-    textoFechada = numeroRodada <= meio
-      ? "Fechada — abre de novo na rodada " + (meio + 1) + "."
-      : "Fechada — só abre de novo na próxima temporada.";
-  }
-  return { aberta: aberta, textoFechada: textoFechada };
+  return { aberta: true, textoFechada: "" };
 }
 
 async function abrirTelaMercado() {
@@ -5246,9 +5238,13 @@ function popularFiltroPosicaoMercado() {
 /** Junta os filtros lidos da tela num objeto simples, guardado em filtrosMercado. */
 function lerFiltrosMercado() {
   filtrosMercado.posicao = (document.getElementById("select-posicao-mercado") || {}).value || "";
+  filtrosMercado.estrela = (document.getElementById("select-estrela-mercado") || {}).value || "";
   filtrosMercado.forcaMinima = (document.getElementById("input-forca-minima-mercado") || {}).value || "";
+  filtrosMercado.forcaMaxima = (document.getElementById("input-forca-maxima-mercado") || {}).value || "";
   filtrosMercado.idadeMaxima = (document.getElementById("input-idade-maxima-mercado") || {}).value || "";
   filtrosMercado.precoMaximo = (document.getElementById("input-preco-maximo-mercado") || {}).value || "";
+  filtrosMercado.statusContrato = (document.getElementById("select-status-contrato-mercado") || {}).value || "";
+  filtrosMercado.ordenacao = (document.getElementById("select-ordenacao-mercado") || {}).value || "forca_desc";
   filtrosMercado.busca = (document.getElementById("input-busca-mercado") || {}).value || "";
 }
 
@@ -5285,6 +5281,7 @@ function renderizarMercado() {
 
   lerFiltrosMercado();
   const forcaMinima = filtrosMercado.forcaMinima !== "" ? Number(filtrosMercado.forcaMinima) : null;
+  const forcaMaxima = filtrosMercado.forcaMaxima !== "" ? Number(filtrosMercado.forcaMaxima) : null;
   const idadeMaxima = filtrosMercado.idadeMaxima !== "" ? Number(filtrosMercado.idadeMaxima) : null;
   const precoMaximo = filtrosMercado.precoMaximo !== "" ? Number(filtrosMercado.precoMaximo) : null;
   const busca = filtrosMercado.busca.trim().toLowerCase();
@@ -5294,8 +5291,16 @@ function renderizarMercado() {
       const jogador = item.jogador;
       if (filtrosMercado.posicao && jogador.pos !== filtrosMercado.posicao) return false;
       if (forcaMinima !== null && jogador.forca < forcaMinima) return false;
+      if (forcaMaxima !== null && jogador.forca > forcaMaxima) return false;
       if (idadeMaxima !== null && jogador.idade > idadeMaxima) return false;
       if (busca && jogador.nome.toLowerCase().indexOf(busca) === -1) return false;
+      // Exibição Global do Sistema de Estrelas: jogador do Mercado nunca é do meu elenco, então
+      // só a Estrela emblemática (por nome, segura globalmente) é usada aqui pro filtro/exibição.
+      const estrela = obterEstrelaEmblematica(jogador.nome);
+      if (filtrosMercado.estrela === "dourada" && estrela !== "dourada") return false;
+      if (filtrosMercado.estrela === "prateada" && estrela !== "prateada") return false;
+      if (filtrosMercado.estrela === "nenhuma" && estrela) return false;
+      if (filtrosMercado.statusContrato === "avenda" && !(estado.jogadoresAVenda && estado.jogadoresAVenda[jogador._id])) return false;
       return true;
     })
     .map(function (item) {
@@ -5306,7 +5311,14 @@ function renderizarMercado() {
 
   if (precoMaximo !== null) itens = itens.filter(function (item) { return item.preco <= precoMaximo; });
 
-  itens.sort(function (a, b) { return b.jogador.forca - a.jogador.forca; });
+  const comparadoresOrdenacao = {
+    forca_desc: function (a, b) { return b.jogador.forca - a.jogador.forca; },
+    preco_asc: function (a, b) { return a.preco - b.preco; },
+    preco_desc: function (a, b) { return b.preco - a.preco; },
+    idade_desc: function (a, b) { return b.jogador.idade - a.jogador.idade; },
+    idade_asc: function (a, b) { return a.jogador.idade - b.jogador.idade; },
+  };
+  itens.sort(comparadoresOrdenacao[filtrosMercado.ordenacao] || comparadoresOrdenacao.forca_desc);
   itens = itens.slice(0, QTD_MAXIMA_RESULTADOS_MERCADO);
 
   if (itens.length === 0) {
@@ -5316,25 +5328,32 @@ function renderizarMercado() {
 
   itens.forEach(function (item) {
     const jogador = item.jogador;
-    // Exibição Global do Sistema de Estrelas: jogador do Mercado nunca é do meu elenco
-    // (`listarJogadoresMercado` já exclui meu clube), então só a Estrela emblemática (por nome,
-    // segura globalmente) pode aparecer aqui — nunca a dinâmica de `estado.estrelasPorJogador`.
     const marcadorEstrela = MARCADOR_ESTRELA_COMPACTO[obterEstrelaEmblematica(jogador.nome)] || "";
+    const salarioMensal = converterEuroParaReal(calcularSalarioMensal(jogador));
     const li = document.createElement("li");
-    li.className = "item-contrato aberto-perfil";
+    li.className = "item-contrato item-mercado aberto-perfil";
     li.addEventListener("click", function (evento) {
       if (evento.target.tagName === "BUTTON") return; // os botões de ação já cuidam de si mesmos
       abrirPerfilAtleta(jogador, { meu: false, nomeTime: item.nomeTime, divisaoChave: item.divisaoChave });
     });
     li.innerHTML =
-      "<span class=\"pos\">" + escaparHtml(jogador.pos) + "</span>" +
+      "<span class=\"pos " + classeSetorPosicao(jogador.pos) + "\">" + escaparHtml(jogador.pos) + "</span>" +
       "<span class=\"info-contrato\">" +
-        "<span class=\"nome-contrato\">" + escaparHtml(jogador.nome) + marcadorEstrela + "</span>" +
-        "<span class=\"detalhes-contrato\">" + escaparHtml(item.nomeTime) + " · " + jogador.idade + " anos · " + formatarForcaMercado(item) +
-          " · " + formatarReais(item.preco) +
+        "<span class=\"nome-contrato\">" +
+          "<span class=\"forca-compacto\">" + jogador.forca + "</span>" +
+          "<span class=\"player-name\">" + escaparHtml(jogador.nome) + "</span>" +
+          (marcadorEstrela ? "<span class=\"player-star\">" + marcadorEstrela.trim() + "</span>" : "") +
+        "</span>" +
+        "<span class=\"detalhes-contrato\">" + escaparHtml(item.nomeTime) + " · " + escaparHtml(jogador.nac) + " · " +
+          jogador.idade + " anos · " + formatarForcaMercado(item) +
+        "</span>" +
+        montarTraitsVaga(jogador) +
+        "<span class=\"financeiro-mercado\">" +
+          "<span class=\"valor-mercado-destaque\">" + formatarReais(item.preco) + "</span>" +
+          "<span class=\"salario-mercado\">Salário: " + formatarSalarioMensal(salarioMensal) + "</span>" +
         "</span>" +
       "</span>" +
-      "<button class=\"btn-renovar-contrato\" type=\"button\">Propor</button>" +
+      "<button class=\"btn-renovar-contrato\" type=\"button\">Fazer proposta</button>" +
       (jogador.idade <= CONFIG_FINANCEIRO.emprestimoIdadeMaxima
         ? "<button class=\"btn-renovar-contrato btn-emprestar-mercado\" type=\"button\">Emprestar</button>" : "");
 
@@ -5345,6 +5364,13 @@ function renderizarMercado() {
     if (btnEmprestar) btnEmprestar.addEventListener("click", function () { abrirPropostaEmprestimo(item); });
     listaEl.appendChild(li);
   });
+}
+
+/** "R$ 250k/mês" abaixo de 1 milhão, senão reaproveita `formatarReais` ("R$ 15,0mi"). */
+function formatarSalarioMensal(valorReaisMilhoes) {
+  if (valorReaisMilhoes >= 1) return formatarReais(valorReaisMilhoes) + "/mês";
+  const emMil = Math.round(valorReaisMilhoes * 1000);
+  return "R$ " + emMil.toLocaleString("pt-BR") + "k/mês";
 }
 
 /** Abre a barganha com o clube vendedor (fase 1 de 2 — Fase 16). */
@@ -5503,6 +5529,15 @@ function enviarTermosEmpresario() {
     resultadoEl.textContent = "Isso estoura o orçamento de contratações da diretoria pra esta temporada.";
     resultadoEl.className = "proposta-resultado proposta-resultado-negativo";
     return;
+  }
+  if (estado.diretoria && estado.diretoria.limiteFolhaSalarialMensal != null) {
+    const folhaAtualMensal = calcularFolhaSalarialPorRodada(estado.timeAtual.jogadores, estado.contratos) * CONFIG_FINANCEIRO.rodadasPorMes;
+    if ((folhaAtualMensal + salarioOferecido) > estado.diretoria.limiteFolhaSalarialMensal) {
+      resultadoEl.textContent = "Esse salário estoura o teto de folha salarial permitido pela diretoria (" +
+        formatarReais(estado.diretoria.limiteFolhaSalarialMensal) + "/mês).";
+      resultadoEl.className = "proposta-resultado proposta-resultado-negativo";
+      return;
+    }
   }
 
   propostaMercadoAberta.rodadaEmpresario++;
@@ -5983,12 +6018,42 @@ function renderizarPropostasRecebidas() {
         "<span class=\"detalhes-contrato\">" + escaparHtml(proposta.nomeTimeComprador) + " oferece " + formatarReais(proposta.valor) + "</span>" +
       "</span>" +
       "<button class=\"btn-renovar-contrato btn-aceitar-proposta\" type=\"button\">Aceitar</button>" +
+      "<button class=\"btn-renovar-contrato btn-contrapropor-proposta\" type=\"button\">Contrapropor</button>" +
       "<button class=\"btn-renovar-contrato btn-recusar-proposta\" type=\"button\">Recusar</button>";
 
     li.querySelector(".btn-aceitar-proposta").addEventListener("click", function () { aceitarPropostaEspontanea(proposta.id); });
+    li.querySelector(".btn-contrapropor-proposta").addEventListener("click", function () { contraporPropostaEspontanea(proposta.id); });
     li.querySelector(".btn-recusar-proposta").addEventListener("click", function () { recusarPropostaEspontanea(proposta.id); });
     listaEl.appendChild(li);
   });
+}
+
+/** Contraproposta do usuário numa oferta espontânea recebida: a IA topa até 15% acima do que
+ *  ofereceu de cara — pedir mais que isso e ela recua da negociação. */
+function contraporPropostaEspontanea(idProposta) {
+  const proposta = estado.propostasRecebidas.find(function (p) { return p.id === idProposta; });
+  if (!proposta) return;
+  const valorPedidoTexto = window.prompt(
+    proposta.nomeTimeComprador + " ofereceu " + formatarReais(proposta.valor) + " por " + proposta.nomeJogador +
+    ". Por quanto você aceita vender?", proposta.valor.toFixed(1)
+  );
+  if (valorPedidoTexto === null) return;
+  const valorPedido = Number(valorPedidoTexto.replace(",", "."));
+  if (!(valorPedido > 0)) { alert("Digite um valor válido."); return; }
+
+  const tetoAceitoIA = Math.round(proposta.valor * 1.15 * 100) / 100;
+  if (valorPedido > tetoAceitoIA) {
+    alert(proposta.nomeTimeComprador + " recusou a contraproposta — valor longe demais do que estava disposto a pagar.");
+    estado.propostasRecebidas = estado.propostasRecebidas.filter(function (p) { return p.id !== idProposta; });
+    salvarProgresso();
+    renderizarPropostasRecebidas();
+    return;
+  }
+
+  proposta.valor = valorPedido;
+  alert(proposta.nomeTimeComprador + " topou " + formatarReais(valorPedido) + " por " + proposta.nomeJogador + ". Clique em Aceitar pra fechar.");
+  salvarProgresso();
+  renderizarPropostasRecebidas();
 }
 
 function aceitarPropostaEspontanea(idProposta) {

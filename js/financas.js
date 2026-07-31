@@ -79,12 +79,17 @@ const CONFIG_FINANCEIRO = {
   fatorPrecoContratoTeto: 1.3,
   fatorPrecoClubeSerieB: 0.85, // clube da Série B costuma vender mais barato
 
-  // Negociação: acima do teto o clube já aceita de cara; abaixo do piso ele
-  // rompe a negociação na hora. Entre os dois, é rodada de barganha (Fase 16).
-  razaoPropostaAceitaDireto: 0.92,
+  // Negociação (Reformulação do Mercado): oferta ≥110% do preço pedido = aceite imediato;
+  // abaixo de 90% = recusa automática na hora; entre os dois, rodada de contraproposta.
+  razaoPropostaAceitaDireto: 1.10,
+  negociacaoRazaoRecusaAutomatica: 0.90,
 
   // O jogador (não o clube) pode recusar ir pra um clube pequeno demais pra ele.
   forcaMinimaJogadorExigente: 42,
+
+  // Limite de folha salarial mensal permitido pela diretoria — fração do caixa inicial do clube
+  // na temporada. Contratações que estourem isso são bloqueadas mesmo com caixa/orçamento sobrando.
+  fatorLimiteFolhaSalarialSobreCaixa: 0.08,
 
   // --- Mercado de transferências (Fase 13 — vender) ---
 
@@ -143,7 +148,6 @@ const CONFIG_FINANCEIRO = {
 
   negociacaoFatorConvergenciaClube: 0.5, // a cada rodada, o clube cede metade da diferença até o preço pedido
   negociacaoLimiteRodadas: 4, // depois disso, sem fechar, o clube rompe a negociação
-  negociacaoRazaoRupturaMinima: 0.55, // oferta abaixo disso do preço pedido = ruptura na hora
 
   // --- Negociação com o empresário do jogador (Fase 16) ---
 
@@ -586,12 +590,10 @@ function aplicarFinancasDaRodada(financas, contexto) {
    Mercado de transferências (Fase 12 — comprar)
    ============================================================ */
 
-/** A janela abre logo no início da temporada e de novo bem no meio dela. */
+/** Reformulação do Mercado: a janela de transferências fica SEMPRE aberta, em qualquer rodada
+ *  da temporada — sem bloqueio por datas nem fechamento entre janelas. */
 function janelaDeMercadoAberta(numeroRodada, totalRodadas) {
-  const duracao = CONFIG_FINANCEIRO.duracaoJanelaEmRodadas;
-  if (numeroRodada <= duracao) return true;
-  const meio = Math.floor(totalRodadas / 2);
-  return numeroRodada > meio && numeroRodada <= meio + duracao;
+  return true;
 }
 
 /**
@@ -628,13 +630,20 @@ function calcularPrecoTransferencia(jogador, anosContratoRestante, divisaoVended
 function avaliarRodadaNegociacaoClube(precoPedido, ofertaAtual, rodada) {
   const razao = precoPedido > 0 ? ofertaAtual / precoPedido : 1;
 
-  if (razao < CONFIG_FINANCEIRO.negociacaoRazaoRupturaMinima) return { status: "ruptura" };
+  // Regra de Aceite da IA (Reformulação do Mercado): ≥110% do preço pedido = aceite imediato;
+  // <90% = recusa automática na hora; entre 90% e 109% = contraproposta do clube.
   if (razao >= CONFIG_FINANCEIRO.razaoPropostaAceitaDireto) return { status: "aceita" };
+  if (razao < CONFIG_FINANCEIRO.negociacaoRazaoRecusaAutomatica) return { status: "ruptura" };
   if (rodada >= CONFIG_FINANCEIRO.negociacaoLimiteRodadas) return { status: "ruptura" };
 
   const diferenca = precoPedido - ofertaAtual;
   const valor = Math.round((ofertaAtual + diferenca * CONFIG_FINANCEIRO.negociacaoFatorConvergenciaClube) * 100) / 100;
   return { status: "contraproposta", valor: valor };
+}
+
+/** Limite de folha salarial mensal permitido pela diretoria nesta temporada. */
+function calcularLimiteFolhaSalarial(caixaInicialClube) {
+  return Math.round(caixaInicialClube * CONFIG_FINANCEIRO.fatorLimiteFolhaSalarialSobreCaixa * 1000) / 1000;
 }
 
 /** O jogador (empresário) recusa clubes de reputação baixa demais pro tamanho dele, mesmo com o clube já topando o preço. */

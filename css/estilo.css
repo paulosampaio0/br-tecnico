@@ -3118,6 +3118,13 @@ body::before {
   font-weight: 800;
 }
 
+/* Card de Mercado (MarketPlayerCard) — badge de posição na mesma paleta por setor usada no
+   campinho/Banco (`.vaga .bolinha.setor-*`), pra identidade visual consistente em todo o jogo. */
+.item-contrato .pos.setor-goleiro { background: var(--amarelo); color: #3a2b00; }
+.item-contrato .pos.setor-defesa { background: #3b82f6; color: #fff; }
+.item-contrato .pos.setor-meio { background: var(--neon-verde); color: #04220f; }
+.item-contrato .pos.setor-ataque { background: #ff5a3c; color: #2a0b02; }
+
 .info-contrato {
   flex: 1;
   min-width: 0;
@@ -3144,6 +3151,42 @@ body::before {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+/* MarketPlayerCard — força/nome/estrela do jogador do mercado, mesmo padrão visual do Player
+   Node do campinho (`.forca-compacto` amarelo + nome branco + estrela). */
+.item-mercado .nome-contrato {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.item-mercado .nome-contrato .forca-compacto {
+  color: var(--amarelo);
+}
+
+.item-mercado .nome-contrato .player-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* MarketPlayerCard — valor de mercado em destaque + salário mensal estimado. */
+.financeiro-mercado {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-top: 2px;
+}
+
+.valor-mercado-destaque {
+  font-size: 14px;
+  font-weight: 800;
+  color: var(--amarelo);
+}
+
+.salario-mercado {
+  font-size: 11px;
+  color: var(--cinza-texto);
 }
 
 .item-contrato-vencendo {
