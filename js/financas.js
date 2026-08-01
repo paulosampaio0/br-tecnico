@@ -1053,7 +1053,7 @@ function jogadorCobertoPorOlheiro(olheiro, itemMercado) {
 /** Faixa estimada de força ("35–40") pra jogador sem cobertura de olheiro nenhum. */
 function calcularFaixaForcaEstimada(forcaReal) {
   const faixa = CONFIG_FINANCEIRO.olheiroFaixaEstimativaForca;
-  return { minimo: Math.max(20, forcaReal - faixa), maximo: Math.min(50, forcaReal + faixa) };
+  return { minimo: Math.max(20, forcaReal - faixa), maximo: Math.min(60, forcaReal + faixa) };
 }
 
 /* ============================================================

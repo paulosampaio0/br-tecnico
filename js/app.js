@@ -663,8 +663,8 @@ function salvarFormJogador(evento) {
     erroEl.hidden = false;
     return;
   }
-  if (!forca || forca < 28 || forca > 48) {
-    erroEl.textContent = "Força precisa ser um número entre 28 e 48.";
+  if (!forca || forca < 28 || forca > 60) {
+    erroEl.textContent = "Força precisa ser um número entre 28 e 60.";
     erroEl.hidden = false;
     return;
   }
@@ -802,7 +802,10 @@ async function escalarEsteTime(time) {
     if (!confirmar) return;
   }
 
-  estado.timeAtual = { divisaoChave: divisaoAtual, nome: time.nome, jogadores: time.jogadores };
+  // Clona o elenco (nunca mutar os objetos de `cacheDados` direto — são compartilhados com
+  // Mercado/outros clubes e com QUALQUER outra carreira iniciada na mesma sessão do navegador).
+  const jogadoresDaCarreira = time.jogadores.map(function (jogador) { return Object.assign({}, jogador); });
+  estado.timeAtual = { divisaoChave: divisaoAtual, nome: time.nome, jogadores: jogadoresDaCarreira };
   estado.formacaoId = "4-4-2a";
   estado.formacaoPersonalizada = null;
   estado.carreiraPorJogador = {};
@@ -811,18 +814,34 @@ async function escalarEsteTime(time) {
   estado.jogadoresParaEmprestimo = {};
   estado.precoPedidoVenda = {};
   estado.detalhesPartidaPorRodada = {};
-  estado.titulares = autoEscalarMelhores(time.jogadores, estado.formacaoId);
+  estado.evolucao = {};
+
+  // Bônus de Força das Estrelas (permanente, aplicado 1x ao iniciar a carreira): jogadores que já
+  // nascem com Estrela Dourada (emblemática por nome ou marcada no Editor) ganham +6 de força;
+  // Estrela Prata ganha metade disso, +3. Rompe o teto de 48 "base" (Editor agora aceita até 60).
+  // Gravado em `estado.evolucao` (mesmo mecanismo da evolução de fim de temporada) pra sobreviver
+  // a um recarregamento — sem isso, a força voltaria ao valor cru salvo no `elencos_2026.json`.
+  jogadoresDaCarreira.forEach(function (jogador) {
+    const estrelaInicial = obterEstrelaEditor(jogador);
+    const bonus = estrelaInicial === "dourada" ? 6 : estrelaInicial === "prateada" ? 3 : 0;
+    if (bonus > 0) {
+      jogador.forca += bonus;
+      jogador._bonusEstrelaBase = bonus;
+      estado.evolucao[jogador._id] = { forca: jogador.forca, _bonusEstrelaBase: bonus };
+    }
+  });
+
+  estado.titulares = autoEscalarMelhores(jogadoresDaCarreira, estado.formacaoId);
   // Banco relacionado (Gestão de elenco): semeado 1x aqui com os melhores reservas por força —
   // dali em diante é 100% manual, o técnico reorganiza pelo tap-to-swap.
-  estado.relacionadosIds = escolherRelacionadosPadrao(time.jogadores, estado.titulares);
+  estado.relacionadosIds = escolherRelacionadosPadrao(jogadoresDaCarreira, estado.titulares);
   estado.tatica = taticaPadrao();
   estado.setas = {};
   estado.temporada = null; // time novo começa uma temporada nova
   estado.energiaPorJogador = {}; // todo mundo começa com 100% de energia
-  estado.evolucao = {};
   estado.cartoesAmarelos = {};
   estado.suspensoAte = {};
-  estado.financas = criarFinancasIniciais(time.jogadores, divisaoAtual);
+  estado.financas = criarFinancasIniciais(jogadoresDaCarreira, divisaoAtual);
   estado.precoIngresso = "normal";
   estado.contratos = {};
   estado.moralPorJogador = {};
@@ -830,7 +849,7 @@ async function escalarEsteTime(time) {
   estado.estrelasPorJogador = {}; // _id -> "dourada" | "prateada"
   estado.prateadaLimiteIdadePorJogador = {}; // _id -> idade limite pra manter a Estrela Prateada (22, ou 23 no Easter Egg)
   estado.formaPorJogador = {}; // _id -> "alta" | "neutra" | "baixa" (Setas de Fase, recalculado a cada partida oficial)
-  time.jogadores.forEach(function (jogador) {
+  jogadoresDaCarreira.forEach(function (jogador) {
     estado.contratos[jogador._id] = criarContratoInicial(jogador);
     estado.moralPorJogador[jogador._id] = CONFIG_FINANCEIRO.moralInicial;
   });
@@ -2709,11 +2728,15 @@ function calcularTimeSimuladoUsuario() {
     if (forma === "alta") forcaAjustada *= 1.10;
     else if (forma === "baixa") forcaAjustada *= 0.90;
 
-    // Bônus de Força (rompe o teto de 48 base): Estrela Dourada +6 / Estrela Prateada +3 de
-    // Força Efetiva, sempre — não depende de ter outro craque em campo.
+    // Bônus de Força das Estrelas: Dourada +6 / Prata +3, sempre — não depende de ter outro craque
+    // em campo. Quem já nasceu com a estrela (emblemática/Editor) recebe esse bônus permanente em
+    // `jogador.forca` no início da carreira (`escalarEsteTime`) — aqui só soma a DIFERENÇA que
+    // ainda falta pra quem ganhou a estrela DEPOIS (Prata/Dourada dinâmica de temporada), pra não
+    // contar o bônus em dobro em quem já está com ele embutido na força base.
     const estrela = obterEstrelaJogador(item.jogador);
-    if (estrela === "dourada") forcaAjustada += 6;
-    else if (estrela === "prateada") forcaAjustada += 3;
+    const bonusAlvo = estrela === "dourada" ? 6 : estrela === "prateada" ? 3 : 0;
+    const bonusJaEmbutido = item.jogador._bonusEstrelaBase || 0;
+    forcaAjustada += Math.max(0, bonusAlvo - bonusJaEmbutido);
 
     const jogadorAjustado = Object.assign({}, item.jogador, { forca: forcaAjustada });
     // Correção de bug crítica: faltava repassar `eficiencia` (Correção de bug — 2026-07-25, eficiência
@@ -3985,7 +4008,7 @@ function evoluirJogador(jogador, fatorCT, fatorEstrela) {
   delta *= fatorCT !== undefined ? fatorCT : 1;
   delta *= fatorEstrela !== undefined ? fatorEstrela : 1;
 
-  const novaForca = Math.max(28, Math.min(48, Math.round(jogador.forca + delta)));
+  const novaForca = Math.max(28, Math.min(60, Math.round(jogador.forca + delta)));
   return { forca: novaForca, idade: idade + 1 };
 }
 
@@ -4952,7 +4975,10 @@ async function processarFimDeTemporada() {
   estado.timeAtual.jogadores = estado.timeAtual.jogadores.map(function (jogador) {
     const fatorEstrelaEvolucao = obterEstrelaJogador(jogador) === "prateada" ? 1.5 : 1;
     const ajuste = evoluirJogador(jogador, fatorEvolucaoCT, fatorEstrelaEvolucao);
-    estado.evolucao[jogador._id] = ajuste;
+    // Mescla (não sobrescreve) o registro de evolução: precisa preservar o `_bonusEstrelaBase`
+    // gravado no início da carreira, senão ele some do save e o Bônus de Força das Estrelas volta
+    // a ser somado em dobro na Match Engine na temporada seguinte (ver `calcularTimeSimuladoUsuario`).
+    estado.evolucao[jogador._id] = Object.assign({}, estado.evolucao[jogador._id], ajuste);
     if (ajuste.forca !== jogador.forca) {
       evolucaoResumo.push({ nome: jogador.nome, de: jogador.forca, para: ajuste.forca });
     }
