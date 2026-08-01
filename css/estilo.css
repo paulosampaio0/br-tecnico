@@ -3174,29 +3174,78 @@ body::before {
   text-overflow: ellipsis;
 }
 
-/* MarketPlayerCard — força/nome/estrela do jogador do mercado, mesmo padrão visual do Player
-   Node do campinho (`.forca-compacto` amarelo + nome branco + estrela). */
-.item-mercado .nome-contrato {
+/* MarketPlayerCard (reformulação) — layout em linhas empilhadas, nunca corta o nome do
+   atleta (sem ellipsis/nowrap), e os botões de ação ficam numa barra própria na base do
+   card, nunca espremendo o texto acima (corrige o card "Allan" deformado). */
+.item-mercado {
   display: flex;
-  align-items: center;
-  gap: 4px;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 6px;
 }
 
-.item-mercado .nome-contrato .forca-compacto {
+.linha-mercado {
+  min-width: 0;
+}
+
+.linha-identificacao-mercado {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px;
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.linha-identificacao-mercado .pos {
+  margin-right: 2px;
+}
+
+.linha-identificacao-mercado .forca-compacto {
   color: var(--amarelo);
 }
 
-.item-mercado .nome-contrato .player-name {
-  overflow: hidden;
-  text-overflow: ellipsis;
+.linha-identificacao-mercado .player-name {
+  white-space: normal;
+  overflow-wrap: break-word;
+}
+
+.fase-mercado {
+  font-size: 13px;
+}
+
+.linha-clube-mercado {
+  font-size: 12px;
+  color: var(--cinza-texto);
+}
+
+.item-mercado .traits-vaga {
+  display: block;
+  font-size: 11px;
 }
 
 /* MarketPlayerCard — valor de mercado em destaque + salário mensal estimado. */
+.linha-financeiro-mercado,
 .financeiro-mercado {
   display: flex;
   align-items: baseline;
   gap: 8px;
   margin-top: 2px;
+}
+
+.barra-acoes-mercado {
+  display: flex;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.barra-acoes-mercado .btn-renovar-contrato {
+  flex: 1;
+  text-align: center;
+}
+
+.barra-acoes-mercado.acao-unica .btn-renovar-contrato {
+  flex: 1;
 }
 
 .valor-mercado-destaque {
@@ -3267,6 +3316,45 @@ body::before {
 .aviso-janela-mercado.janela-fechada {
   color: var(--cinza-texto);
   background: rgba(255, 255, 255, 0.05);
+}
+
+.barra-busca-mercado {
+  display: flex;
+  gap: 8px;
+}
+
+.barra-busca-mercado .campo-busca-mercado {
+  flex: 1;
+}
+
+.btn-buscar-mercado,
+.btn-filtros-mercado {
+  flex-shrink: 0;
+  min-height: 40px;
+  padding: 0 14px;
+  border-radius: 10px;
+  border: 1px solid var(--amarelo);
+  background: rgba(255, 210, 63, 0.12);
+  color: var(--amarelo);
+  font-size: 13px;
+  font-weight: 800;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.folha-filtros-mercado {
+  gap: 16px;
+}
+
+.btn-aplicar-filtros-mercado {
+  min-height: 44px;
+  border-radius: 12px;
+  border: none;
+  background: var(--amarelo);
+  color: #3a2b00;
+  font-size: 14px;
+  font-weight: 800;
+  cursor: pointer;
 }
 
 .secao-filtros-mercado {
@@ -3527,6 +3615,26 @@ body::before {
 
 .item-contrato {
   flex-wrap: wrap;
+}
+
+.secao-propostas-recebidas {
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  padding: 4px 12px 12px;
+}
+
+.secao-propostas-recebidas summary {
+  padding: 10px 0;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.contador-propostas-recebidas {
+  color: var(--amarelo);
+  font-weight: 800;
 }
 
 .secao-propostas-recebidas h3 {

@@ -132,6 +132,7 @@ const estado = {
   setas: {}, // { idDaVaga: ["frente", "meio", ...] } — no máximo 2 chaves por vaga
   temporada: null, // { ano, rodadaAtual, serie_a: {...}, serie_b: {...} }
   energiaPorJogador: {}, // { _id: 0 a 100 } — só do MEU elenco (Fase 7)
+  jogosSeguidosPorJogador: {}, // { _id: nº de partidas seguidas jogando os 90min sem descanso } — fadiga crônica
   evolucao: {}, // { _id: { forca, idade } } — os ajustes que ficam de temporada em temporada
   cartoesAmarelos: {}, // { _id: contagem atual, zera ao suspender }
   suspensoAte: {}, // { _id: número da última rodada em que ainda está suspenso }
@@ -221,6 +222,7 @@ function salvarProgresso() {
     setas: estado.setas,
     temporada: estado.temporada,
     energiaPorJogador: estado.energiaPorJogador,
+    jogosSeguidosPorJogador: estado.jogosSeguidosPorJogador,
     evolucao: estado.evolucao,
     cartoesAmarelos: estado.cartoesAmarelos,
     suspensoAte: estado.suspensoAte,
@@ -834,6 +836,7 @@ async function escalarEsteTime(time) {
   estado.setas = {};
   estado.temporada = null; // time novo começa uma temporada nova
   estado.energiaPorJogador = {}; // todo mundo começa com 100% de energia
+  estado.jogosSeguidosPorJogador = {};
   estado.cartoesAmarelos = {};
   estado.suspensoAte = {};
   estado.financas = criarFinancasIniciais(jogadoresDaCarreira, divisaoAtual);
@@ -3963,14 +3966,20 @@ function aplicarEvolucaoNoElenco(jogadoresBase, overrides) {
 
 /**
  * Depois de uma partida (amistoso ou rodada oficial), quem jogou perde
- * energia — mais se for veterano ou tiver setas ativas, menos se tiver a
- * característica Resistência. Quem ficou no banco recupera energia.
+ * energia — mais se for veterano, com tática ofensiva ou com setas ativas,
+ * menos se tiver a característica Resistência, saiu cedo ou é jovem. Todo
+ * mundo (jogou ou não) recupera energia entre rodadas, com base no nível do
+ * Departamento Médico — só quem emenda 3+ jogos inteiros seguidos sem
+ * descanso ("fadiga crônica") tem essa recuperação reduzida.
  */
 function aplicarDesgastePosPartida() {
   if (!estado.timeAtual) return;
 
-  // Nível do Departamento Médico (Fase 18) reduz o desgaste físico por partida.
-  const fatorDesgasteDM = estado.infraestrutura ? calcularFatorDesgasteDM(estado.infraestrutura.dm) : 1;
+  const nivelDM = estado.infraestrutura ? estado.infraestrutura.dm : 1;
+  const recuperacaoBaseDM = calcularRecuperacaoDM(nivelDM);
+  const ajusteEstilo = AJUSTE_ESTILO_TATICA[estado.tatica.estilo] || AJUSTE_ESTILO_TATICA.equilibrado;
+  // Tática ofensiva/pressão alta consome mais fôlego; retranca/posse cadenciada consome menos.
+  const fatorPostura = ajusteEstilo.ataque >= 2 ? 1.2 : ajusteEstilo.defesa >= 2 ? 0.8 : 1;
 
   const vagaPorJogador = {};
   Object.keys(estado.titulares).forEach(function (vagaId) {
@@ -3982,36 +3991,42 @@ function aplicarDesgastePosPartida() {
     ? calcularMinutosJogados(partidaAtual, meuLadoNaPartida)
     : {};
 
+  estado.jogosSeguidosPorJogador = estado.jogosSeguidosPorJogador || {};
+
   estado.timeAtual.jogadores.forEach(function (jogador) {
     const atual = obterEnergiaJogador(jogador._id);
+    const jogou = idsQueJogaram.has(jogador._id);
+    const jogosSeguidos = estado.jogosSeguidosPorJogador[jogador._id] || 0;
 
-    if (!idsQueJogaram.has(jogador._id)) {
-      // Não entrou em campo: chega 100% descansado no próximo jogo, jovem ou veterano.
-      estado.energiaPorJogador[jogador._id] = 100;
+    // Fadiga crônica: 3+ jogos inteiros seguidos sem descanso penaliza a recuperação em -5%/jogo acumulado.
+    let recuperacao = jogosSeguidos >= 3 ? Math.max(0, recuperacaoBaseDM - 5 * (jogosSeguidos - 2)) : recuperacaoBaseDM;
+
+    if (!jogou) {
+      // Ficar 1 partida no banco já zera a fadiga crônica.
+      estado.jogosSeguidosPorJogador[jogador._id] = 0;
+      estado.energiaPorJogador[jogador._id] = Math.min(100, Math.round(atual + recuperacao));
       return;
     }
 
     const minutos = minutosJogados[jogador._id] !== undefined ? minutosJogados[jogador._id] : 90;
-
-    if (minutos < 45) {
-      // Jogou menos de um tempo: recupera quase tudo — veterano um pouco menos.
-      estado.energiaPorJogador[jogador._id] = jogador.idade >= 30 ? 90 : 98;
-      return;
-    }
-
-    // Rebalanceamento de desgaste (2026-07-29): jogador de linha aguenta pelo menos 2 jogos
-    // inteiros seguidos (180min) sem cair de rendimento crítico (perda de ~12-18%/jogo); goleiro
-    // mal cansa fisicamente na posição — aguenta 5-6 jogos seguidos (perda de só 4-6%/jogo).
     const ehGoleiro = jogador.pos === "GOL";
-    let perda = ehGoleiro ? 4 : 12;
-    if (jogador.idade >= 30) perda += ehGoleiro ? 1 : 4;
+
+    // Bônus por substituição prematura: sair cedo poupa o atleta.
+    // Perda "cheia" de referência pra 90min: ~20% linha (dentro dos 15-25% pedidos), ~5% goleiro.
+    const perdaCheia = ehGoleiro ? 5 : 20;
+    let perda = minutos < 60 ? perdaCheia * 0.4 : minutos < 75 ? perdaCheia * 0.6 : perdaCheia;
+
+    // Fator idade: ≤24 anos cansa 15% menos, ≥33 anos cansa 15% mais.
+    if (jogador.idade <= 24) perda *= 0.85;
+    else if (jogador.idade >= 33) perda *= 1.15;
+
+    perda *= fatorPostura;
+
     const temResistencia = jogador.caracteristica_1 === "Resistência" || jogador.caracteristica_2 === "Resistência";
-    if (temResistencia) perda -= ehGoleiro ? 1 : 5;
+    if (temResistencia) perda *= 0.75;
 
     // Rebalanceamento de setas (2026-07-23) — risco vs. recompensa: jogar com seta ativa
-    // consome 30% a mais de energia (1 seta) até 50% a mais (2 setas), substituindo o antigo
-    // "+3 fixo por seta" por um multiplicador proporcional ao desgaste base do jogador.
-    // Goleiro nunca tem seta ativa (não entra no embate por setor), então nunca sofre esse extra.
+    // consome 30% a mais de energia (1 seta) até 50% a mais (2 setas). Goleiro nunca tem seta ativa.
     const setasJogador = estado.setas[vagaPorJogador[jogador._id]] || [];
     if (setasJogador.length === 1) perda *= 1.3;
     else if (setasJogador.length >= 2) perda *= 1.5;
@@ -4019,12 +4034,14 @@ function aplicarDesgastePosPartida() {
     // Estrela Prateada — Resistência Física: cansa 30% menos.
     if (obterEstrelaJogador(jogador) === "prateada") perda *= 0.7;
 
-    perda *= fatorDesgasteDM;
-    // Teto de segurança: nenhum modificador empilhado pode fugir da faixa pedida (12-18%
-    // linha / 4-6% goleiro), pra "2 jogos seguidos" (ou "5-6" pro goleiro) valer sempre.
-    perda = clamp(perda, ehGoleiro ? 2 : 8, ehGoleiro ? 6 : 18);
+    perda = clamp(perda, ehGoleiro ? 1 : 5, ehGoleiro ? 9 : 30);
 
-    estado.energiaPorJogador[jogador._id] = Math.max(10, Math.round(atual - perda));
+    // Contador de fadiga crônica: 90min inteiros acumula; sair antes dos 70min zera; 70-89min mantém.
+    if (minutos >= 90) estado.jogosSeguidosPorJogador[jogador._id] = jogosSeguidos + 1;
+    else if (minutos < 70) estado.jogosSeguidosPorJogador[jogador._id] = 0;
+
+    const nova = atual + recuperacao - perda;
+    estado.energiaPorJogador[jogador._id] = Math.max(10, Math.min(100, Math.round(nova)));
   });
 }
 
@@ -5174,6 +5191,7 @@ async function processarFimDeTemporada() {
     idsQueSaem.forEach(function (id) {
       delete estado.contratos[id];
       delete estado.energiaPorJogador[id];
+      delete estado.jogosSeguidosPorJogador[id];
     });
     Object.keys(estado.titulares).forEach(function (vagaId) {
       if (idsQueSaem.has(estado.titulares[vagaId])) {
@@ -5631,6 +5649,20 @@ function formatarForcaMercado(item) {
   return "força " + faixa.minimo + "–" + faixa.maximo + " (estimado)";
 }
 
+/**
+ * Seta de Fase estimada pro Mercado (jogador de outro clube — sem histórico de forma salvo,
+ * já que `estado.formaPorJogador` só cobre o MEU elenco). Sintética e determinística: muda
+ * a cada rodada, mas é estável enquanto o jogador estiver na lista na mesma rodada.
+ */
+function obterFormaMercadoEstimada(item) {
+  const rodada = (estado.temporada && estado.temporada.rodadaAtual) || 0;
+  const semente = semeanteDeTexto("forma-mercado|" + rodada + "|" + item.nomeTime + "|" + item.jogador._id);
+  const sorteio = criarRandomSeeded(semente)();
+  if (sorteio < 0.22) return "alta";
+  if (sorteio < 0.44) return "baixa";
+  return "neutra";
+}
+
 /** Reformulação do Mercado: a janela fica sempre aberta — mantido só pra não quebrar quem chama. */
 function obterInfoJanelaMercado() {
   return { aberta: true, textoFechada: "" };
@@ -5754,7 +5786,11 @@ function renderizarMercado() {
   itens.forEach(function (item) {
     const jogador = item.jogador;
     const marcadorEstrela = MARCADOR_ESTRELA_COMPACTO[obterEstrelaEditor(jogador)] || "";
+    const forma = obterFormaMercadoEstimada(item);
+    const marcadorForma = forma === "alta" ? "<span class=\"fase-mercado fase-alta\" title=\"Em alta\">🟢⬆️</span> "
+      : forma === "baixa" ? "<span class=\"fase-mercado fase-baixa\" title=\"Em baixa\">🔴⬇️</span> " : "";
     const salarioMensal = converterEuroParaReal(calcularSalarioMensal(jogador));
+    const podeEmprestar = jogador.idade <= CONFIG_FINANCEIRO.emprestimoIdadeMaxima;
     const li = document.createElement("li");
     li.className = "item-contrato item-mercado aberto-perfil";
     li.addEventListener("click", function (evento) {
@@ -5762,25 +5798,25 @@ function renderizarMercado() {
       abrirPerfilAtleta(jogador, { meu: false, nomeTime: item.nomeTime, divisaoChave: item.divisaoChave });
     });
     li.innerHTML =
-      "<span class=\"pos " + classeSetorPosicao(jogador.pos) + "\">" + escaparHtml(jogador.pos) + "</span>" +
-      "<span class=\"info-contrato\">" +
-        "<span class=\"nome-contrato\">" +
-          "<span class=\"forca-compacto\">" + jogador.forca + "</span>" +
-          "<span class=\"player-name\">" + escaparHtml(jogador.nome) + "</span>" +
-          (marcadorEstrela ? "<span class=\"player-star\">" + marcadorEstrela.trim() + "</span>" : "") +
-        "</span>" +
-        "<span class=\"detalhes-contrato\">" + escaparHtml(item.nomeTime) + " · " + escaparHtml(jogador.nac) + " · " +
-          jogador.idade + " anos · " + formatarForcaMercado(item) +
-        "</span>" +
-        montarTraitsVaga(jogador) +
-        "<span class=\"financeiro-mercado\">" +
-          "<span class=\"valor-mercado-destaque\">" + formatarReais(item.preco) + "</span>" +
-          "<span class=\"salario-mercado\">Salário: " + formatarSalarioMensal(salarioMensal) + "</span>" +
-        "</span>" +
-      "</span>" +
-      "<button class=\"btn-renovar-contrato\" type=\"button\">Fazer proposta</button>" +
-      (jogador.idade <= CONFIG_FINANCEIRO.emprestimoIdadeMaxima
-        ? "<button class=\"btn-renovar-contrato btn-emprestar-mercado\" type=\"button\">Emprestar</button>" : "");
+      "<div class=\"linha-mercado linha-identificacao-mercado\">" +
+        "<span class=\"pos " + classeSetorPosicao(jogador.pos) + "\">" + escaparHtml(jogador.pos) + "</span>" +
+        "<span class=\"forca-compacto\">" + jogador.forca + "</span>" +
+        marcadorForma +
+        "<span class=\"player-name\">" + escaparHtml(jogador.nome) + "</span>" +
+        (marcadorEstrela ? "<span class=\"player-star\">" + marcadorEstrela.trim() + "</span>" : "") +
+      "</div>" +
+      "<div class=\"linha-mercado linha-clube-mercado\">" +
+        escaparHtml(item.nomeTime) + " · " + escaparHtml(jogador.nac) + " · " + jogador.idade + " anos · " + formatarForcaMercado(item) +
+      "</div>" +
+      montarTraitsVaga(jogador) +
+      "<div class=\"linha-mercado linha-financeiro-mercado\">" +
+        "<span class=\"valor-mercado-destaque\">" + formatarReais(item.preco) + "</span>" +
+        "<span class=\"salario-mercado\">Salário: " + formatarSalarioMensal(salarioMensal) + "</span>" +
+      "</div>" +
+      "<div class=\"barra-acoes-mercado" + (podeEmprestar ? "" : " acao-unica") + "\">" +
+        "<button class=\"btn-renovar-contrato\" type=\"button\">Fazer proposta</button>" +
+        (podeEmprestar ? "<button class=\"btn-renovar-contrato btn-emprestar-mercado\" type=\"button\">Emprestar</button>" : "") +
+      "</div>";
 
     li.querySelector(".btn-renovar-contrato").addEventListener("click", function () {
       abrirPropostaMercado(item);
@@ -6360,6 +6396,7 @@ function removerJogadorDoElenco(idJogador) {
   estado.timeAtual.jogadores = estado.timeAtual.jogadores.filter(function (j) { return j._id !== idJogador; });
   delete estado.contratos[idJogador];
   delete estado.energiaPorJogador[idJogador];
+  delete estado.jogosSeguidosPorJogador[idJogador];
   delete estado.vendasCamisasPorJogador[idJogador]; // ranking de camisas é só de quem está no elenco (Fase 21)
   delete estado.jogadoresAVenda[idJogador];
   delete estado.moralPorJogador[idJogador];
@@ -6429,6 +6466,8 @@ function renderizarPropostasRecebidas() {
   if (!listaEl || !secaoEl || !estado.timeAtual) return;
 
   secaoEl.hidden = estado.propostasRecebidas.length === 0;
+  const contadorEl = document.getElementById("contador-propostas-recebidas");
+  if (contadorEl) contadorEl.textContent = estado.propostasRecebidas.length > 0 ? "(" + estado.propostasRecebidas.length + ")" : "";
   listaEl.innerHTML = "";
 
   estado.propostasRecebidas.forEach(function (proposta) {
@@ -6586,6 +6625,7 @@ function aplicarDemissao(motivo) {
   estado.propostasRecebidas = [];
   estado.diretoria = null;
   estado.energiaPorJogador = {};
+  estado.jogosSeguidosPorJogador = {};
   estado.evolucao = {};
   estado.titulares = {};
   estado.setas = {};
@@ -7827,6 +7867,7 @@ async function continuarJogoSalvo() {
     estado.setas = registro.setas || {};
     estado.temporada = registro.temporada || null;
     estado.energiaPorJogador = registro.energiaPorJogador || {};
+    estado.jogosSeguidosPorJogador = registro.jogosSeguidosPorJogador || {};
     estado.evolucao = registro.evolucao || {};
     estado.cartoesAmarelos = registro.cartoesAmarelos || {};
     estado.suspensoAte = registro.suspensoAte || {};
@@ -8485,11 +8526,26 @@ function ligarBotoes() {
   const btnVoltarEscalacaoMercado = document.getElementById("btn-voltar-escalacao-mercado");
   if (btnVoltarEscalacaoMercado) btnVoltarEscalacaoMercado.addEventListener("click", abrirTelaEscalacao);
 
-  ["select-posicao-mercado", "input-forca-minima-mercado", "input-idade-maxima-mercado", "input-preco-maximo-mercado", "input-busca-mercado"]
+  ["select-posicao-mercado", "select-estrela-mercado", "input-forca-minima-mercado", "input-forca-maxima-mercado",
+    "input-idade-maxima-mercado", "input-preco-maximo-mercado", "select-ordenacao-mercado", "input-busca-mercado"]
     .forEach(function (id) {
       const el = document.getElementById(id);
       if (el) el.addEventListener("input", renderizarMercado);
     });
+
+  const btnBuscarMercado = document.getElementById("btn-buscar-mercado");
+  if (btnBuscarMercado) btnBuscarMercado.addEventListener("click", renderizarMercado);
+
+  const sobreposicaoFiltrosMercado = document.getElementById("sobreposicao-filtros-mercado");
+  const btnAbrirFiltrosMercado = document.getElementById("btn-abrir-filtros-mercado");
+  if (btnAbrirFiltrosMercado) btnAbrirFiltrosMercado.addEventListener("click", function () { sobreposicaoFiltrosMercado.hidden = false; });
+  const btnFecharFiltrosMercado = document.getElementById("btn-fechar-filtros-mercado");
+  if (btnFecharFiltrosMercado) btnFecharFiltrosMercado.addEventListener("click", function () { sobreposicaoFiltrosMercado.hidden = true; });
+  const btnAplicarFiltrosMercado = document.getElementById("btn-aplicar-filtros-mercado");
+  if (btnAplicarFiltrosMercado) btnAplicarFiltrosMercado.addEventListener("click", function () {
+    sobreposicaoFiltrosMercado.hidden = true;
+    renderizarMercado();
+  });
 
   const btnFecharProposta = document.getElementById("btn-fechar-proposta");
   if (btnFecharProposta) btnFecharProposta.addEventListener("click", fecharPropostaMercado);

@@ -178,6 +178,9 @@ const CONFIG_FINANCEIRO = {
   infraCtBonusEvolucaoPorNivel: 0.15,
   // Departamento Médico: reduz o desgaste físico por partida (sem sistema de lesão de verdade, isso é a versão simplificada).
   infraDmReducaoDesgastePorNivel: 0.06,
+  // Departamento Médico: recuperação de energia entre rodadas — nível 1 recupera 18%, cada nível acima soma +2% (nível 5 = 26%).
+  infraDmRecuperacaoBase: 18,
+  infraDmRecuperacaoPorNivel: 2,
   // Centro de Análise de Desempenho: bônus geral de força efetiva do seu time em campo (simplificação — não é "contra time estudado").
   infraAnaliseBonusForcaPorNivel: 0.015,
   // Categorias de Base: jovens revelados mais fortes e com mais frequência (mexe nos limites da Fase 15).
@@ -1068,6 +1071,11 @@ function calcularCustoUpgradeInfra(caixaInicialClube, nivelAtual) {
 /** Fator sobre o delta de evolução de força (Centro de Treinamento) — nível 1 é neutro. */
 function calcularFatorEvolucaoCT(nivelCT) {
   return 1 + Math.max(0, nivelCT - 1) * CONFIG_FINANCEIRO.infraCtBonusEvolucaoPorNivel;
+}
+
+/** % de energia recuperada por rodada (Departamento Médico) — nível 1 já recupera bem (18%), nível 5 (máximo) recupera 26%. */
+function calcularRecuperacaoDM(nivelDM) {
+  return CONFIG_FINANCEIRO.infraDmRecuperacaoBase + Math.max(0, nivelDM - 1) * CONFIG_FINANCEIRO.infraDmRecuperacaoPorNivel;
 }
 
 /** Fator sobre o desgaste físico por partida (Departamento Médico) — nível 1 é neutro. */
