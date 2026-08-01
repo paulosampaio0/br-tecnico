@@ -819,17 +819,9 @@ async function escalarEsteTime(time) {
   // Bônus de Força das Estrelas (permanente, aplicado 1x ao iniciar a carreira): jogadores que já
   // nascem com Estrela Dourada (emblemática por nome ou marcada no Editor) ganham +6 de força;
   // Estrela Prata ganha metade disso, +3. Rompe o teto de 48 "base" (Editor agora aceita até 60).
-  // Gravado em `estado.evolucao` (mesmo mecanismo da evolução de fim de temporada) pra sobreviver
-  // a um recarregamento — sem isso, a força voltaria ao valor cru salvo no `elencos_2026.json`.
-  jogadoresDaCarreira.forEach(function (jogador) {
-    const estrelaInicial = obterEstrelaEditor(jogador);
-    const bonus = estrelaInicial === "dourada" ? 6 : estrelaInicial === "prateada" ? 3 : 0;
-    if (bonus > 0) {
-      jogador.forca += bonus;
-      jogador._bonusEstrelaBase = bonus;
-      estado.evolucao[jogador._id] = { forca: jogador.forca, _bonusEstrelaBase: bonus };
-    }
-  });
+  // Mesma função usada quando um jogador ganha estrela DURANTE a temporada (ver
+  // `atualizarEstrelasDeTemporada`) — sempre visível na força, nunca só escondido na partida.
+  jogadoresDaCarreira.forEach(function (jogador) { aplicarBonusForcaEstrela(jogador, obterEstrelaEditor(jogador)); });
 
   estado.titulares = autoEscalarMelhores(jogadoresDaCarreira, estado.formacaoId);
   // Banco relacionado (Gestão de elenco): semeado 1x aqui com os melhores reservas por força —
@@ -2016,6 +2008,27 @@ function obterEstrelaJogador(jogador) {
   if (dinamica === "dourada") return "dourada";
   if (jogador.estrelaPrataEditor) return dinamica || "prateada";
   return dinamica || emblematica || null;
+}
+
+/**
+ * Bônus de Força das Estrelas (Dourada +6 / Prata +3): embute (ou ajusta) o bônus DIRETO em
+ * `jogador.forca`, permanentemente — mostrado em toda lista, não só durante a partida. Chamada
+ * tanto no início da carreira quanto sempre que a estrela DINÂMICA de um jogador muda (ganhou,
+ * subiu de Prata pra Dourada, ou expirou) em `atualizarEstrelasDeTemporada`. Só ajusta a
+ * DIFERENÇA entre o bônus já embutido e o novo alvo — evita somar em dobro (a Match Engine, em
+ * `calcularTimeSimuladoUsuario`, faz o mesmo cálculo de diferença pra quem ainda não passou por
+ * aqui num save mais antigo). Grava em `estado.evolucao` (mescla, nunca sobrescreve) pra
+ * sobreviver a um recarregamento, igual à evolução de fim de temporada.
+ */
+function aplicarBonusForcaEstrela(jogador, novaEstrela) {
+  const bonusAlvo = novaEstrela === "dourada" ? 6 : novaEstrela === "prateada" ? 3 : 0;
+  const bonusAtual = jogador._bonusEstrelaBase || 0;
+  if (bonusAlvo === bonusAtual) return;
+  jogador.forca = Math.max(28, jogador.forca + (bonusAlvo - bonusAtual));
+  jogador._bonusEstrelaBase = bonusAlvo;
+  if (estado.evolucao) {
+    estado.evolucao[jogador._id] = Object.assign({}, estado.evolucao[jogador._id], { forca: jogador.forca, _bonusEstrelaBase: bonusAlvo });
+  }
 }
 
 /** Seta de Fase (forma recente) — "alta" | "neutra" | "baixa"; "neutra" se nunca foi calculada. */
@@ -4208,6 +4221,7 @@ async function atualizarEstrelasDeTemporada(parcial) {
       if (feitoPromocaoDePrateada && !parcial) {
         estado.estrelasPorJogador[idJogador] = "dourada";
         delete estado.prateadaLimiteIdadePorJogador[idJogador];
+        aplicarBonusForcaEstrela(jogador, "dourada"); // Bônus de Força: sobe de +3 (Prata) pra +6 (Dourada), visível.
         promovidosDourada.push(jogador.nome);
         return;
       }
@@ -4218,6 +4232,7 @@ async function atualizarEstrelasDeTemporada(parcial) {
       if (!parcial && idade >= limiteIdade && notaMedia < 6.8) {
         delete estado.estrelasPorJogador[idJogador];
         delete estado.prateadaLimiteIdadePorJogador[idJogador];
+        aplicarBonusForcaEstrela(jogador, null); // Perdeu a Prata: o +3 de Bônus de Força também sai.
         expirados.push(jogador.nome);
       }
       return;
@@ -4227,6 +4242,7 @@ async function atualizarEstrelasDeTemporada(parcial) {
     // — mas nunca no meio da temporada (`parcial`), só na virada de temporada.
     if (feitoDouradaDireto && !parcial) {
       estado.estrelasPorJogador[idJogador] = "dourada";
+      aplicarBonusForcaEstrela(jogador, "dourada");
       promovidosDourada.push(jogador.nome);
       return;
     }
@@ -4235,6 +4251,7 @@ async function atualizarEstrelasDeTemporada(parcial) {
     if (feitoDouradaDireto && parcial) {
       estado.estrelasPorJogador[idJogador] = "prateada";
       estado.prateadaLimiteIdadePorJogador[idJogador] = idade === 21 ? 23 : 22;
+      aplicarBonusForcaEstrela(jogador, "prateada");
       promovidosPrateada.push(jogador.nome);
       return;
     }
@@ -4244,6 +4261,7 @@ async function atualizarEstrelasDeTemporada(parcial) {
       estado.estrelasPorJogador[idJogador] = "prateada";
       // Easter Egg: bateu a meta EXATAMENTE aos 21 anos ganha +2 anos de tolerância (até os 23).
       estado.prateadaLimiteIdadePorJogador[idJogador] = idade === 21 ? 23 : 22;
+      aplicarBonusForcaEstrela(jogador, "prateada");
       promovidosPrateada.push(jogador.nome);
     }
   });
