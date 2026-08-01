@@ -12,6 +12,9 @@
 
 const CHAVE_SALVAMENTO = "br-tecnico:teste-salvamento";
 const CHAVE_SAVE = "br-tecnico:save:v1";
+// Primeira temporada do universo do BR Técnico (ver `criarNovaTemporada`) — nenhum histórico de
+// carreira, real ou sintético, pode mostrar um ano ANTERIOR a este (não existe "antes" no jogo).
+const ANO_INICIAL_BR_TECNICO = 2026;
 const LIMIAR_ARRASTO_PX = 16; // quanto o dedo precisa se mover pra virar "arrasto" e não "toque"
 const MS_POR_MINUTO_PARTIDA = 450; // velocidade da simulação (real x jogo)
 
@@ -3847,10 +3850,19 @@ function fecharTemporadaNoHistoricoDosJogadores() {
     const stats = estado.statsTemporadaAtualPorJogador[idJogador];
     if (!stats || stats.jogos === 0) return;
 
+    // Nota Média da temporada que está fechando — média simples dos jogos individuais dela
+    // (`estado.jogosTemporadaPorJogador`, zerado logo abaixo). Vira 1 ponto da "Nota Geral" da
+    // carreira, exibida no Perfil do Atleta.
+    const jogosLista = estado.jogosTemporadaPorJogador[idJogador] || [];
+    const notaMediaTemporada = jogosLista.length
+      ? Math.round((jogosLista.reduce(function (s, j) { return s + j.nota; }, 0) / jogosLista.length) * 10) / 10
+      : null;
+
     const historico = estado.carreiraPorJogador[idJogador] = estado.carreiraPorJogador[idJogador] || [];
     historico.push({
       ano: ano, clube: clube, jogos: stats.jogos, gols: stats.gols,
       assistencias: stats.assistencias, amarelos: stats.amarelos, vermelhos: stats.vermelhos, lesoes: 0,
+      notaMedia: notaMediaTemporada,
     });
     if (historico.length > 20) historico.shift();
   });
@@ -4101,13 +4113,13 @@ function gerarCartoesSinteticos(jogador, nomeTime, divisaoChave, ano, jogos) {
  * não existe sistema de lesão no jogo (ver `fecharTemporadaNoHistoricoDosJogadores`).
  */
 function gerarCarreiraSinteticaPara(jogador, nomeTime, divisaoChave) {
-  const anoAtual = estado.temporada ? estado.temporada.ano : new Date().getFullYear();
-  const anosDeCarreira = clamp(jogador.idade - 17, 1, 8); // profissional só depois dos ~17-18
+  const anoAtual = estado.temporada ? estado.temporada.ano : ANO_INICIAL_BR_TECNICO;
+  // Só anos que de fato existiram NESTE jogo — nada antes de `ANO_INICIAL_BR_TECNICO` (não fabrica
+  // um "passado" fictício do atleta; o universo do BR Técnico começa em 2026 pra todo mundo).
   const linhas = [];
-  for (let i = anosDeCarreira - 1; i >= 0; i--) {
-    const ano = anoAtual - i;
+  for (let ano = ANO_INICIAL_BR_TECNICO; ano <= anoAtual; ano++) {
     let stats;
-    if (i === 0 && estado.temporada && estado.temporada[divisaoChave]) {
+    if (ano === anoAtual && estado.temporada && estado.temporada[divisaoChave]) {
       // Temporada em andamento: usa a versão parcial, proporcional às rodadas já disputadas —
       // senão o ano corrente já apareceria com a produção de uma temporada inteira.
       const progresso = obterProgressoRodadaAtual(divisaoChave);
@@ -4120,7 +4132,7 @@ function gerarCarreiraSinteticaPara(jogador, nomeTime, divisaoChave) {
     const cartoes = gerarCartoesSinteticos(jogador, nomeTime, divisaoChave, ano, stats.jogos);
     linhas.push({
       ano: ano, clube: nomeTime, jogos: stats.jogos, gols: stats.gols, assistencias: stats.assistencias,
-      amarelos: cartoes.amarelos, vermelhos: cartoes.vermelhos, lesoes: 0,
+      amarelos: cartoes.amarelos, vermelhos: cartoes.vermelhos, lesoes: 0, notaMedia: stats.notaMedia,
     });
   }
   return linhas;
@@ -4169,6 +4181,40 @@ function gerarJogosTemporadaSinteticaPara(jogador, nomeTime, divisaoChave) {
     });
   }
   return linhas;
+}
+
+/**
+ * Nota Média da TEMPORADA ATUAL (em andamento) — real pro meu elenco (média dos jogos já
+ * disputados), sintética-mas-determinística pra jogador de outro clube. `null` se ainda não jogou
+ * nenhuma rodada nesta temporada.
+ */
+function obterNotaTemporadaAtualPerfil(jogador, contexto) {
+  if (contexto.meu) {
+    const jogosLista = estado.jogosTemporadaPorJogador[jogador._id] || [];
+    if (jogosLista.length === 0) return null;
+    return Math.round((jogosLista.reduce(function (s, j) { return s + j.nota; }, 0) / jogosLista.length) * 10) / 10;
+  }
+  if (!estado.temporada || !estado.temporada[contexto.divisaoChave]) return null;
+  const progresso = obterProgressoRodadaAtual(contexto.divisaoChave);
+  if (!progresso || progresso.rodadasJogadas === 0) return null;
+  return gerarStatsSinteticasTemporada(jogador, contexto.nomeTime, contexto.divisaoChave, estado.temporada.ano).notaMedia;
+}
+
+/**
+ * Nota Média GERAL — média de todas as temporadas já fechadas do Histórico da Carreira (real ou
+ * sintético) MAIS a temporada atual em andamento, se já tiver jogo suficiente pra contar. `historico`
+ * não deve incluir o ano corrente (pra não entrar 2x — o sintético inclui o ano atual nele mesmo,
+ * então esse ano é filtrado aqui antes de somar `notaTemporadaAtual` por fora).
+ */
+function calcularNotaGeralCarreira(historico, notaTemporadaAtual) {
+  const anoAtual = estado.temporada ? estado.temporada.ano : null;
+  const notas = historico
+    .filter(function (linha) { return linha.ano !== anoAtual; })
+    .map(function (linha) { return linha.notaMedia; })
+    .filter(function (nota) { return nota !== null && nota !== undefined; });
+  if (notaTemporadaAtual !== null && notaTemporadaAtual !== undefined) notas.push(notaTemporadaAtual);
+  if (notas.length === 0) return null;
+  return Math.round((notas.reduce(function (s, n) { return s + n; }, 0) / notas.length) * 10) / 10;
 }
 
 /** Progresso da temporada numa divisão — quantas rodadas já foram DISPUTADAS (`rodadaAtual` é a
@@ -4401,7 +4447,7 @@ async function garantirTemporada() {
     return;
   }
   const dados = await carregarDados();
-  estado.temporada = criarNovaTemporada(dados.divisoes.serie_a.times, dados.divisoes.serie_b.times, 2026);
+  estado.temporada = criarNovaTemporada(dados.divisoes.serie_a.times, dados.divisoes.serie_b.times, ANO_INICIAL_BR_TECNICO);
 
   // A reputação precisa existir ANTES do patrocínio, porque ela entra na conta do valor do contrato.
   await garantirReputacaoInicial(dados);
@@ -7932,6 +7978,17 @@ function abrirPerfilAtleta(jogador, contexto) {
   document.getElementById("perfil-valor").textContent = "€" + calcularValorMercado(jogador, estrelaPerfil) + "mi";
   document.getElementById("perfil-caracteristicas").textContent =
     [jogador.caracteristica_1, jogador.caracteristica_2].filter(Boolean).join(" / ") || "—";
+
+  // Nota Temporada (em andamento) e Nota Carreira (média geral desde 2026, incluindo a temporada
+  // atual) — funciona igual pro meu elenco (real) e pra qualquer outro clube (sintético, mesma
+  // fonte de dados da aba "Histórico da Carreira" logo abaixo).
+  const historicoParaNota = contexto.meu
+    ? (estado.carreiraPorJogador[jogador._id] || [])
+    : gerarCarreiraSinteticaPara(jogador, contexto.nomeTime, contexto.divisaoChave);
+  const notaTemporadaAtual = obterNotaTemporadaAtualPerfil(jogador, contexto);
+  const notaGeral = calcularNotaGeralCarreira(historicoParaNota, notaTemporadaAtual);
+  document.getElementById("perfil-nota-temporada").textContent = notaTemporadaAtual !== null ? notaTemporadaAtual.toFixed(1) : "—";
+  document.getElementById("perfil-nota-carreira").textContent = notaGeral !== null ? notaGeral.toFixed(1) : "—";
 
   // Energia/salário/contrato só existem de verdade pro MEU elenco — os outros ~39 clubes da
   // liga não têm economia interna simulada (mesma simplificação já documentada em outras fases).
