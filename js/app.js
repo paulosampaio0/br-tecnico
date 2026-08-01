@@ -632,7 +632,15 @@ function abrirFormJogador(jogador) {
   document.getElementById("form-jogador-carac2").value = jogador && jogador.caracteristica_2 ? jogador.caracteristica_2 : "";
   document.getElementById("form-jogador-titular").checked = !!(jogador && jogador.tituloEditor);
   document.getElementById("form-jogador-estrela").checked = !!(jogador && jogador.estrelaPrataEditor);
-  document.getElementById("form-jogador-top-mundial").checked = !!(jogador && jogador.estrelaDouradaEditor);
+
+  // Jogador emblemático (Neymar, Endrick etc.) já é Estrela Dourada permanente SÓ pelo nome — a
+  // caixinha reflete isso (marcada e travada) pra não parecer que ele "não tem" a estrela que
+  // aparece em toda lista, mesmo sem ninguém ter marcado `estrelaDouradaEditor` nele.
+  const ehEmblematico = !!(jogador && obterEstrelaEmblematica(jogador.nome) === "dourada");
+  const checkboxDourada = document.getElementById("form-jogador-top-mundial");
+  checkboxDourada.checked = ehEmblematico || !!(jogador && jogador.estrelaDouradaEditor);
+  checkboxDourada.disabled = ehEmblematico;
+  document.getElementById("aviso-estrela-emblematica").hidden = !ehEmblematico;
 
   document.getElementById("sobreposicao-form-jogador").hidden = false;
 }
@@ -725,9 +733,12 @@ function criarItemJogador(jogador, mostrarEnergia) {
     ? "<span class=\"tag-capitao\" title=\"Capitão do time\">©</span> " : "";
   // `mostrarEnergia` já significa "esse elenco é o time que eu de fato treino" (ver `abrirTelaElenco`)
   // — reaproveitado aqui como guarda: `_id` do jogador é só o índice DENTRO do elenco de cada clube
-  // (não é globalmente único), então estrela/forma dinâmicas SÓ podem ser lidas pro meu próprio elenco,
-  // senão um jogador de outro clube "herdaria" a estrela de um jogador meu que calhou de ter o mesmo índice.
-  const estrelaStatus = mostrarEnergia ? obterEstrelaJogador(jogador) : obterEstrelaEmblematica(jogador.nome);
+  // (não é globalmente único), então a estrela/forma DINÂMICA de temporada só pode ser lida pro meu
+  // próprio elenco, senão um jogador de outro clube "herdaria" a estrela de um jogador meu que
+  // calhou de ter o mesmo índice. `obterEstrelaEditor` é segura pra qualquer jogador (inclui as
+  // flags do Editor de Times, que são estáticas — corrige a Estrela Dourada/Prata não aparecer
+  // no Editor e no Mercado quando marcada manualmente, só via nome emblemático).
+  const estrelaStatus = mostrarEnergia ? obterEstrelaJogador(jogador) : obterEstrelaEditor(jogador);
   const formaJogador = mostrarEnergia ? obterFormaJogador(jogador._id) : "neutra";
   const prefixoForma = formaJogador === "alta" ? "<span class=\"tag-forma\" title=\"Em alta\">🟢⬆️</span> "
     : formaJogador === "baixa" ? "<span class=\"tag-forma\" title=\"Em baixa\">🔴⬇️</span> " : "";
@@ -2018,7 +2029,7 @@ function obterEstrelaJogadorParaEvento(jogador) {
   const meuCorrespondente = estado.timeAtual && estado.timeAtual.jogadores.find(function (j) {
     return j._id === jogador._id && j.nome === jogador.nome;
   });
-  const estrela = meuCorrespondente ? obterEstrelaJogador(meuCorrespondente) : obterEstrelaEmblematica(jogador.nome);
+  const estrela = meuCorrespondente ? obterEstrelaJogador(meuCorrespondente) : obterEstrelaEditor(jogador);
   return MARCADOR_ESTRELA_COMPACTO[estrela] || "";
 }
 
@@ -2030,7 +2041,7 @@ function obterEstrelaJogadorParaEvento(jogador) {
 function montarForcaNomeCurto(jogador, ehMeuJogador, omitirEstrela, omitirForma) {
   const souMeu = ehMeuJogador !== false;
   const marcadorForma = (souMeu && !omitirForma) ? (MARCADOR_FORMA_COMPACTO[obterFormaJogador(jogador._id)] || "") : "";
-  const estrela = souMeu ? obterEstrelaJogador(jogador) : obterEstrelaEmblematica(jogador.nome);
+  const estrela = souMeu ? obterEstrelaJogador(jogador) : obterEstrelaEditor(jogador);
   const marcadorEstrela = omitirEstrela ? "" : (MARCADOR_ESTRELA_COMPACTO[estrela] || "").trim();
   return "<span class=\"forca-compacto\">" + jogador.forca + "</span>" + marcadorForma +
     "<span class=\"player-name\">" + escaparHtml(sobrenomeCurto(jogador.nome)) + "</span>" +
@@ -2054,7 +2065,7 @@ function montarFaseBadgeVaga(idJogador) {
  *  campinho (Hierarquia Visual Compacta, item 1: Círculo de Posição + Estrela). */
 function montarEstrelaBadgeVaga(jogador, ehMeuJogador) {
   const souMeu = ehMeuJogador !== false;
-  const estrela = souMeu ? obterEstrelaJogador(jogador) : obterEstrelaEmblematica(jogador.nome);
+  const estrela = souMeu ? obterEstrelaJogador(jogador) : obterEstrelaEditor(jogador);
   if (!estrela) return "";
   const emoji = estrela === "dourada" ? "⭐" : "🥈";
   const rotulo = estrela === "dourada" ? "Estrela Dourada" : "Estrela Prateada";
@@ -4150,7 +4161,7 @@ async function atualizarEstrelasDeTemporada(parcial) {
     // estrela dinâmica tem prioridade na exibição (`obterEstrelaJogador`), ele aparecia rebaixado
     // pra Prateada em vez da Dourada emblemática. Craque emblemático não precisa de promoção — já
     // nasceu no topo — então nem entra nesse cálculo.
-    if (obterEstrelaEmblematica(jogador.nome) === "dourada") return;
+    if (obterEstrelaEditor(jogador) === "dourada") return;
     const idade = jogador.idade; // idade NESTA temporada que está terminando (evoluirJogador só soma +1 depois)
     const stats = estado.statsTemporadaAtualPorJogador[idJogador];
     if (!stats || stats.jogos === 0) return; // não jogou nada — sem gatilho nesta temporada
@@ -5511,8 +5522,10 @@ function renderizarMercado() {
       if (idadeMaxima !== null && jogador.idade > idadeMaxima) return false;
       if (busca && jogador.nome.toLowerCase().indexOf(busca) === -1) return false;
       // Exibição Global do Sistema de Estrelas: jogador do Mercado nunca é do meu elenco, então
-      // só a Estrela emblemática (por nome, segura globalmente) é usada aqui pro filtro/exibição.
-      const estrela = obterEstrelaEmblematica(jogador.nome);
+      // usa `obterEstrelaEditor` — emblemática por nome + flags do Editor de Times, que são
+      // estáticas e seguras globalmente (a estrela DINÂMICA de temporada é que não pode ser lida
+      // fora do meu elenco, por causa do `_id` não ser globalmente único).
+      const estrela = obterEstrelaEditor(jogador);
       if (filtrosMercado.estrela === "dourada" && estrela !== "dourada") return false;
       if (filtrosMercado.estrela === "prateada" && estrela !== "prateada") return false;
       if (filtrosMercado.estrela === "nenhuma" && estrela) return false;
@@ -5543,7 +5556,7 @@ function renderizarMercado() {
 
   itens.forEach(function (item) {
     const jogador = item.jogador;
-    const marcadorEstrela = MARCADOR_ESTRELA_COMPACTO[obterEstrelaEmblematica(jogador.nome)] || "";
+    const marcadorEstrela = MARCADOR_ESTRELA_COMPACTO[obterEstrelaEditor(jogador)] || "";
     const salarioMensal = converterEuroParaReal(calcularSalarioMensal(jogador));
     const li = document.createElement("li");
     li.className = "item-contrato item-mercado aberto-perfil";
@@ -5596,7 +5609,7 @@ function abrirPropostaMercado(item) {
   };
 
   document.getElementById("proposta-titulo").textContent = item.jogador.nome +
-    (MARCADOR_ESTRELA_COMPACTO[obterEstrelaEmblematica(item.jogador.nome)] || "");
+    (MARCADOR_ESTRELA_COMPACTO[obterEstrelaEditor(item.jogador)] || "");
   document.getElementById("proposta-info-jogador").textContent =
     item.nomeTime + " · " + item.jogador.pos + " · " + item.jogador.idade + " anos · " + formatarForcaMercado(item);
   document.getElementById("proposta-preco-pedido").textContent = "Preço pedido: " + formatarReais(item.preco);
@@ -6889,7 +6902,7 @@ function criarNoSelecaoRodada(item) {
   // Seleção da Rodada/Campeonato espalha jogadores de vários clubes — só usa a estrela dinâmica
   // (estado.estrelasPorJogador) se o jogador for mesmo do MEU elenco, senão só a emblemática.
   const ehMeuNaSelecao = estado.timeAtual && item.nomeTime === estado.timeAtual.nome;
-  const estrelaSelecao = ehMeuNaSelecao ? obterEstrelaJogador(item.jogador) : obterEstrelaEmblematica(item.jogador.nome);
+  const estrelaSelecao = ehMeuNaSelecao ? obterEstrelaJogador(item.jogador) : obterEstrelaEditor(item.jogador);
   const marcadorEstrelaSelecao = MARCADOR_ESTRELA_COMPACTO[estrelaSelecao] || "";
   botao.innerHTML =
     "<span class=\"mini-escudo-selecao-rodada\">" + montarEscudoClube(item.nomeTime) + "</span>" +
@@ -7033,7 +7046,7 @@ function renderizarArtilharia() {
   }
 
   ranking.forEach(function (c, indice) {
-    const estrela = c.meu ? obterEstrelaJogador(c.jogador) : obterEstrelaEmblematica(c.jogador.nome);
+    const estrela = c.meu ? obterEstrelaJogador(c.jogador) : obterEstrelaEditor(c.jogador);
     const marcadorEstrela = MARCADOR_ESTRELA_COMPACTO[estrela] || "";
     const tr = document.createElement("tr");
     tr.className = "linha-artilharia aberto-perfil";
@@ -7759,7 +7772,7 @@ let perfilAtletaAberto = null;
 function abrirPerfilAtleta(jogador, contexto) {
   perfilAtletaAberto = Object.assign({ jogador: jogador }, contexto);
 
-  const estrelaPerfil = contexto && contexto.meu ? obterEstrelaJogador(jogador) : obterEstrelaEmblematica(jogador.nome);
+  const estrelaPerfil = contexto && contexto.meu ? obterEstrelaJogador(jogador) : obterEstrelaEditor(jogador);
   document.getElementById("perfil-nome-jogador").textContent = jogador.nome + (MARCADOR_ESTRELA_COMPACTO[estrelaPerfil] || "");
   document.getElementById("perfil-posicao").textContent = ROTULO_POSICAO_COMPLETO[jogador.pos] || jogador.pos;
   document.getElementById("perfil-nacionalidade").textContent = MAPA_NACIONALIDADE[jogador.nac] || jogador.nac;

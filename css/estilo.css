@@ -4640,6 +4640,13 @@ select option {
   height: 18px;
 }
 
+.aviso-estrela-emblematica {
+  flex-basis: 100%;
+  font-size: 11px;
+  color: var(--amarelo);
+  margin: -2px 0 0;
+}
+
 .erro-form-jogador {
   color: #ff8f8f;
   font-size: 13px;

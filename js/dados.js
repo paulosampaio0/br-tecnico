@@ -308,6 +308,24 @@ function obterEstrelaEmblematica(nome) {
   return JOGADORES_EMBLEMATICOS.has(nome) ? "dourada" : null;
 }
 
+/**
+ * Versão "estática" de `obterEstrelaJogador` (app.js): emblemática > flags do Editor de Times
+ * (`estrelaDouradaEditor`/`estrelaPrataEditor`) — sem a camada dinâmica de temporada
+ * (`estado.estrelasPorJogador`), que só existe pro MEU elenco. Como as flags do Editor são
+ * campos estáticos gravados no próprio objeto do jogador (não dependem de `_id` global nem de
+ * save em andamento), essa função é segura pra QUALQUER jogador — do meu time, de outro clube,
+ * ou dentro do próprio Editor — ao contrário de `obterEstrelaEmblematica`, que só olha o nome e
+ * por isso ignora estrela marcada manualmente no Editor.
+ */
+function obterEstrelaEditor(jogador) {
+  if (!jogador) return null;
+  const emblematica = obterEstrelaEmblematica(jogador.nome);
+  if (emblematica === "dourada") return "dourada";
+  if (jogador.estrelaDouradaEditor) return "dourada";
+  if (jogador.estrelaPrataEditor) return "prateada";
+  return null;
+}
+
 /* ============================================================
    Sistema de Árbitro (Realismo da Simulação): cada partida sorteia um juiz
    com nome real e um nível de rigor, que escala a chance de cartão/pênalti
