@@ -1398,16 +1398,31 @@ function montarLadoCampoDuplo(campoEl, lado) {
       "</span>" +
       (icones ? "<span class=\"icones-evento-partida-wrap\">" + icones + "</span>" : "") +
       montarBarraEnergiaOverlay(energia) +
-      montarTraitsVaga(jogador);
+      montarTraitsVaga(jogador) +
+      // Ficha Técnica (Scouting): ícone "(i)" abre o Perfil do Atleta sem interferir no tap
+      // principal do nó (troca titular no meu time / nada no adversário antes desse recurso).
+      "<span class=\"botao-ficha-vaga\" data-acao=\"ficha-vaga\" title=\"Ver ficha técnica\">ⓘ</span>";
 
     if (souEuNesseLado) {
-      node.addEventListener("click", function () {
+      node.addEventListener("click", function (evento) {
+        if (evento.target.closest("[data-acao='ficha-vaga']")) {
+          evento.stopPropagation();
+          abrirPerfilAtleta(jogador, { meu: true, nomeTime: estado.timeAtual.nome });
+          return;
+        }
         // Um arrasto de verdade que acabou de acontecer NESTE botão não deve
         // também abrir o seletor de jogador (senão os dois gestos se confundem).
         if (node.dataset.gestoArrasto === "1") { delete node.dataset.gestoArrasto; return; }
         abrirSeletorJogador(vaga);
       });
       if (vaga.pos !== "GOL") anexarArrastoSeta(node, vaga, jogador);
+    } else {
+      // Adversário (Scouting): o nó inteiro abre a ficha técnica — não há substituição pra fazer
+      // aqui, então não existe outro gesto pra disputar o tap.
+      const nomeTimeAdversario = lado === "casa" ? timeCasaSimulado.nome : timeForaSimulado.nome;
+      node.addEventListener("click", function () {
+        abrirPerfilAtleta(jogador, { meu: false, nomeTime: nomeTimeAdversario, divisaoChave: estado.timeAtual.divisaoChave });
+      });
     }
 
     campoEl.appendChild(node);
@@ -4062,6 +4077,98 @@ function gerarStatsSinteticasParcial(jogador, nomeTime, divisaoChave, ano, rodad
     notaMedia: cheio.notaMedia,
     jogos: Math.round(cheio.jogos * fracao),
   };
+}
+
+/**
+ * Cartões amarelos/vermelhos sintéticos (determinístico) — complementa `gerarStatsSinteticasTemporada`
+ * pra jogador de outro clube, com semente própria (não reaproveita a de gols/assistências, senão os
+ * dois ficariam correlacionados de um jeito artificial). Zagueiros/laterais/volantes tomam mais cartão.
+ */
+function gerarCartoesSinteticos(jogador, nomeTime, divisaoChave, ano, jogos) {
+  const semente = semeanteDeTexto("cartoes-temporada|" + ano + "|" + divisaoChave + "|" + nomeTime + "|" + jogador._id);
+  const rnd = criarRandomSeeded(semente);
+  const fatorDefensivo = ["ZAG", "LAT.D", "LAT.E", "VOL"].indexOf(jogador.pos) !== -1 ? 1 : 0.4;
+  const amarelos = Math.round(fatorDefensivo * jogos * (0.06 + rnd() * 0.09));
+  const vermelhos = rnd() < 0.10 * fatorDefensivo ? 1 : 0;
+  return { amarelos: amarelos, vermelhos: vermelhos };
+}
+
+/**
+ * Histórico de Carreira sintético (Scouting) pra jogador de QUALQUER outro clube — mesmo formato
+ * de `estado.carreiraPorJogador` (ano/clube/jogos/gols/assistencias/amarelos/vermelhos/lesoes),
+ * pra alimentar a aba "Histórico da Carreira" do Perfil do Atleta sem exigir simular cada jogador
+ * de cada um dos ~39 outros clubes partida a partida (custo proibitivo). `lesoes` fica sempre 0 —
+ * não existe sistema de lesão no jogo (ver `fecharTemporadaNoHistoricoDosJogadores`).
+ */
+function gerarCarreiraSinteticaPara(jogador, nomeTime, divisaoChave) {
+  const anoAtual = estado.temporada ? estado.temporada.ano : new Date().getFullYear();
+  const anosDeCarreira = clamp(jogador.idade - 17, 1, 8); // profissional só depois dos ~17-18
+  const linhas = [];
+  for (let i = anosDeCarreira - 1; i >= 0; i--) {
+    const ano = anoAtual - i;
+    let stats;
+    if (i === 0 && estado.temporada && estado.temporada[divisaoChave]) {
+      // Temporada em andamento: usa a versão parcial, proporcional às rodadas já disputadas —
+      // senão o ano corrente já apareceria com a produção de uma temporada inteira.
+      const progresso = obterProgressoRodadaAtual(divisaoChave);
+      stats = progresso
+        ? gerarStatsSinteticasParcial(jogador, nomeTime, divisaoChave, ano, progresso.rodadasJogadas, progresso.totalRodadas)
+        : gerarStatsSinteticasTemporada(jogador, nomeTime, divisaoChave, ano);
+    } else {
+      stats = gerarStatsSinteticasTemporada(jogador, nomeTime, divisaoChave, ano);
+    }
+    const cartoes = gerarCartoesSinteticos(jogador, nomeTime, divisaoChave, ano, stats.jogos);
+    linhas.push({
+      ano: ano, clube: nomeTime, jogos: stats.jogos, gols: stats.gols, assistencias: stats.assistencias,
+      amarelos: cartoes.amarelos, vermelhos: cartoes.vermelhos, lesoes: 0,
+    });
+  }
+  return linhas;
+}
+
+/**
+ * "Jogos na Temporada" sintético pra jogador de outro clube — uma linha por rodada JÁ disputada
+ * pelo clube dele. Placar e adversário são REAIS (`resultadosPorRodada`, já simulado pra tabela do
+ * campeonato inteiro); só o desempenho individual (gols/assistências/nota/minutos daquele jogador
+ * naquele jogo específico) é sintético e determinístico por rodada.
+ */
+function gerarJogosTemporadaSinteticaPara(jogador, nomeTime, divisaoChave) {
+  if (!estado.temporada || !estado.temporada[divisaoChave]) return [];
+  const temporadaDivisao = estado.temporada[divisaoChave];
+  const rodadaAtual = estado.temporada.rodadaAtual || 1;
+  const fatorOfensivo = ["ATA", "ATD", "ATE"].indexOf(jogador.pos) !== -1 ? 1
+    : (["MEI", "VOL"].indexOf(jogador.pos) !== -1 ? 0.4 : 0.05);
+  const nivel = clamp((jogador.forca - 28) / 20, 0, 1);
+  const linhas = [];
+
+  for (let rodada = rodadaAtual - 1; rodada >= 1; rodada--) {
+    const resultados = temporadaDivisao.resultadosPorRodada[rodada];
+    if (!resultados) continue;
+    const jogo = resultados.find(function (r) { return r.casa === nomeTime || r.fora === nomeTime; });
+    if (!jogo) continue; // time de folga nessa rodada (nº ímpar de clubes na divisão)
+
+    const souCasa = jogo.casa === nomeTime;
+    const adversario = souCasa ? jogo.fora : jogo.casa;
+    const meusGols = souCasa ? jogo.golsCasa : jogo.golsFora;
+    const golsAdversario = souCasa ? jogo.golsFora : jogo.golsCasa;
+
+    const semente = semeanteDeTexto("jogo-jogador|" + estado.temporada.ano + "|" + divisaoChave + "|" + nomeTime + "|" + jogador._id + "|" + rodada);
+    const rnd = criarRandomSeeded(semente);
+    const gols = rnd() < fatorOfensivo * nivel * 0.35 ? (rnd() < 0.15 ? 2 : 1) : 0;
+    const assistencias = gols === 0 && rnd() < fatorOfensivo * nivel * 0.25 ? 1 : 0;
+    const nota = Math.round(clamp(5.6 + nivel * 2.2 + (rnd() - 0.5) * 1.8 + gols * 0.4 + assistencias * 0.2, 3.5, 10) * 10) / 10;
+    const minutos = rnd() < 0.8 ? 90 : Math.round(20 + rnd() * 65);
+
+    linhas.push({
+      rodada: rodada,
+      confronto: (souCasa ? "🏠 x " : "✈️ x ") + adversario + " (" + meusGols + "-" + golsAdversario + ")",
+      minutos: minutos,
+      gols: gols,
+      assistencias: assistencias,
+      nota: nota,
+    });
+  }
+  return linhas;
 }
 
 /** Progresso da temporada numa divisão — quantas rodadas já foram DISPUTADAS (`rodadaAtual` é a
@@ -7857,6 +7964,9 @@ function abrirPerfilAtleta(jogador, contexto) {
 function fecharPerfilAtleta() {
   document.getElementById("sobreposicao-perfil-atleta").hidden = true;
   perfilAtletaAberto = null;
+  // Preserva o campinho exatamente como estava (aba "Meu Time"/"Adversário", substituições e
+  // setas pendentes) — reaproveita `abaMexerTimeAtual`, que não muda só por abrir/fechar o perfil.
+  if (estaEmPartidaAtiva()) renderizarCampoDuploPartida();
 }
 
 function trocarAbaPerfil(nomeAba) {
@@ -7873,12 +7983,19 @@ function trocarAbaPerfil(nomeAba) {
 function renderizarAbaCarreiraPerfil() {
   const corpoEl = document.getElementById("corpo-tabela-carreira-perfil");
   corpoEl.innerHTML = "";
-  const idJogador = perfilAtletaAberto.jogador._id;
-  const historico = perfilAtletaAberto.meu ? (estado.carreiraPorJogador[idJogador] || []) : [];
+  const jogador = perfilAtletaAberto.jogador;
+  const idJogador = jogador._id;
+  // Scouting: jogador de outro clube não tem carreira REAL simulada partida a partida (custaria
+  // caro demais pros ~39 outros clubes da liga) — gera um histórico sintético, determinístico e
+  // plausível a partir da força/posição/idade dele, pra dar pro técnico algo real de olhar antes
+  // de propor uma compra (ver `gerarCarreiraSinteticaPara`).
+  const historico = perfilAtletaAberto.meu
+    ? (estado.carreiraPorJogador[idJogador] || [])
+    : gerarCarreiraSinteticaPara(jogador, perfilAtletaAberto.nomeTime, perfilAtletaAberto.divisaoChave);
 
   if (historico.length === 0) {
     corpoEl.innerHTML = "<tr><td colspan=\"8\" class=\"mensagem-vazia-perfil\">" +
-      (perfilAtletaAberto.meu ? "Ainda não fechou nenhuma temporada com esse elenco." : "Sem dados — só o seu elenco tem histórico acompanhado.") +
+      (perfilAtletaAberto.meu ? "Ainda não fechou nenhuma temporada com esse elenco." : "Ainda não estreou como profissional.") +
       "</td></tr>";
     return;
   }
@@ -7901,12 +8018,17 @@ function renderizarAbaCarreiraPerfil() {
 function renderizarAbaTemporadaPerfil() {
   const listaEl = document.getElementById("lista-jogos-temporada-perfil");
   listaEl.innerHTML = "";
-  const idJogador = perfilAtletaAberto.jogador._id;
-  const jogos = perfilAtletaAberto.meu ? (estado.jogosTemporadaPorJogador[idJogador] || []) : [];
+  const jogadorTemporada = perfilAtletaAberto.jogador;
+  const idJogador = jogadorTemporada._id;
+  // Scouting: placar/adversário vêm do campeonato REAL já simulado (`resultadosPorRodada`); só o
+  // desempenho individual do jogador naquela rodada é sintético (ver `gerarJogosTemporadaSinteticaPara`).
+  const jogos = perfilAtletaAberto.meu
+    ? (estado.jogosTemporadaPorJogador[idJogador] || [])
+    : gerarJogosTemporadaSinteticaPara(jogadorTemporada, perfilAtletaAberto.nomeTime, perfilAtletaAberto.divisaoChave);
 
   if (jogos.length === 0) {
     listaEl.innerHTML = "<li class=\"mensagem-vazia-perfil\">" +
-      (perfilAtletaAberto.meu ? "Ainda não jogou nenhuma rodada oficial nesta temporada." : "Sem dados — só o seu elenco tem histórico acompanhado.") +
+      (perfilAtletaAberto.meu ? "Ainda não jogou nenhuma rodada oficial nesta temporada." : "Ainda não entrou em campo nesta temporada.") +
       "</li>";
     return;
   }

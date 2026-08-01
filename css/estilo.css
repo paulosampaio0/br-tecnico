@@ -5003,3 +5003,21 @@ select option {
   flex-direction: column;
   gap: 4px;
 }
+
+/* Ficha Técnica (Scouting) no campinho: ícone "(i)" no canto do nó — abre o Perfil do Atleta sem
+   disputar o tap principal do nó (troca titular no meu time / nada de especial no adversário). */
+.botao-ficha-vaga {
+  position: absolute;
+  top: -4px;
+  left: -8px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.6);
+  color: var(--branco);
+  font-size: 11px;
+  line-height: 16px;
+  text-align: center;
+  z-index: 5;
+  -webkit-tap-highlight-color: transparent;
+}
