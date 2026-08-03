@@ -146,8 +146,11 @@ function aplicarEfeitoSetasDoMinuto(time, setores, estatisticas) {
 // NENHUM efeito de jogar em casa/fora — a mesma força valia em qualquer estádio.
 // Calibrado por simulação (200 jogos do mesmo time contra si mesmo) pra ficar perto da
 // proporção real de futebol (~45% vitória do mandante, ~28% visitante, ~27% empate).
-const MANDO_BONUS_CASA = { ataque: 0.7, defesa: 0.55 };
-const MANDO_PENALIDADE_FORA = { ataque: -0.3, defesa: -0.25 };
+// Reajustado no Rebalanceamento de placares (2026-08-03): o efeito do mando passa pelos mesmos
+// coeficientes de `diferenca` que foram reduzidos ali, então os valores subiram na mesma
+// proporção pra manter a meta de ~45% de vitória do mandante.
+const MANDO_BONUS_CASA = { ataque: 1, defesa: 0.8 };
+const MANDO_PENALIDADE_FORA = { ataque: -0.45, defesa: -0.35 };
 // Reforço extra só quando quem manda o jogo é a IA e o usuário está visitando —
 // pedido explícito de balanceamento: fora de casa deve ser bem mais difícil.
 const MANDO_BONUS_EXTRA_IA_CASA = { ataque: 0.7, defesa: 0.5 };
@@ -724,15 +727,20 @@ function processarLadoPartida(partida, atacante, defensor, ladoAtacante, permiti
   // Exposição a contra-ataque (Rebalanceamento de setas 2026-07-23): se o time que defende
   // tem zagueiro/lateral/volante com seta ofensiva bem-sucedida nesse minuto, fica mais fácil
   // pro adversário criar chance — o teto de chance por minuto sobe um pouco pra esse efeito valer.
-  const probChance = clamp((0.1 + diferenca * 0.007) * vantagemMeio * defensor.fatorContraAtaqueConcedido, 0.02, 0.3);
+  //
+  // Rebalanceamento de placares (2026-08-03): a diferença de força alimenta a FREQUÊNCIA de
+  // chances (aqui) e a CONVERSÃO (`chanceGol`, abaixo). Como as duas se multiplicam, escalar as
+  // duas com a mesma `diferenca` fazia um time superior marcar ~9 gols por jogo (26 finalizações
+  // × 40% de conversão, que era o teto antigo). Agora o domínio aparece quase todo como volume
+  // de finalização; a conversão sobe pouco e fica numa faixa realista (~11-20%).
+  const probChance = clamp((0.125 + diferenca * 0.005) * vantagemMeio * defensor.fatorContraAtaqueConcedido, 0.055, 0.23);
 
   if (Math.random() < probChance) {
     estatAtacante.finalizacoes++;
-    const vantagem = (atacante.setores.ataque - defesaEfetiva) / 40;
     // Fator zebra do lado que defende (Rebalanceamento 2026-07-23): dia inspirado do
     // goleiro/defesa reduz a conversão do ataque adversário; dia ruim aumenta — é isso
     // que permite um time mais fraco "segurar" um favorito de vez em quando.
-    let chanceGol = clamp((0.10 + vantagem) * partida.fatorZebra[ladoDefensor], 0.03, 0.4);
+    let chanceGol = clamp((0.106 + diferenca * 0.003) * partida.fatorZebra[ladoDefensor], 0.058, 0.2);
     // Goleiro improvisado ou ausente (Correção de bug — 2026-07-25): quanto menor o fator,
     // mais essa penalidade empurra a chance de gol pra cima — praticamente certo de virar
     // gol quando não há goleiro de verdade em campo.
@@ -877,7 +885,11 @@ function expulsarJogador(partida, time, lado, jogador, motivo) {
  */
 function calcularAjustePosturaIA(diferencaPlacar, minuto) {
   if (minuto < 46) return { ataque: 0, defesa: 0 };
-  if (diferencaPlacar <= -2) return { ataque: 3.2, defesa: -2.2 }; // perdendo feio: tudo pra frente
+  // Rebalanceamento de placares (2026-08-03): perdendo por 3+, o time NÃO se expõe ainda mais —
+  // estanca o sangramento. Antes, a defesa despencava quanto mais o time levava, o que aumentava
+  // a vantagem de quem já estava ganhando e realimentava o ciclo (um 2-0 virava 7-0 sozinho).
+  if (diferencaPlacar <= -3) return { ataque: 2, defesa: -0.8 }; // já perdido: controle de danos
+  if (diferencaPlacar === -2) return { ataque: 3.2, defesa: -1.6 }; // perdendo feio: tudo pra frente
   if (diferencaPlacar === -1) return { ataque: 1.8, defesa: -1 }; // perdendo: mais ofensivo
   if (diferencaPlacar >= 2 && minuto >= 70) return { ataque: -2, defesa: 1.6 }; // ganhando com folga: segura o resultado
   if (diferencaPlacar === 1 && minuto >= 75) return { ataque: -1, defesa: 1 }; // ganhando por pouco perto do fim: retranca leve
@@ -924,6 +936,13 @@ function calcularSetoresEfetivosDoMinuto(time, lado, partida, ladoComEscolhaCobr
       setores.defesa += 1;
     }
   }
+
+  // Gestão de placar (Rebalanceamento 2026-08-03): time que abriu 3+ gols tira o pé — vale pros
+  // DOIS lados. O recuo de quem está ganhando só existia dentro do bloco `if (ehIA)` acima, então
+  // nunca pegava o time do usuário: quando quem goleava era ele, nada segurava o placar.
+  const meusGolsAgora = lado === "casa" ? partida.placarCasa : partida.placarFora;
+  const golsSofridosAgora = lado === "casa" ? partida.placarFora : partida.placarCasa;
+  if (meusGolsAgora - golsSofridosAgora >= 3) setores.ataque -= 1.5;
 
   // Brecha explorada pela IA (setada de fora, em app.js, quando o time humano tem um titular
   // cansado/pendurado em campo): penaliza o setor vulnerável do time humano naquele minuto.
