@@ -114,6 +114,12 @@ let origemEmEdicaoParaEntrar = null;
 let divisaoTabelaAtual = "serie_a";
 let rodadaResultadosExibida = 1;
 
+// Correção de bug — Voltar do Pós-Jogo (2026-08-03): Tabela e Seleção da Rodada são abertas tanto
+// pelo hub normal quanto pelo Pós-Jogo, mas só têm 1 botão "Voltar" compartilhado (sempre mandava
+// pro hub/Escalação, mesmo vindo do Pós-Jogo — perdia a tela de resultados sem querer). Esse flag
+// guarda de onde veio a navegação pra o botão "Voltar" saber pra onde retornar de verdade.
+let veioDoPosJogoParaTabelaOuSelecao = false;
+
 // Navegação da tela "Seleção da Rodada".
 let divisaoSelecaoRodadaAtual = null;
 let rodadaSelecaoRodadaAtual = null;
@@ -229,8 +235,6 @@ function salvarProgresso() {
     financas: estado.financas,
     precoIngresso: estado.precoIngresso,
     contratos: estado.contratos,
-    moralPorJogador: estado.moralPorJogador,
-    rodadasSemJogarPorJogador: estado.rodadasSemJogarPorJogador,
     capitaoId: estado.capitaoId,
     relacionadosIds: estado.relacionadosIds,
     // Quem ainda está no elenco (contratos que venceram sem renovação saem — Fase 11).
@@ -762,20 +766,6 @@ function criarItemJogador(jogador, mostrarEnergia) {
       "</span>";
   }
 
-  // Moral do elenco (Gestão Humana): 🟢 alta [80-100] · 🟡 média [40-79] · 🔴 insatisfeito [<40].
-  let blocoMoral = "";
-  if (estado.moralPorJogador) {
-    const moral = obterMoralJogador(estado.moralPorJogador, jogador._id);
-    const nivelMoral = moral >= CONFIG_FINANCEIRO.moralLimiteAlta ? "alta"
-      : moral >= CONFIG_FINANCEIRO.moralLimiteBaixa ? "media" : "baixa";
-    const iconeMoral = nivelMoral === "alta" ? "🟢" : nivelMoral === "media" ? "🟡" : "🔴";
-    blocoMoral =
-      "<span class=\"moral moral-" + nivelMoral + "\" title=\"Moral do jogador\">" +
-        "<span class=\"valor\">" + iconeMoral + " " + moral + "</span>" +
-        "<span class=\"rotulo\">moral</span>" +
-      "</span>";
-  }
-
   const caracteristicas = [jogador.caracteristica_1, jogador.caracteristica_2].filter(Boolean).join("/");
 
   item.innerHTML =
@@ -791,8 +781,7 @@ function criarItemJogador(jogador, mostrarEnergia) {
       "<span class=\"valor\">" + jogador.forca + "</span>" +
       "<span class=\"rotulo\">força</span>" +
     "</span>" +
-    blocoEnergia +
-    blocoMoral;
+    blocoEnergia;
   return item;
 }
 
@@ -842,14 +831,11 @@ async function escalarEsteTime(time) {
   estado.financas = criarFinancasIniciais(jogadoresDaCarreira, divisaoAtual);
   estado.precoIngresso = "normal";
   estado.contratos = {};
-  estado.moralPorJogador = {};
-  estado.rodadasSemJogarPorJogador = {}; // _id -> rodadas oficiais consecutivas sem entrar em campo
   estado.estrelasPorJogador = {}; // _id -> "dourada" | "prateada"
   estado.prateadaLimiteIdadePorJogador = {}; // _id -> idade limite pra manter a Estrela Prateada (22, ou 23 no Easter Egg)
   estado.formaPorJogador = {}; // _id -> "alta" | "neutra" | "baixa" (Setas de Fase, recalculado a cada partida oficial)
   jogadoresDaCarreira.forEach(function (jogador) {
     estado.contratos[jogador._id] = criarContratoInicial(jogador);
-    estado.moralPorJogador[jogador._id] = CONFIG_FINANCEIRO.moralInicial;
   });
   estado.capitaoId = null;
   estado.jogadoresComprados = [];
@@ -2752,10 +2738,7 @@ function calcularTimeSimuladoUsuario() {
   const titularesComFadiga = titulares.map(function (item) {
     const energia = obterEnergiaJogador(item.jogador._id);
     const fatorFadiga = calcularFatorFadiga(energia);
-    // Moral crítica (Gestão Humana): jogador insatisfeito rende um pouco menos em campo.
-    const moral = estado.moralPorJogador ? obterMoralJogador(estado.moralPorJogador, item.jogador._id) : 100;
-    const fatorMoral = moral < CONFIG_FINANCEIRO.moralLimiteRendimentoReduzido ? CONFIG_FINANCEIRO.fatorRendimentoMoralBaixa : 1;
-    let forcaAjustada = item.jogador.forca * fatorFadiga * fatorAnalise * fatorMoral;
+    let forcaAjustada = item.jogador.forca * fatorFadiga * fatorAnalise;
 
     // Seta de Fase (Sistema de Estrelas): forma recente dá ou tira 10% da força em campo.
     const forma = obterFormaJogador(item.jogador._id);
@@ -4851,61 +4834,10 @@ async function iniciarRodadaOficial() {
   iniciarSimulacao();
 }
 
-/**
- * Moral do elenco (Gestão Humana): roda ao fim de CADA rodada oficial. Quem jogou (titular de
- * saída ou entrou do banco, via `partidaAtual.jogadoresQueJogaram`) ganha moral — mais ainda se
- * o time venceu ou se o pós-jogo deu boa nota. Quem ficou de fora conta mais uma rodada seguida
- * sem jogar e só perde moral a partir da 3ª consecutiva (reserva de força alta perde mais rápido
- * que jovem de base/reserva fraco). Quem cruza a moral crítica pede pra ser listado no mercado
- * (reaproveita `estado.jogadoresAVenda`, que já aumenta a chance de proposta espontânea).
- */
-function aplicarMoralPosRodada() {
-  if (!estado.moralPorJogador) return;
-
-  const meuPlacar = meuLadoNaPartida === "casa" ? partidaAtual.placarCasa : partidaAtual.placarFora;
-  const placarAdversario = meuLadoNaPartida === "casa" ? partidaAtual.placarFora : partidaAtual.placarCasa;
-  const foiVitoria = meuPlacar > placarAdversario;
-
-  const notaPorJogador = {};
-  calcularNotasPosJogo().forEach(function (entrada) { notaPorJogador[entrada.idJogador] = entrada.nota; });
-
-  const idsQueJogaram = new Set(partidaAtual.jogadoresQueJogaram || []);
-  const pedidosDeTransferencia = [];
-
-  estado.timeAtual.jogadores.forEach(function (jogador) {
-    const moralAntes = obterMoralJogador(estado.moralPorJogador, jogador._id);
-    let moralDepois;
-
-    if (idsQueJogaram.has(jogador._id)) {
-      const notaBoa = (notaPorJogador[jogador._id] || 0) >= 7;
-      moralDepois = calcularNovaMoralTitular(moralAntes, foiVitoria, notaBoa);
-      estado.rodadasSemJogarPorJogador[jogador._id] = 0;
-    } else {
-      const rodadasSemJogar = (estado.rodadasSemJogarPorJogador[jogador._id] || 0) + 1;
-      estado.rodadasSemJogarPorJogador[jogador._id] = rodadasSemJogar;
-      moralDepois = calcularNovaMoralBanco(moralAntes, rodadasSemJogar, jogador.forca);
-    }
-
-    estado.moralPorJogador[jogador._id] = moralDepois;
-
-    // Só avisa na hora em que a moral CRUZA pra crítica (evita alerta toda rodada enquanto seguir baixa).
-    if (moralEstaCritica(moralDepois) && !moralEstaCritica(moralAntes)) {
-      estado.jogadoresAVenda[jogador._id] = true;
-      pedidosDeTransferencia.push(jogador.nome);
-    }
-  });
-
-  if (pedidosDeTransferencia.length > 0) {
-    alert("😠 Pedido de transferência: " + pedidosDeTransferencia.join(", ") +
-      " está(ão) insatisfeito(s) com a reserva e quer(em) ser negociado(s) — já entrou(aram) na lista de vendas.");
-  }
-}
-
 /** Chamado ao fim de uma rodada oficial: fecha os resultados na tabela e avança a temporada. */
 async function concluirRodadaOficial() {
   aplicarDesgastePosPartida();
   aplicarCartoesPosPartida();
-  aplicarMoralPosRodada();
   registrarHistoricoPartidaOficial(); // Perfil do Atleta: guarda a nota/confronto e soma gols/cartões da temporada
   registrarDetalhePartidaOficial(); // Tela Tabela: guarda escalação/notas/estatísticas pra revisitar depois
   // A escalação titular volta a ser a de saída — trocas feitas "mexendo no
@@ -5544,12 +5476,6 @@ function renovarContrato(idJogador) {
   const jogador = encontrarJogadorPorId(estado.timeAtual.jogadores, idJogador);
   if (!jogador) return;
 
-  // Moral crítica (Gestão Humana): jogador insatisfeito com a reserva se recusa a renovar.
-  if (moralEstaCritica(obterMoralJogador(estado.moralPorJogador, idJogador))) {
-    alert(jogador.nome + ": \"Estou insatisfeito com a reserva e não aceito renovar assim.\"");
-    return;
-  }
-
   estado.contratos[idJogador] = renovarContratoJogador(estado.contratos[idJogador], jogador);
   salvarProgresso();
   renderizarContratos();
@@ -6060,7 +5986,6 @@ function fecharContratacaoCompleta(jogadorOriginal, nomeTimeVendedor, divisaoVen
   estado.jogadoresComprados.push(jogadorContratado);
   estado.contratos[novoId] = { anosRestantes: duracaoAnos, multiplicadorSalario: multiplicadorSalario, clausulaRescisao: clausulaRescisao };
   estado.energiaPorJogador[novoId] = 100;
-  estado.moralPorJogador[novoId] = CONFIG_FINANCEIRO.moralInicial;
 
   // Contratação de craque vira boom de vendas de camisas na hora (Fase 21).
   const vendaCamisas = calcularVendaCamisasContratacao(valorTransferencia, jogadorContratado.forca);
@@ -6156,7 +6081,6 @@ function concluirEmprestimo(jogadorOriginal, nomeTimeOrigem, divisaoOrigem, perc
     },
   };
   estado.energiaPorJogador[novoId] = 100;
-  estado.moralPorJogador[novoId] = CONFIG_FINANCEIRO.moralInicial;
 
   salvarProgresso();
 }
@@ -6399,8 +6323,6 @@ function removerJogadorDoElenco(idJogador) {
   delete estado.jogosSeguidosPorJogador[idJogador];
   delete estado.vendasCamisasPorJogador[idJogador]; // ranking de camisas é só de quem está no elenco (Fase 21)
   delete estado.jogadoresAVenda[idJogador];
-  delete estado.moralPorJogador[idJogador];
-  delete estado.rodadasSemJogarPorJogador[idJogador];
   if (estado.relacionadosIds) {
     estado.relacionadosIds = estado.relacionadosIds.filter(function (id) { return id !== idJogador; });
   }
@@ -7230,7 +7152,8 @@ function montarFiltrosSelecaoRodada(dados) {
   }
 }
 
-async function abrirTelaSelecaoRodada() {
+async function abrirTelaSelecaoRodada(veioDoPosJogo) {
+  veioDoPosJogoParaTabelaOuSelecao = !!veioDoPosJogo;
   mostrarTela("tela-selecao-rodada");
   dadosSelecaoRodadaCache = await carregarDados();
   montarFiltrosSelecaoRodada(dadosSelecaoRodadaCache);
@@ -7312,7 +7235,8 @@ async function abrirTelaArtilharia() {
   renderizarArtilharia();
 }
 
-function abrirTelaTabela() {
+function abrirTelaTabela(veioDoPosJogo) {
+  veioDoPosJogoParaTabelaOuSelecao = !!veioDoPosJogo;
   mostrarTela("tela-tabela");
   divisaoTabelaAtual = estado.timeAtual.divisaoChave;
 
@@ -7931,12 +7855,6 @@ async function continuarJogoSalvo() {
       if (!estado.contratos[jogador._id]) estado.contratos[jogador._id] = criarContratoInicial(jogador);
     });
 
-    // Saves de antes da Gestão Humana (moral/capitão) não têm esses campos — cria com o padrão.
-    estado.moralPorJogador = registro.moralPorJogador || {};
-    estado.timeAtual.jogadores.forEach(function (jogador) {
-      if (estado.moralPorJogador[jogador._id] === undefined) estado.moralPorJogador[jogador._id] = CONFIG_FINANCEIRO.moralInicial;
-    });
-    estado.rodadasSemJogarPorJogador = registro.rodadasSemJogarPorJogador || {};
     estado.capitaoId = registro.capitaoId !== undefined ? registro.capitaoId : null;
     if (estado.capitaoId !== null && !encontrarJogadorPorId(estado.timeAtual.jogadores, estado.capitaoId)) {
       estado.capitaoId = null; // o capitão salvo já não está mais no elenco (dispensado/vendido)
@@ -8247,7 +8165,7 @@ function renovarContratoPeloPerfil() {
   const jogador = perfilAtletaAberto.jogador;
   const confirmar = window.confirm("Propor renovação de contrato pra " + jogador.nome + "?");
   if (!confirmar) return;
-  renovarContrato(jogador._id); // já valida moral crítica, salva e re-renderiza Contratos
+  renovarContrato(jogador._id); // já salva e re-renderiza Contratos
   if (perfilAtletaAberto) abrirPerfilAtleta(jogador, { meu: true, nomeTime: perfilAtletaAberto.nomeTime }); // atualiza o rodapé de contrato na hora
 }
 
@@ -8399,19 +8317,23 @@ function ligarBotoes() {
   if (btnJogarRodada) btnJogarRodada.addEventListener("click", iniciarRodadaOficial);
 
   const btnVerTabela = document.getElementById("btn-ver-tabela");
-  if (btnVerTabela) btnVerTabela.addEventListener("click", abrirTelaTabela);
+  if (btnVerTabela) btnVerTabela.addEventListener("click", function () { abrirTelaTabela(false); });
 
   const btnVerTabelaPosRodada = document.getElementById("btn-ver-tabela-pos-rodada");
-  if (btnVerTabelaPosRodada) btnVerTabelaPosRodada.addEventListener("click", abrirTelaTabela);
+  if (btnVerTabelaPosRodada) btnVerTabelaPosRodada.addEventListener("click", function () { abrirTelaTabela(true); });
 
   const btnVerSelecaoRodadaPosRodada = document.getElementById("btn-ver-selecao-rodada-pos-rodada");
-  if (btnVerSelecaoRodadaPosRodada) btnVerSelecaoRodadaPosRodada.addEventListener("click", abrirTelaSelecaoRodada);
+  if (btnVerSelecaoRodadaPosRodada) btnVerSelecaoRodadaPosRodada.addEventListener("click", function () { abrirTelaSelecaoRodada(true); });
 
   const btnVerSelecaoRodada = document.getElementById("btn-ver-selecao-rodada");
-  if (btnVerSelecaoRodada) btnVerSelecaoRodada.addEventListener("click", abrirTelaSelecaoRodada);
+  if (btnVerSelecaoRodada) btnVerSelecaoRodada.addEventListener("click", function () { abrirTelaSelecaoRodada(false); });
 
   const btnVoltarEscalacaoSelecaoRodada = document.getElementById("btn-voltar-escalacao-selecao-rodada");
-  if (btnVoltarEscalacaoSelecaoRodada) btnVoltarEscalacaoSelecaoRodada.addEventListener("click", abrirTelaEscalacao);
+  if (btnVoltarEscalacaoSelecaoRodada) {
+    btnVoltarEscalacaoSelecaoRodada.addEventListener("click", function () {
+      if (veioDoPosJogoParaTabelaOuSelecao) abrirTelaPosJogo(); else abrirTelaEscalacao();
+    });
+  }
 
   const selectDivisaoSelecaoRodada = document.getElementById("select-divisao-selecao-rodada");
   if (selectDivisaoSelecaoRodada) {
@@ -8452,7 +8374,11 @@ function ligarBotoes() {
   }
 
   const btnVoltarEscalacaoTabela = document.getElementById("btn-voltar-escalacao-tabela");
-  if (btnVoltarEscalacaoTabela) btnVoltarEscalacaoTabela.addEventListener("click", abrirTelaEscalacao);
+  if (btnVoltarEscalacaoTabela) {
+    btnVoltarEscalacaoTabela.addEventListener("click", function () {
+      if (veioDoPosJogoParaTabelaOuSelecao) abrirTelaPosJogo(); else abrirTelaEscalacao();
+    });
+  }
 
   const btnVerFinancas = document.getElementById("btn-ver-financas");
   if (btnVerFinancas) btnVerFinancas.addEventListener("click", abrirTelaFinancas);

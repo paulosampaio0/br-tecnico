@@ -250,30 +250,6 @@ const CONFIG_FINANCEIRO = {
   qtdClubesBonusAcessoSerieB: 4,
   fatorBonusAcessoSobrePoteSerieA: 0.15,
 
-  // --- Moral do elenco & capitão (Gestão Humana) ---
-
-  moralInicial: 70, // 0-100, média padrão
-  moralLimiteCritico: 30, // abaixo disso: recusa renovação e pede transferência
-  moralLimiteBaixa: 40, // faixa "insatisfeito" (🔴) na UI
-  moralLimiteAlta: 80, // faixa "alta" (🟢) na UI — entre os dois é "média" (🟡)
-
-  // Titular ganha moral por jogar; vitória e nota boa somam um pouco mais em cima disso.
-  moralGanhoTitularBase: 3,
-  moralGanhoTitularVitoria: 2,
-  moralGanhoTitularNotaBoa: 2, // nota (pós-jogo) >= 7
-
-  // Banco/não relacionado: só perde moral a partir da 3ª rodada CONSECUTIVA sem jogar.
-  // Reserva de Overall alto (força >= moralForcaAltoOverallReserva) fica mais impaciente
-  // e perde moral mais rápido do que jovem de base/reserva de força baixa.
-  moralRodadasConsecutivasParaPerder: 3,
-  moralForcaAltoOverallReserva: 40,
-  moralPerdaBancoAltoOverall: 10,
-  moralPerdaBancoPadrao: 5,
-
-  // Rendimento em campo cai um pouco pra quem está escalado com moral crítica.
-  moralLimiteRendimentoReduzido: 30,
-  fatorRendimentoMoralBaixa: 0.94, // -6% na força efetiva em campo
-
   // --- Capitão & resiliência mental (comeback boost) ---
 
   capitaoIdadeMinimaLideranca: 22, // abaixo disso, o capitão não soma nada de liderança
@@ -380,42 +356,8 @@ function criarContratoInicial(jogador) {
 }
 
 /* ============================================================
-   Moral do elenco & capitão (Gestão Humana, Moral e Vestiário)
+   Capitão (Gestão Humana, Moral e Vestiário)
    ============================================================ */
-
-/** Moral atual de um jogador (0-100) — 70 é o padrão pra quem ainda não tem entrada no mapa. */
-function obterMoralJogador(moralPorJogador, idJogador) {
-  const valor = moralPorJogador ? moralPorJogador[idJogador] : undefined;
-  return valor !== undefined ? valor : CONFIG_FINANCEIRO.moralInicial;
-}
-
-/**
- * Moral do titular que jogou a rodada: ganha uma base fixa por ter jogado, mais um bônus se
- * o resultado foi vitória e outro se a nota dele no pós-jogo foi boa (>= 7) — nunca passa de 100.
- */
-function calcularNovaMoralTitular(moralAtual, foiVitoria, notaBoa) {
-  let ganho = CONFIG_FINANCEIRO.moralGanhoTitularBase;
-  if (foiVitoria) ganho += CONFIG_FINANCEIRO.moralGanhoTitularVitoria;
-  if (notaBoa) ganho += CONFIG_FINANCEIRO.moralGanhoTitularNotaBoa;
-  return Math.min(100, moralAtual + ganho);
-}
-
-/**
- * Moral de quem ficou no banco (relacionado ou nem relacionado) mais uma rodada: só cai a
- * partir da 3ª rodada CONSECUTIVA sem jogar — reserva de Overall alto (mais acostumado a
- * jogar) fica impaciente mais rápido que jovem de base/reserva fraco.
- */
-function calcularNovaMoralBanco(moralAtual, rodadasConsecutivasSemJogar, forcaJogador) {
-  if (rodadasConsecutivasSemJogar < CONFIG_FINANCEIRO.moralRodadasConsecutivasParaPerder) return moralAtual;
-  const perda = forcaJogador >= CONFIG_FINANCEIRO.moralForcaAltoOverallReserva
-    ? CONFIG_FINANCEIRO.moralPerdaBancoAltoOverall
-    : CONFIG_FINANCEIRO.moralPerdaBancoPadrao;
-  return Math.max(0, moralAtual - perda);
-}
-
-function moralEstaCritica(moral) {
-  return moral < CONFIG_FINANCEIRO.moralLimiteCritico;
-}
 
 /**
  * Fator de liderança do capitão (0 a 1), a partir de idade e força: capitão experiente

@@ -472,33 +472,8 @@ body::before {
 .item-jogador .energia-baixa .valor { color: #ff8f8f; }
 
 /* ============================================================
-   Gestão Humana — moral do elenco e capitão
+   Gestão Humana — capitão
    ============================================================ */
-
-.item-jogador .moral {
-  flex-shrink: 0;
-  text-align: center;
-  min-width: 48px;
-}
-
-.item-jogador .moral .valor {
-  font-size: 13px;
-  font-weight: 800;
-  line-height: 1;
-  white-space: nowrap;
-}
-
-.item-jogador .moral .rotulo {
-  display: block;
-  font-size: 8px;
-  color: var(--cinza-texto);
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-}
-
-.item-jogador .moral-alta .valor { color: #7ee0a5; }
-.item-jogador .moral-media .valor { color: #ffb85c; }
-.item-jogador .moral-baixa .valor { color: #ff8f8f; }
 
 .tag-capitao {
   display: inline-block;

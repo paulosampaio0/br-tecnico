@@ -176,7 +176,6 @@ function promoverGarotoAoElenco(junior) {
   estado.jogadoresComprados.push(junior);
   estado.contratos[junior._id] = criarContratoInicial(junior);
   estado.energiaPorJogador[junior._id] = 100;
-  estado.moralPorJogador[junior._id] = CONFIG_FINANCEIRO.moralInicial;
 
   const estrelas = calcularEstrelasPotencial(junior);
   const vendaCamisas = calcularVendaCamisasRevelacaoBase(estrelas);
