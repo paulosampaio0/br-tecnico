@@ -557,8 +557,12 @@ function criarEstatisticasVazias() {
  */
 function sortearFatorZebra() {
   const r = Math.random();
-  if (r < 0.12) return 0.72 + Math.random() * 0.13; // dia inspirado (goleiro/defesa em alta): sofre bem menos
-  if (r < 0.24) return 1.18 + Math.random() * 0.22; // dia ruim: sofre mais
+  // Dia inspirado excepcional (raro — Zebra por poucos chutes, 2026-08-03): defesa/goleiro
+  // em estado de graça, quase impossível de vazar mesmo sob pressão — é essa cauda extra que
+  // permite o "time chutou 3 e venceu quem chutou 15" acontecer de vez em quando, como no futebol de verdade.
+  if (r < 0.08) return 0.22 + Math.random() * 0.15;
+  if (r < 0.2) return 0.72 + Math.random() * 0.13; // dia inspirado (goleiro/defesa em alta): sofre bem menos
+  if (r < 0.32) return 1.18 + Math.random() * 0.22; // dia ruim: sofre mais
   return 0.94 + Math.random() * 0.12; // dia normal, com uma leve variação
 }
 
@@ -740,7 +744,10 @@ function processarLadoPartida(partida, atacante, defensor, ladoAtacante, permiti
     // Fator zebra do lado que defende (Rebalanceamento 2026-07-23): dia inspirado do
     // goleiro/defesa reduz a conversão do ataque adversário; dia ruim aumenta — é isso
     // que permite um time mais fraco "segurar" um favorito de vez em quando.
-    let chanceGol = clamp((0.106 + diferenca * 0.003) * partida.fatorZebra[ladoDefensor], 0.058, 0.2);
+    // Piso baixado pra 0.03 (Zebra por poucos chutes, 2026-08-03): com o piso antigo (0.058) o dia
+    // de graça excepcional do goleiro (fatorZebra ~0.35-0.5) não conseguia derrubar a conversão de
+    // verdade — o time dominante ainda convertia perto do normal mesmo contra a defesa em êxtase.
+    let chanceGol = clamp((0.106 + diferenca * 0.003) * partida.fatorZebra[ladoDefensor], 0.02, 0.2);
     // Goleiro improvisado ou ausente (Correção de bug — 2026-07-25): quanto menor o fator,
     // mais essa penalidade empurra a chance de gol pra cima — praticamente certo de virar
     // gol quando não há goleiro de verdade em campo.
