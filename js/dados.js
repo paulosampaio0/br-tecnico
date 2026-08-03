@@ -370,9 +370,11 @@ function temCaracteristica(jogador, lista) {
 }
 
 /**
- * Valor de mercado (em milhões de €), calculado a partir de força e idade.
- * O valor_mi que veio nos dados originais foi só o ponto de partida pra
- * calibrar a escala — o valor de verdade no jogo é sempre recalculado.
+ * Valor de mercado (em milhões de R$), calculado a partir de força e idade.
+ * O valor_mi que veio nos dados originais (Transfermarkt, em €) foi só o ponto de
+ * partida pra calibrar a escala — o valor de verdade no jogo é sempre recalculado.
+ * A taxa €→R$ é aplicada UMA ÚNICA VEZ aqui, na fonte: daqui pra frente o Real é a
+ * moeda única do jogo, e nenhum chamador precisa (nem deve) converter de novo.
  * `estrela` (Sistema de Estrelas — Valorização de Mercado): "dourada" soma +10%,
  * "prateada" soma +5% — passado pelo chamador (jogadores fora do elenco do usuário
  * não têm estrela dinâmica rastreada, só a emblemática, que é resolvida aqui dentro).
@@ -394,13 +396,14 @@ function calcularValorMercado(jogador, estrela) {
   if (estrelaEfetiva === "dourada") valor = Math.round(valor * 1.10 * 100) / 100;
   else if (estrelaEfetiva === "prateada") valor = Math.round(valor * 1.05 * 100) / 100;
 
-  return valor;
+  return Math.round(valor * CONFIG_FINANCEIRO.taxaEurParaReal * 100) / 100;
 }
 
-/** Salário mensal estimado (em milhões de €), a partir do valor de mercado. */
+/** Salário mensal estimado (em milhões de R$), a partir do valor de mercado. */
 function calcularSalarioMensal(jogador) {
   const valor = calcularValorMercado(jogador);
-  return Math.max(0.0015, Math.round(valor * 0.009 * 1000) / 1000);
+  // Piso convertido junto com a moeda (era 0.0015 em €) pra manter a mesma escala de antes.
+  return Math.max(0.009, Math.round(valor * 0.009 * 1000) / 1000);
 }
 
 /**

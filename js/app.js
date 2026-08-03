@@ -165,7 +165,7 @@ const estado = {
   jogosTemporadaPorJogador: {}, // { _id: [{ rodada, confronto, nota }] } — só da temporada ATUAL, zera na virada
   statsTemporadaAtualPorJogador: {}, // { _id: { jogos, gols, assistencias, amarelos, vermelhos } } — acumulador em andamento
   jogadoresParaEmprestimo: {}, // { _id: true } — marcados como disponíveis pra empréstimo, via Perfil do Atleta
-  precoPedidoVenda: {}, // { _id: valor em €mi } — preço pedido customizado ao colocar à venda pelo Perfil do Atleta
+  precoPedidoVenda: {}, // { _id: valor em R$mi } — preço pedido customizado ao colocar à venda pelo Perfil do Atleta
   // Detalhe (escalação+notas+estatísticas) de rodadas oficiais — só do jogo que o USUÁRIO
   // jogou (os outros ~19 confrontos da rodada são só placar agregado, sem simulação minuto a
   // minuto). { divisaoChave: { numeroRodada: detalhe } } — a chave de rodada se sobrescreve
@@ -785,7 +785,7 @@ function criarItemJogador(jogador, mostrarEnergia) {
         escaparHtml(jogador.nome) + sufixoEstrelaStatus + "</span>" +
       "<span class=\"detalhes\">" +
         jogador.idade + " anos · " + escaparHtml(jogador.nac) + " · " +
-        escaparHtml(caracteristicas) + " · €" + valorMercado + "mi</span>" +
+        escaparHtml(caracteristicas) + " · " + formatarReais(valorMercado) + "</span>" +
     "</span>" +
     "<span class=\"forca\">" +
       "<span class=\"valor\">" + jogador.forca + "</span>" +
@@ -5573,7 +5573,7 @@ function renderizarContratos() {
 
   ordenarElenco(estado.timeAtual.jogadores).forEach(function (jogador) {
     const contrato = estado.contratos[jogador._id] || criarContratoInicial(jogador);
-    const salarioMensalReais = converterEuroParaReal(calcularSalarioEfetivoMensal(jogador, contrato));
+    const salarioMensalReais = calcularSalarioEfetivoMensal(jogador, contrato);
     const vencendo = !contrato.emprestimo && contrato.anosRestantes <= CONFIG_FINANCEIRO.anosParaAlertaVencimento;
 
     const li = document.createElement("li");
@@ -5614,7 +5614,7 @@ function renderizarContratos() {
       "<span class=\"pos\">" + escaparHtml(jogador.pos) + "</span>" +
       "<span class=\"info-contrato\">" +
         "<span class=\"nome-contrato\">" + escaparHtml(jogador.nome) + (MARCADOR_ESTRELA_COMPACTO[obterEstrelaJogador(jogador)] || "") + (aVenda ? " 🏷️" : "") + "</span>" +
-        "<span class=\"detalhes-contrato\">" + formatarReais(salarioMensalReais) + "/mês · " +
+        "<span class=\"detalhes-contrato\">" + formatarSalarioMensal(salarioMensalReais) + " · " +
           (vencendo ? "⚠ " : "") + contrato.anosRestantes + (contrato.anosRestantes === 1 ? " ano restante" : " anos restantes") +
           (contrato.clausulaRescisao ? " · Cláusula: " + formatarReais(contrato.clausulaRescisao) : "") +
           (aVenda ? " · Na lista de vendas" : "") +
@@ -5789,7 +5789,7 @@ function renderizarMercado() {
     const forma = obterFormaMercadoEstimada(item);
     const marcadorForma = forma === "alta" ? "<span class=\"fase-mercado fase-alta\" title=\"Em alta\">🟢⬆️</span> "
       : forma === "baixa" ? "<span class=\"fase-mercado fase-baixa\" title=\"Em baixa\">🔴⬇️</span> " : "";
-    const salarioMensal = converterEuroParaReal(calcularSalarioMensal(jogador));
+    const salarioMensal = calcularSalarioMensal(jogador);
     const podeEmprestar = jogador.idade <= CONFIG_FINANCEIRO.emprestimoIdadeMaxima;
     const li = document.createElement("li");
     li.className = "item-contrato item-mercado aberto-perfil";
@@ -5924,7 +5924,7 @@ function enviarPropostaMercado() {
 function abrirFaseEmpresario() {
   const jogador = propostaMercadoAberta.jogador;
   const estrelas = estado.reputacao ? obterEstrelasReputacao(estado.reputacao.pontos) : 3;
-  const salarioPedidoReais = converterEuroParaReal(calcularPedidoSalarioEmpresario(jogador, estrelas));
+  const salarioPedidoReais = calcularPedidoSalarioEmpresario(jogador, estrelas);
   const luvasReais = calcularLuvasPedidas(propostaMercadoAberta.valorAcordadoClube);
   const clausulaMinima = calcularClausulaMinima(propostaMercadoAberta.valorAcordadoClube);
 
@@ -6053,7 +6053,7 @@ function fecharContratacaoCompleta(jogadorOriginal, nomeTimeVendedor, divisaoVen
   const jogadorContratado = Object.assign({}, jogadorOriginal, { _id: novoId });
 
   // O salário negociado vira o multiplicador sobre o salário-base — a mesma "moeda" usada nas renovações (Fase 11).
-  const salarioBaseReais = converterEuroParaReal(calcularSalarioMensal(jogadorContratado));
+  const salarioBaseReais = calcularSalarioMensal(jogadorContratado);
   const multiplicadorSalario = salarioBaseReais > 0 ? Math.round((salarioMensalReais / salarioBaseReais) * 1000) / 1000 : 1;
 
   estado.timeAtual.jogadores.push(jogadorContratado);
@@ -6475,15 +6475,15 @@ function renderizarPropostasRecebidas() {
     const jogadorProposta = encontrarJogadorPorId(estado.timeAtual.jogadores, proposta.idJogador);
     const marcadorEstrela = jogadorProposta ? (MARCADOR_ESTRELA_COMPACTO[obterEstrelaJogador(jogadorProposta)] || "") : "";
     const li = document.createElement("li");
-    li.className = "item-contrato";
+    li.className = "item-contrato item-proposta-recebida";
     li.innerHTML =
-      "<span class=\"info-contrato\">" +
-        "<span class=\"nome-contrato\">" + escaparHtml(proposta.nomeJogador) + marcadorEstrela + "</span>" +
-        "<span class=\"detalhes-contrato\">" + escaparHtml(proposta.nomeTimeComprador) + " oferece " + formatarReais(proposta.valor) + "</span>" +
-      "</span>" +
-      "<button class=\"btn-renovar-contrato btn-aceitar-proposta\" type=\"button\">Aceitar</button>" +
-      "<button class=\"btn-renovar-contrato btn-contrapropor-proposta\" type=\"button\">Contrapropor</button>" +
-      "<button class=\"btn-renovar-contrato btn-recusar-proposta\" type=\"button\">Recusar</button>";
+      "<span class=\"nome-contrato\">" + escaparHtml(proposta.nomeJogador) + marcadorEstrela + "</span>" +
+      "<span class=\"detalhes-contrato\">" + escaparHtml(proposta.nomeTimeComprador) + " oferece " + formatarReais(proposta.valor) + "</span>" +
+      "<div class=\"barra-acoes-proposta\">" +
+        "<button class=\"btn-renovar-contrato btn-aceitar-proposta\" type=\"button\">Aceitar</button>" +
+        "<button class=\"btn-renovar-contrato btn-contrapropor-proposta\" type=\"button\">Contrapropor</button>" +
+        "<button class=\"btn-renovar-contrato btn-recusar-proposta\" type=\"button\">Recusar</button>" +
+      "</div>";
 
     li.querySelector(".btn-aceitar-proposta").addEventListener("click", function () { aceitarPropostaEspontanea(proposta.id); });
     li.querySelector(".btn-contrapropor-proposta").addEventListener("click", function () { contraporPropostaEspontanea(proposta.id); });
@@ -8016,7 +8016,7 @@ function abrirPerfilAtleta(jogador, contexto) {
   document.getElementById("perfil-nacionalidade").textContent = MAPA_NACIONALIDADE[jogador.nac] || jogador.nac;
   document.getElementById("perfil-forca").textContent = jogador.forca;
   document.getElementById("perfil-idade").textContent = jogador.idade + " anos";
-  document.getElementById("perfil-valor").textContent = "€" + calcularValorMercado(jogador, estrelaPerfil) + "mi";
+  document.getElementById("perfil-valor").textContent = formatarReais(calcularValorMercado(jogador, estrelaPerfil));
   document.getElementById("perfil-caracteristicas").textContent =
     [jogador.caracteristica_1, jogador.caracteristica_2].filter(Boolean).join(" / ") || "—";
 
@@ -8042,7 +8042,7 @@ function abrirPerfilAtleta(jogador, contexto) {
     const contrato = estado.contratos[jogador._id] || criarContratoInicial(jogador);
     salarioEl.hidden = false;
     document.getElementById("perfil-salario").textContent =
-      formatarReais(converterEuroParaReal(calcularSalarioEfetivoMensal(jogador, contrato))) + "/mês";
+      formatarReais(calcularSalarioEfetivoMensal(jogador, contrato)) + "/mês";
     rodapeContratoEl.hidden = false;
     rodapeContratoEl.textContent = contrato.emprestimo
       ? "Emprestado de " + contrato.emprestimo.timeOrigem + " — " + contrato.emprestimo.rodadasRestantes + " rodada(s) restantes"
@@ -8227,7 +8227,7 @@ function confirmarVendaPerfil() {
   if (!estado.jogadoresAVenda[jogador._id]) alternarJogadorAVenda(jogador._id); // já salva e re-renderiza Contratos
   else salvarProgresso();
   document.getElementById("subform-venda-perfil").hidden = true;
-  alert(jogador.nome + " colocado à venda por €" + estado.precoPedidoVenda[jogador._id] + "mi.");
+  alert(jogador.nome + " colocado à venda por " + formatarReais(estado.precoPedidoVenda[jogador._id]) + ".");
 }
 
 /** Botão "Emprestar" (meu jogador): liga/desliga a marcação "disponível pra empréstimo". */

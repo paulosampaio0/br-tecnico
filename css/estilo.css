@@ -404,14 +404,14 @@ body::before {
   gap: 2px;
 }
 
+/* Nome/detalhe do jogador nunca são truncados: quebram linha em vez de virar "Giorgian de Ar…". */
 .item-jogador .nome {
   display: block;
   min-width: 0;
   font-size: 15px;
   font-weight: 700;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  white-space: normal;
+  overflow-wrap: break-word;
 }
 
 .item-jogador .detalhes {
@@ -419,9 +419,8 @@ body::before {
   min-width: 0;
   font-size: 12px;
   color: var(--cinza-texto);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  white-space: normal;
+  overflow-wrap: break-word;
 }
 
 .item-jogador .forca {
@@ -1535,9 +1534,8 @@ body::before {
 .nome-substituicao {
   font-weight: 700;
   color: var(--branco);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  white-space: normal;
+  overflow-wrap: break-word;
 }
 
 .linha-saiu-substituicao {
@@ -3146,22 +3144,26 @@ body::before {
 .item-contrato .pos.setor-meio { background: var(--neon-verde); color: #04220f; }
 .item-contrato .pos.setor-ataque { background: #ff5a3c; color: #2a0b02; }
 
+/* Base larga o bastante pra segurar a linha junto com o badge de posição, mas empurrando os
+   botões de ação (irmãos com `flex-shrink: 0`) pra linha de baixo via o `flex-wrap: wrap` do
+   pai. Sem isso a coluna de texto encolhia até virar uma tira de 1 letra por linha assim que
+   o nome deixou de ser truncado. */
 .info-contrato {
-  flex: 1;
+  flex: 1 1 60%;
   min-width: 0;
   display: flex;
   flex-direction: column;
   gap: 2px;
 }
 
+/* Nome/detalhe do jogador nunca são truncados: quebram linha em vez de virar "Giorgian de Ar…". */
 .nome-contrato {
   display: block;
   min-width: 0;
   font-size: 15px;
   font-weight: 700;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  white-space: normal;
+  overflow-wrap: break-word;
 }
 
 .detalhes-contrato {
@@ -3169,9 +3171,8 @@ body::before {
   min-width: 0;
   font-size: 12px;
   color: var(--cinza-texto);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  white-space: normal;
+  overflow-wrap: break-word;
 }
 
 /* MarketPlayerCard (reformulação) — layout em linhas empilhadas, nunca corta o nome do
@@ -3237,6 +3238,26 @@ body::before {
   display: flex;
   gap: 8px;
   margin-top: 4px;
+}
+
+/* Card de proposta recebida — mesmo empilhamento do card do Mercado: os 3 botões
+   (Aceitar/Contrapropor/Recusar) vão pra uma barra na base, sem espremer o nome. */
+.item-proposta-recebida {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 4px;
+}
+
+.barra-acoes-proposta {
+  display: flex;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.barra-acoes-proposta .btn-renovar-contrato {
+  flex: 1;
+  padding: 0 6px;
+  text-align: center;
 }
 
 .barra-acoes-mercado .btn-renovar-contrato {
@@ -4837,9 +4858,8 @@ select option {
 .junior-nome {
   flex: 1;
   min-width: 0;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  white-space: normal;
+  overflow-wrap: break-word;
 }
 
 .junior-estrelas {

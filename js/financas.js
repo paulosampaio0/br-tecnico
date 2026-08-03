@@ -11,7 +11,8 @@
 "use strict";
 
 const CONFIG_FINANCEIRO = {
-  // Os dados trazem valor_mi em € (Transfermarkt) — convertido pra R$ com uma taxa fixa.
+  // Os dados trazem valor_mi em € (Transfermarkt). Esta taxa é aplicada UMA vez, dentro de
+  // `calcularValorMercado` (js/dados.js) — o resto do jogo trabalha só em R$.
   taxaEurParaReal: 5.9,
 
   // Caixa inicial = (soma dos valores do elenco, já em R$) × este fator.
@@ -354,13 +355,9 @@ function calcularBonusAcessoSerieB(posicaoFinal, divisaoChave) {
   return Math.round(CONFIG_FINANCEIRO.poteTotalPremiacao.serie_a * CONFIG_FINANCEIRO.fatorBonusAcessoSobrePoteSerieA * 100) / 100;
 }
 
-function converterEuroParaReal(valorEmMilhoesEuro) {
-  return Math.round(valorEmMilhoesEuro * CONFIG_FINANCEIRO.taxaEurParaReal * 100) / 100;
-}
-
 function calcularValorElencoEmReais(jogadores) {
   return jogadores.reduce(function (soma, jogador) {
-    return soma + converterEuroParaReal(calcularValorMercado(jogador));
+    return soma + calcularValorMercado(jogador);
   }, 0);
 }
 
@@ -464,7 +461,7 @@ function calcularSalarioEfetivoMensal(jogador, contratoInfo) {
 function calcularFolhaSalarialPorRodada(jogadores, contratos) {
   const totalMensal = jogadores.reduce(function (soma, jogador) {
     const contratoInfo = contratos ? contratos[jogador._id] : null;
-    const salarioEfetivo = converterEuroParaReal(calcularSalarioEfetivoMensal(jogador, contratoInfo));
+    const salarioEfetivo = calcularSalarioEfetivoMensal(jogador, contratoInfo);
     // Jogador emprestado (Fase 17): o clube de origem banca uma % do salário, combinada na negociação do empréstimo.
     const fatorEmprestimo = contratoInfo && contratoInfo.emprestimo
       ? 1 - (contratoInfo.emprestimo.percentualFolhaOrigem / 100) : 1;
@@ -916,7 +913,7 @@ function janelaDeMercadoAberta(numeroRodada, totalRodadas) {
  * divisaoVendedora: a divisão do clube dono do jogador agora.
  */
 function calcularPrecoTransferencia(jogador, anosContratoRestante, divisaoVendedora, estrela) {
-  let preco = converterEuroParaReal(calcularValorMercado(jogador, estrela));
+  let preco = calcularValorMercado(jogador, estrela);
 
   const estrelas = calcularEstrelasPotencial(jogador);
   preco *= 1 + estrelas * CONFIG_FINANCEIRO.bonusPrecoPorEstrelaPotencial;
@@ -966,7 +963,7 @@ function jogadorRecusaPorReputacao(jogador, estrelasReputacaoCompradora) {
     estrelasReputacaoCompradora < CONFIG_FINANCEIRO.reputacaoEstrelaMinimaJogadorExigente;
 }
 
-/** Pedido inicial de salário do empresário (em €/mês, mesma unidade de calcularSalarioMensal) — reputação baixa pesa mais no bolso. */
+/** Pedido inicial de salário do empresário (em R$/mês, mesma unidade de calcularSalarioMensal) — reputação baixa pesa mais no bolso. */
 function calcularPedidoSalarioEmpresario(jogador, estrelasReputacaoCompradora) {
   const base = calcularSalarioMensal(jogador);
   const estrelasFaltantes = Math.max(0, 5 - estrelasReputacaoCompradora);
