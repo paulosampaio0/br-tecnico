@@ -54,9 +54,10 @@ const LIMITE_AMARELOS_SUSPENSAO = 3; // 3 cartões amarelos = 1 jogo de suspens�
 
 const OPCOES_TATICA = {
   estilo: [
-    { v: "ataque-total", r: "Ataque total" },
-    { v: "ofensivo", r: "Ofensivo" },
     { v: "equilibrado", r: "Equilibrado" },
+    { v: "posse", r: "Posse de bola" },
+    { v: "ofensivo", r: "Ofensivo" },
+    { v: "ataque-total", r: "Ataque total" },
     { v: "contra-ataque", r: "Contra-ataque (retranca)" },
   ],
   marcacao: [
@@ -69,10 +70,16 @@ const OPCOES_TATICA = {
     { v: "meio", r: "Pelo meio" },
     { v: "lados", r: "Pelos lados" },
   ],
+  armacao: [
+    { v: "passes-curtos", r: "Passes curtos" },
+    { v: "passes-longos", r: "Passes longos" },
+    { v: "cruzamentos", r: "Cruzamentos" },
+    { v: "chutes-longe", r: "Chutes de longe" },
+  ],
 };
 
 function taticaPadrao() {
-  return { estilo: "equilibrado", marcacao: "normal", concentrar: "equilibrado" };
+  return { estilo: "equilibrado", marcacao: "normal", concentrar: "equilibrado", armacao: "passes-curtos" };
 }
 
 // Estado do técnico durante a sessão atual.
@@ -2644,6 +2651,7 @@ function anexarArrastoOrigemCompacta(botao, jogador, origem) {
 function renderizarTatica() {
   Object.keys(OPCOES_TATICA).forEach(function (campo) {
     const container = document.getElementById("opcoes-" + campo);
+    if (!container) return;
     container.innerHTML = "";
     OPCOES_TATICA[campo].forEach(function (opcao) {
       const botao = document.createElement("button");
@@ -2740,7 +2748,8 @@ function criarTimeSimuladoAutomatico(time, mando, bonusExtraIA, classico) {
   const titulares = resolverTitulares(time.jogadores, "4-4-2a", titularesMap);
   const idsEscalados = new Set(titulares.map(function (item) { return item.jogador._id; }));
   const reservas = time.jogadores.filter(function (j) { return !idsEscalados.has(j._id); });
-  return criarTimeSimulado(time.nome, titulares, taticaPadrao(), {}, { mando: mando, bonusExtraIA: !!bonusExtraIA }, null,
+  const tatica = escolherTaticaIA(titulares, mando, time.nome);
+  return criarTimeSimulado(time.nome, titulares, tatica, {}, { mando: mando, bonusExtraIA: !!bonusExtraIA }, null,
     { reservas: reservas, classico: !!classico });
 }
 
@@ -7874,6 +7883,11 @@ async function continuarJogoSalvo() {
     estado.tatica = registro.tatica || taticaPadrao();
     // Fusão Retranca+Contra-ataque (2026-08-04): saves antigos com estilo "retranca" viram "contra-ataque".
     if (estado.tatica.estilo === "retranca") estado.tatica.estilo = "contra-ataque";
+    // Armação (2026-08-06): saves anteriores não têm o campo — e blindagem contra qualquer valor
+    // órfão de estilo/armação que não exista mais em OPCOES_TATICA (versão futura removeu algo).
+    if (!estado.tatica.armacao) estado.tatica.armacao = "passes-curtos";
+    if (!OPCOES_TATICA.estilo.some(function (o) { return o.v === estado.tatica.estilo; })) estado.tatica.estilo = "equilibrado";
+    if (!OPCOES_TATICA.armacao.some(function (o) { return o.v === estado.tatica.armacao; })) estado.tatica.armacao = "passes-curtos";
     estado.setas = registro.setas || {};
     estado.temporada = registro.temporada || null;
     estado.energiaPorJogador = registro.energiaPorJogador || {};

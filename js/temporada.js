@@ -118,7 +118,8 @@ function criarTimeSimuladoAutomaticoPuro(timeInfo, mando) {
   const titulares = resolverTitulares(timeInfo.jogadores, "4-4-2a", titularesMap);
   const idsEscalados = new Set(titulares.map(function (item) { return item.jogador._id; }));
   const reservas = timeInfo.jogadores.filter(function (j) { return !idsEscalados.has(j._id); });
-  return criarTimeSimulado(timeInfo.nome, titulares, taticaPadrao(), {}, { mando: mando }, null, { reservas: reservas });
+  const tatica = escolherTaticaIA(titulares, mando, timeInfo.nome);
+  return criarTimeSimulado(timeInfo.nome, titulares, tatica, {}, { mando: mando }, null, { reservas: reservas });
 }
 
 /**

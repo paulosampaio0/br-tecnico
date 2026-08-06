@@ -19,10 +19,15 @@ const SETOR_POR_POSICAO = {
 // Estilos de jogo (2026-08-04): escala de 4 posturas. "Ataque total" arrisca tudo (cria muito mais e
 // se expõe muito mais); "Contra-ataque (retranca)" funde a antiga Retranca — defende muito e chuta
 // menos, vivendo do contragolpe. A antiga "contra-ataque" fraquinha e a "retranca" viraram essa uma só.
+// "Posse" (2026-08-06) entrou como 5º estilo: base quase neutra (levemente conservadora), o efeito de
+// verdade vem escalado pela aptidão de passe do elenco em `calcularForcaTime` — com bons armadores é
+// forte, sem eles vira prejuízo real (ver ali). `defesa: 0.4` fica de propósito abaixo de 2, pra não
+// mudar o gasto de energia em `aplicarDesgastePosPartida` (só sobe além de estilos com defesa>=2).
 const AJUSTE_ESTILO_TATICA = {
   "ataque-total": { ataque: 3.5, defesa: -3 },
   ofensivo: { ataque: 2, defesa: -1.5 },
   equilibrado: { ataque: 0, defesa: 0 },
+  posse: { ataque: -0.6, defesa: 0.4 },
   "contra-ataque": { ataque: -2, defesa: 2 },
 };
 const AJUSTE_MARCACAO_TATICA = { leve: -1, normal: 0, pesada: 1.5 };
@@ -35,6 +40,81 @@ const AJUSTE_CONCENTRAR = {
   meio: { meio: 1.4, ataque: 0 },
   lados: { meio: -0.5, ataque: 0.9 },
 };
+
+/**
+ * Armação (2026-08-06): "o que o time faz com a bola", separado de "Concentrar ataques" (de onde ela
+ * vem). "passes-curtos" é o default/neutro (compatível com saves antigos, sem `armacao` salvo) — os
+ * multiplicadores dela ficam perto de 1 de propósito. As outras 3 trocam uma coisa por outra: nenhuma
+ * pode ser estritamente melhor que as demais (ver `processarLadoPartida`, onde cada uma entra de fato).
+ */
+const AJUSTE_ARMACAO_TATICA = {
+  "passes-curtos": { freq: 1.0, erroPasse: 0.035, escanteio: 0.85, conv: 0.98 },
+  "passes-longos": { freq: 1.0, erroPasse: 0.075, escanteio: 1.0, conv: 1.0 },
+  cruzamentos: { freq: 0.94, erroPasse: 0.05, escanteio: 1.2, conv: 1.0 },
+  "chutes-longe": { freq: 1.0, erroPasse: 0.05, escanteio: 1.15, conv: 1.0 },
+};
+
+/**
+ * Aptidões táticas (2026-08-06): quanto o ELENCO em campo favorece cada estilo/armação, calculado a
+ * partir das características reais dos jogadores (`temCaracteristica`, js/dados.js). Cada aptidão é um
+ * fator -1..+1 (0 = elenco mediano da liga) — fração de força efetiva do setor elegível que tem a
+ * característica, centralizada num pivô/amplitude calibrados nos 40 times reais do jogo. É isso que dá
+ * o "sai pela culatra" no estilo Posse e o trade-off de cada opção de Armação: o bônus só existe se o
+ * elenco realmente tiver o jogador certo pra função — sem ele, vira prejuízo (ver `calcularForcaTime`
+ * e `processarLadoPartida`).
+ */
+function pesoEfetivoJogador(item) {
+  const eficiencia = item.eficiencia !== undefined ? item.eficiencia : 1;
+  return (item.jogador.forca * eficiencia) / 35;
+}
+
+function calcularFatorCaracteristica(itens, caracteristicas, pivo, amplitude) {
+  if (itens.length === 0) return 0;
+  let somaPeso = 0, somaPesoComCarac = 0;
+  itens.forEach(function (item) {
+    const peso = pesoEfetivoJogador(item);
+    somaPeso += peso;
+    if (temCaracteristica(item.jogador, caracteristicas)) somaPesoComCarac += peso;
+  });
+  if (somaPeso <= 0) return 0;
+  const bruta = somaPesoComCarac / somaPeso;
+  return clamp((bruta - pivo) / amplitude, -1, 1);
+}
+
+function calcularAptidoesTaticas(titularesResolvidos) {
+  const porSetorOrigem = { meio: [], defesa: [], ataque: [] };
+  const porPosicao = {};
+  titularesResolvidos.forEach(function (item) {
+    const pos = item.vaga.pos;
+    if (pos === "GOL") return;
+    porPosicao[pos] = porPosicao[pos] || [];
+    porPosicao[pos].push(item);
+    const setorOrigem = SETOR_POR_POSICAO[pos];
+    if (setorOrigem) porSetorOrigem[setorOrigem].push(item);
+  });
+
+  const meiVol = (porPosicao.MEI || []).concat(porPosicao.VOL || []);
+  const laterAtacantesLargos = (porPosicao["LAT.D"] || []).concat(porPosicao["LAT.E"] || [])
+    .concat(porPosicao.ATD || []).concat(porPosicao.ATE || []);
+  const atacantesEZaga = (porPosicao.ATA || []).concat(porPosicao.ATD || []).concat(porPosicao.ATE || [])
+    .concat(porPosicao.ZAG || []);
+  const meiVolZaga = meiVol.concat(porPosicao.ZAG || []);
+  const ataque = (porPosicao.ATA || []).concat(porPosicao.ATD || []).concat(porPosicao.ATE || []);
+
+  // Pivô/amplitude (2026-08-06) calibrados por medição real nos 40 times de dados/elencos_2026.json
+  // (média e 2×desvio-padrão da fração de força-com-característica por setor elegível) — não são
+  // chutados: é o que garante que o time mediano da liga fique perto de fator 0 (neutro) e que times
+  // realmente bons/ruins naquilo cheguem perto de +1/-1, em vez de todo mundo ficar preso perto de 0.
+  const passe = calcularFatorCaracteristica(meiVol, ["Passe", "Armação"], 0.69, 0.32);
+  const cruzamento = calcularFatorCaracteristica(laterAtacantesLargos, ["Cruzamento"], 0.86, 0.50);
+  const cabeceio = calcularFatorCaracteristica(atacantesEZaga, ["Cabeceio"], 0.59, 0.50);
+  const chuteLonge = calcularFatorCaracteristica(meiVol, ["Finalização"], 0.06, 0.24);
+  const passeLongoBase = calcularFatorCaracteristica(meiVolZaga, ["Passe"], 0.37, 0.33);
+  const passeLongoVelocidade = calcularFatorCaracteristica(ataque, ["Velocidade"], 0.36, 0.59);
+  const passeLongo = clamp(0.6 * passeLongoBase + 0.4 * passeLongoVelocidade, -1, 1);
+
+  return { passe: passe, cruzamento: cruzamento, cabeceio: cabeceio, chuteLonge: chuteLonge, passeLongo: passeLongo };
+}
 
 // Teto pro bônus/prejuízo TOTAL vindo das setas (Fase 3), pra não empilhar sem limite —
 // só o time do usuário usa setas de verdade, então sem teto o time dele destoava demais da IA.
@@ -405,7 +485,8 @@ function resolverTitulares(jogadores, formacaoId, titularesMap) {
  * minuto a minuto em `aplicarEfeitoSetasDoMinuto` (podem falhar), então não
  * dá mais pra somar de graça na força "de base" do time.
  */
-function calcularForcaTime(titularesResolvidos, tatica) {
+function calcularForcaTime(titularesResolvidos, tatica, aptidoes) {
+  const apt = aptidoes || calcularAptidoesTaticas(titularesResolvidos);
   const soma = { defesa: 0, meio: 0, ataque: 0 };
   const contagem = { defesa: 0, meio: 0, ataque: 0 };
 
@@ -440,6 +521,14 @@ function calcularForcaTime(titularesResolvidos, tatica) {
   setores.ataque += ajusteEstilo.ataque;
   setores.defesa += ajusteEstilo.defesa;
   setores.defesa += AJUSTE_MARCACAO_TATICA[tatica.marcacao] || 0;
+
+  // Posse de bola (2026-08-06): o bônus/prejuízo de verdade é escalado pela aptidão de passe do
+  // elenco (MEI/VOL com Passe/Armação) — com bons armadores é o estilo mais forte de meio-campo do
+  // jogo; sem eles, o time literalmente perde o meio tentando trocar passe que não sabe trocar.
+  if (tatica.estilo === "posse") {
+    setores.meio += 2.6 * apt.passe;
+    setores.ataque += 0.8 * apt.passe;
+  }
 
   const ajusteConc = AJUSTE_CONCENTRAR[tatica.concentrar] || AJUSTE_CONCENTRAR.equilibrado;
   setores.meio += ajusteConc.meio;
@@ -479,7 +568,8 @@ function aplicarBonusMando(setores, opcoesMando) {
  * intensidade (rival/clássico regional) — sobe um pouco a agressividade da IA o jogo inteiro.
  */
 function criarTimeSimulado(nome, titularesResolvidos, tatica, setasPorVaga, opcoesMando, idCapitao, extras) {
-  const setores = aplicarBonusMando(calcularForcaTime(titularesResolvidos, tatica), opcoesMando);
+  const aptidoes = calcularAptidoesTaticas(titularesResolvidos);
+  const setores = aplicarBonusMando(calcularForcaTime(titularesResolvidos, tatica, aptidoes), opcoesMando);
 
   let capitao = null;
   if (idCapitao !== undefined && idCapitao !== null) {
@@ -492,6 +582,10 @@ function criarTimeSimulado(nome, titularesResolvidos, tatica, setasPorVaga, opco
     titulares: titularesResolvidos, // guardado pra sortear nomes de jogadores nos eventos
     tatica: tatica, // guardado pra recalcular setoresBase depois de uma substituição tática da IA
     concentrar: (tatica && tatica.concentrar) || "equilibrado", // "meio"/"lados"/"equilibrado" — pesa em posse e escanteio
+    armacao: (tatica && tatica.armacao) || "passes-curtos", // "passes-curtos"/"passes-longos"/"cruzamentos"/"chutes-longe"
+    // Aptidões táticas (2026-08-06): quanto os titulares EM CAMPO favorecem cada estilo/armação — ver
+    // `calcularAptidoesTaticas`. Recalculada em `recalcularSetoresBase` depois de substituição da IA.
+    aptidoes: aptidoes,
     // Cobradores de bola parada escolhidos pelo técnico (só o time do usuário passa isso; CPU usa o
     // melhor cobrador automático). { penalti, falta, escanteio } com _id do titular, ou null.
     cobradores: (extras && extras.cobradores) || null,
@@ -524,7 +618,11 @@ function criarTimeSimulado(nome, titularesResolvidos, tatica, setasPorVaga, opco
  * `tentarSubstituicaoTaticaIA` trocar alguém em campo, pra a troca valer de verdade na força do time.
  */
 function recalcularSetoresBase(time) {
-  time.setoresBase = aplicarBonusMando(calcularForcaTime(time.titulares, time.tatica), time.opcoesMando);
+  // Recalcula também as aptidões (2026-08-06): se a IA tirou o meia armador de campo, o bônus de
+  // Posse (ou de Armação) precisa cair junto — senão o time continua "de posse" sem ter mais quem
+  // troque o passe.
+  time.aptidoes = calcularAptidoesTaticas(time.titulares);
+  time.setoresBase = aplicarBonusMando(calcularForcaTime(time.titulares, time.tatica, time.aptidoes), time.opcoesMando);
 }
 
 // Setores "seguros" pra tirar de campo numa substituição tática (nunca mexe no goleiro).
@@ -767,7 +865,23 @@ function processarLadoPartida(partida, atacante, defensor, ladoAtacante, permiti
   // meio-campo entra como uma vantagem geral (quem domina o meio cria mais).
   const defesaEfetiva = defensor.setores.defesa + bonusDefesaGoleiro;
   const diferenca = atacante.setores.ataque - defesaEfetiva;
-  const vantagemMeio = calcularVantagemMeio(atacante.setores, defensor.setores);
+  const armacaoAtacante = atacante.armacao || "passes-curtos";
+  const ajusteArmacao = AJUSTE_ARMACAO_TATICA[armacaoAtacante] || AJUSTE_ARMACAO_TATICA["passes-curtos"];
+
+  // "Passes longos" (Armação, 2026-08-06): pula o meio-campo — metade da vantagem/desvantagem
+  // de meio deixa de valer, é o preço de tentar jogar por cima da marcação do adversário.
+  let vantagemMeio = calcularVantagemMeio(atacante.setores, defensor.setores);
+  if (armacaoAtacante === "passes-longos") vantagemMeio = 1 + (vantagemMeio - 1) * 0.5;
+
+  // "Chutes de longe" (Armação, 2026-08-06): a resposta a um time fechado atrás — a defesa do
+  // adversário conta menos pra frequência de chance (o chutador não depende de furar a linha),
+  // só que a conversão (mais abaixo) nunca é boa. Contra defesa fraca isso é PIOR que o normal.
+  let diferencaFrequencia = diferenca;
+  if (armacaoAtacante === "chutes-longe") {
+    diferencaFrequencia = atacante.setores.ataque * 0.6 + atacante.setores.meio * 0.4
+      - (defesaEfetiva * 0.55 + 35 * 0.45);
+  }
+
   // Exposição a contra-ataque (Rebalanceamento de setas 2026-07-23): se o time que defende
   // tem zagueiro/lateral/volante com seta ofensiva bem-sucedida nesse minuto, fica mais fácil
   // pro adversário criar chance — o teto de chance por minuto sobe um pouco pra esse efeito valer.
@@ -777,7 +891,12 @@ function processarLadoPartida(partida, atacante, defensor, ladoAtacante, permiti
   // duas com a mesma `diferenca` fazia um time superior marcar ~9 gols por jogo (26 finalizações
   // × 40% de conversão, que era o teto antigo). Agora o domínio aparece quase todo como volume
   // de finalização; a conversão sobe pouco e fica numa faixa realista (~11-20%).
-  const probChance = clamp((0.125 + diferenca * 0.005) * vantagemMeio * defensor.fatorContraAtaqueConcedido, 0.055, 0.23);
+  // Armação (2026-08-06): o multiplicador de frequência (`ajusteArmacao.freq`) entra DENTRO do
+  // clamp — nunca por fora, senão o teto de 0.23 estoura e a taxa de goleada foge da faixa-alvo.
+  const probChance = clamp(
+    (0.125 + diferencaFrequencia * 0.005) * vantagemMeio * ajusteArmacao.freq * defensor.fatorContraAtaqueConcedido,
+    0.055, 0.23
+  );
 
   if (Math.random() < probChance) {
     estatAtacante.finalizacoes++;
@@ -787,7 +906,14 @@ function processarLadoPartida(partida, atacante, defensor, ladoAtacante, permiti
     // Piso baixado pra 0.03 (Zebra por poucos chutes, 2026-08-03): com o piso antigo (0.058) o dia
     // de graça excepcional do goleiro (fatorZebra ~0.35-0.5) não conseguia derrubar a conversão de
     // verdade — o time dominante ainda convertia perto do normal mesmo contra a defesa em êxtase.
-    let chanceGol = clamp((0.106 + diferenca * 0.003) * partida.fatorZebra[ladoDefensor], 0.02, 0.2);
+    // Tática de conversão (2026-08-06): Posse com bons armadores finaliza com mais qualidade;
+    // Armação entra com o próprio fator (`ajusteArmacao.conv`) — "chutes-longe" nunca chega a 1.0×,
+    // é a marca do estilo (muito volume, conversão sempre baixa). Tudo somado ANTES do clamp.
+    let fatorTaticaConversao = ajusteArmacao.conv;
+    if (atacante.tatica && atacante.tatica.estilo === "posse") fatorTaticaConversao *= 1 + 0.06 * atacante.aptidoes.passe;
+    if (armacaoAtacante === "chutes-longe") fatorTaticaConversao *= 0.62 + 0.28 * clamp(0.5 + 0.5 * atacante.aptidoes.chuteLonge, 0, 1);
+    if (armacaoAtacante === "cruzamentos" && atacante.aptidoes.cabeceio > 0) fatorTaticaConversao *= 1 + 0.10 * atacante.aptidoes.cruzamento;
+    let chanceGol = clamp((0.106 + diferenca * 0.003) * partida.fatorZebra[ladoDefensor] * fatorTaticaConversao, 0.02, 0.2);
     // Goleiro improvisado ou ausente (Correção de bug — 2026-07-25): quanto menor o fator,
     // mais essa penalidade empurra a chance de gol pra cima — praticamente certo de virar
     // gol quando não há goleiro de verdade em campo.
@@ -800,7 +926,12 @@ function processarLadoPartida(partida, atacante, defensor, ladoAtacante, permiti
     // muito mais a chutar pra fora do que a acertar o gol.
     const fatorChuteEficiencia = clamp(0.35 + 0.65 * itemFinalizador.eficiencia, 0.35, 1);
     chanceGol *= fatorChuteEficiencia;
-    let janelaNoGol = 0.35 * fatorChuteEficiencia;
+    // Armação — janela "no alvo mas defendida" (2026-08-06): cruzamento na área e chute de longe
+    // enchem mais essa estatística (cabeçada e bola de fora tendem mais ao alvo do que pra fora).
+    let multJanelaArmacao = 1;
+    if (armacaoAtacante === "cruzamentos") multJanelaArmacao = 1.10;
+    else if (armacaoAtacante === "chutes-longe") multJanelaArmacao = 1.25;
+    let janelaNoGol = 0.35 * fatorChuteEficiencia * multJanelaArmacao;
 
     // Regra de "Sem Goleiro" (Correção de bug): vaga de GOL completamente vazia — não existe
     // NINGUÉM pra fazer a defesa, então toda a janela "no alvo mas defendido" vira gol certo
@@ -863,13 +994,21 @@ function processarLadoPartida(partida, atacante, defensor, ladoAtacante, permiti
   }
 
   if (Math.random() < 0.04) estatDefensor.desarmes++;
-  if (Math.random() < 0.05) estatAtacante.errosPasse++;
+  // Armação — erro de passe (2026-08-06): cada opção pesa diferente no `AJUSTE_ARMACAO_TATICA.erroPasse`
+  // (curtos erra menos, longos erra bem mais); Posse com bons armadores reduz ainda mais o erro.
+  let chanceErroPasse = ajusteArmacao.erroPasse;
+  if (atacante.tatica && atacante.tatica.estilo === "posse") chanceErroPasse *= 1 - 0.30 * atacante.aptidoes.passe;
+  if (Math.random() < clamp(chanceErroPasse, 0.01, 0.5)) estatAtacante.errosPasse++;
 
   // Escanteios (2026-08-04): antes era só um número na estatística. Agora "Concentrar pelos lados"
   // gera mais escanteios, e cada escanteio tem uma pequena chance de virar gol de cabeça —
   // influenciada pela entrega do cobrador de escanteio escolhido e pela defesa/goleiro adversário.
+  // "Cruzamentos" (Armação, 2026-08-06) soma OUTRA frequência de escanteio — cap explícito pra não
+  // dobrar o efeito de "Concentrar pelos lados" (as duas mexem em eixos diferentes: de onde a bola
+  // vem vs. o que se faz com ela, mas a frequência de escanteio é o único ponto onde se tocam).
   const concentraLados = atacante.concentrar === "lados";
-  const chanceEscanteio = 0.055 * (concentraLados ? 1.35 : 1);
+  const cruzando = armacaoAtacante === "cruzamentos";
+  const chanceEscanteio = Math.min(0.055 * (concentraLados ? 1.35 : 1) * (cruzando ? 1.2 : 1), 0.095);
   if (Math.random() < chanceEscanteio) {
     estatAtacante.escanteios++;
     const cobrador = cobradorDoPapel(atacante, "escanteio");
@@ -878,6 +1017,7 @@ function processarLadoPartida(partida, atacante, defensor, ladoAtacante, permiti
       let chanceGolEscanteio = 0.035 * qualidadeEntrega;
       chanceGolEscanteio *= clamp(1.1 - infoGoleiro.fator * 0.4, 0.6, 1.1); // goleiro nato afasta mais a bola
       if (concentraLados) chanceGolEscanteio *= 1.25;
+      if (cruzando) chanceGolEscanteio *= 1 + 0.35 * atacante.aptidoes.cabeceio; // qualidade aérea do elenco
       if (Math.random() < chanceGolEscanteio) {
         estatAtacante.noGol++;
         if (ladoAtacante === "casa") partida.placarCasa++; else partida.placarFora++;
@@ -1121,12 +1261,23 @@ function simularMinuto(partida, timeCasa, timeFora, ladoComEscolhaCobranca) {
   if (partida.pendencia) return partida;
 
   // Posse de bola é puxada principalmente por quem domina o meio-campo.
-  const pesoCasa = timeCasa.setores.meio + timeCasa.setores.ataque * 0.3 + Math.random() * 3;
-  const pesoFora = timeFora.setores.meio + timeFora.setores.ataque * 0.3 + Math.random() * 3;
-  partida.posseTicksCasa += pesoCasa;
-  partida.posseTicksFora += pesoFora;
+  partida.posseTicksCasa += pesoPosseDoMinuto(timeCasa);
+  partida.posseTicksFora += pesoPosseDoMinuto(timeFora);
 
   return partida;
+}
+
+/**
+ * Peso de posse de UM time no minuto (2026-08-06): puramente cosmético — só alimenta o % de posse
+ * exibido na tela, nunca a chance de gol (essa já está toda em `calcularForcaTime`/`processarLadoPartida`).
+ * O estilo Posse com bons armadores empurra o % pra cima de forma visível; contra-ataque puxa pra baixo.
+ */
+function pesoPosseDoMinuto(time) {
+  let peso = time.setores.meio + time.setores.ataque * 0.3 + Math.random() * 3;
+  const estilo = time.tatica && time.tatica.estilo;
+  if (estilo === "posse") peso *= 1 + 0.10 * clamp(0.5 + 0.5 * time.aptidoes.passe, 0, 1);
+  else if (estilo === "contra-ataque") peso *= 0.93;
+  return peso;
 }
 
 /** Devolve a posse de bola atual em porcentagem (soma sempre 100). */
@@ -1135,4 +1286,52 @@ function calcularPosse(partida) {
   if (total <= 0) return { casa: 50, fora: 50 };
   const casa = Math.round((partida.posseTicksCasa / total) * 100);
   return { casa: casa, fora: 100 - casa };
+}
+
+/** Hash determinístico simples de string → inteiro positivo (só pra decisão estável por nome de time). */
+function hashNomeTime(nome) {
+  let h = 0;
+  for (let i = 0; i < nome.length; i++) { h = (h * 31 + nome.charCodeAt(i)) | 0; }
+  return Math.abs(h);
+}
+
+/**
+ * IA dos clubes adversários escolhe tática (2026-08-06): antes toda CPU jogava sempre
+ * `taticaPadrao()` (equilibrado). Agora cada time lê o próprio elenco — decisão DETERMINÍSTICA
+ * (mesmo elenco = mesma escolha), não sorteada, pra o jogador poder "ler" o adversário pelo
+ * Auxiliar Técnico e pra a tabela não virar ruído de sorte.
+ * ~15% dos times (por hash do nome, estável) ficam sempre no padrão equilibrado — "o técnico que
+ * não lê o próprio elenco" — evitando que a força agregada da liga suba (métricas-alvo do
+ * BALANCEAMENTO_JOGABILIDADE.md continuam valendo mesmo com toda CPU decidindo tática agora).
+ * A IA nunca escolhe "ataque-total" (isso já é coberto por `tentarSubstituicaoTaticaIA`, tático
+ * de fim de jogo) nem "posse" sem elenco pra isso — só puxa a vantagem, nunca a penalidade sozinha.
+ */
+function escolherTaticaIA(titularesResolvidos, mando, nomeTime) {
+  if (hashNomeTime(nomeTime || "") % 100 < 15) return taticaPadrao();
+
+  const apt = calcularAptidoesTaticas(titularesResolvidos);
+  const setores = calcularForcaTime(titularesResolvidos, taticaPadrao(), apt);
+  const saldo = setores.ataque - setores.defesa;
+
+  // Limiares calibrados pela distribuição real dos 40 times (saldo ataque-defesa: mediana 0, p25 -1,
+  // p75 +1.25; apt.passe: mediana 0.17, top ~12% acima de 0.5) — sem essa calibragem, quase toda a
+  // liga cai em "equilibrado" e a feature não aparece na tabela de verdade.
+  let estilo = "equilibrado";
+  if (apt.passe >= 0.5 && setores.meio >= setores.defesa) estilo = "posse";
+  else if (saldo >= 1.5) estilo = "ofensivo";
+  else if (saldo <= -1.2) estilo = "contra-ataque";
+
+  if (mando === "fora") {
+    if (estilo === "ofensivo") estilo = "equilibrado";
+    else if (estilo === "equilibrado" && saldo <= 0) estilo = "contra-ataque";
+  }
+
+  let armacao = "passes-curtos";
+  if (apt.cruzamento >= 0.40 && apt.cabeceio >= 0.35) armacao = "cruzamentos";
+  else if (apt.passeLongo >= 0.40 && apt.passe < 0.20) armacao = "passes-longos";
+  else if (apt.chuteLonge >= 0.45) armacao = "chutes-longe";
+
+  const concentrar = armacao === "cruzamentos" ? "lados" : (apt.passe >= 0.35 ? "meio" : "equilibrado");
+
+  return { estilo: estilo, marcacao: "normal", concentrar: concentrar, armacao: armacao };
 }
