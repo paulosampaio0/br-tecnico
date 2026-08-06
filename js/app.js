@@ -177,6 +177,12 @@ const estado = {
   carreiraPorJogador: {}, // { _id: [{ ano, clube, jogos, gols, assistencias, amarelos, vermelhos, lesoes }] } — 1 linha por temporada encerrada
   jogosTemporadaPorJogador: {}, // { _id: [{ rodada, confronto, nota }] } — só da temporada ATUAL, zera na virada
   statsTemporadaAtualPorJogador: {}, // { _id: { jogos, gols, assistencias, amarelos, vermelhos } } — acumulador em andamento
+  // Artilharia da liga (Correção — 2026-08-06): gols/assistências REAIS dos outros ~19 clubes da
+  // divisão, extraídos dos eventos da rodada paralela (`registrarHistoricoRodadaParalela`) — antes
+  // só o meu time tinha estatística de verdade, os outros usavam número sintético o tempo todo,
+  // mesmo já tendo marcado gols de verdade na simulação. Chave composta "nomeTime|_id" porque
+  // `_id` NÃO é único entre clubes (é só o índice do jogador dentro do elenco dele).
+  statsTemporadaLigaPorJogador: {}, // { "nomeTime|_id": { jogos, gols, assistencias, amarelos, vermelhos } }
   jogadoresParaEmprestimo: {}, // { _id: true } — marcados como disponíveis pra empréstimo, via Perfil do Atleta
   precoPedidoVenda: {}, // { _id: valor em R$mi } — preço pedido customizado ao colocar à venda pelo Perfil do Atleta
   // Detalhe (escalação+notas+estatísticas) de rodadas oficiais — só do jogo que o USUÁRIO
@@ -272,6 +278,7 @@ function salvarProgresso() {
     carreiraPorJogador: estado.carreiraPorJogador,
     jogosTemporadaPorJogador: estado.jogosTemporadaPorJogador,
     statsTemporadaAtualPorJogador: estado.statsTemporadaAtualPorJogador,
+    statsTemporadaLigaPorJogador: estado.statsTemporadaLigaPorJogador,
     jogadoresParaEmprestimo: estado.jogadoresParaEmprestimo,
     precoPedidoVenda: estado.precoPedidoVenda,
     detalhesPartidaPorRodada: estado.detalhesPartidaPorRodada,
@@ -761,7 +768,7 @@ function criarItemJogador(jogador, mostrarEnergia) {
   const formaJogador = mostrarEnergia ? obterFormaJogador(jogador._id) : "neutra";
   const prefixoForma = formaJogador === "alta" ? "<span class=\"tag-forma\" title=\"Em alta\">🟢⬆️</span> "
     : formaJogador === "baixa" ? "<span class=\"tag-forma\" title=\"Em baixa\">🔴⬇️</span> " : "";
-  const sufixoEstrelaStatus = estrelaStatus === "dourada" ? " <span class=\"tag-estrela-status\" title=\"Estrela Dourada\">⭐</span>"
+  const sufixoEstrelaStatus = estrelaStatus === "dourada" ? " <span class=\"tag-estrela-status\" title=\"Estrela Dourada\">✮</span>"
     : estrelaStatus === "prateada" ? " <span class=\"tag-estrela-status\" title=\"Estrela Prateada\">🥈</span>" : "";
   const valorMercado = calcularValorMercado(jogador, estrelaStatus);
 
@@ -815,6 +822,7 @@ async function escalarEsteTime(time) {
   estado.carreiraPorJogador = {};
   estado.jogosTemporadaPorJogador = {};
   estado.statsTemporadaAtualPorJogador = {};
+  estado.statsTemporadaLigaPorJogador = {};
   estado.jogadoresParaEmprestimo = {};
   estado.precoPedidoVenda = {};
   estado.detalhesPartidaPorRodada = {};
@@ -1258,9 +1266,18 @@ function renderizarCampo() {
         (jogador ? montarForcaNomeCurto(jogador, true, false, true) : "Vazio") +
       "</span>" +
       (jogador ? montarBarraEnergiaOverlay(obterEnergiaJogador(jogador._id)) : "") +
-      (jogador ? montarTraitsVaga(jogador) : "");
+      (jogador ? montarTraitsVaga(jogador) : "") +
+      // Ficha Técnica no Pré-Jogo: mesmo ícone "(i)" e mesmo padrão do campinho ao vivo
+      // (`montarLadoCampoDuplo`) — abre o Perfil do Atleta sem interferir no tap principal
+      // do nó (que troca o titular da vaga).
+      (jogador ? "<span class=\"botao-ficha-vaga\" data-acao=\"ficha-vaga\" title=\"Ver ficha técnica\">ⓘ</span>" : "");
 
-    botao.addEventListener("click", function () {
+    botao.addEventListener("click", function (evento) {
+      if (jogador && evento.target.closest("[data-acao='ficha-vaga']")) {
+        evento.stopPropagation();
+        abrirPerfilAtleta(jogador, { meu: true, nomeTime: estado.timeAtual.nome });
+        return;
+      }
       // Um arrasto de verdade que acabou de acontecer NESTE botão não deve
       // também abrir o seletor (senão os dois gestos se confundem).
       if (botao.dataset.gestoArrasto === "1") {
@@ -2127,10 +2144,10 @@ function obterFormaJogador(idJogador) {
 }
 
 const MARCADOR_FORMA_COMPACTO = { alta: " 🟢⬆️", baixa: " 🔴⬇️" };
-const MARCADOR_ESTRELA_COMPACTO = { dourada: " ⭐", prateada: " 🥈" };
+const MARCADOR_ESTRELA_COMPACTO = { dourada: " ✮", prateada: " 🥈" };
 
 /**
- * "35 🟢⬆️ Felipe ⭐" — força + forma + sobrenome curto + estrela, texto único reaproveitado em
+ * "35 🟢⬆️ Felipe ✮" — força + forma + sobrenome curto + estrela, texto único reaproveitado em
  * TODO card de jogador (Padronização de cards): titular no campo, "Mexer no time" e Banco/Não Relacionados.
  * `ehMeuJogador` (default true): `_id` é só o índice dentro do elenco de cada clube (não é globalmente
  * único) — passar `false` pro lado adversário do campo duplo, senão ele "herdaria" estrela/forma de um
@@ -2189,7 +2206,7 @@ function montarEstrelaBadgeVaga(jogador, ehMeuJogador) {
   const souMeu = ehMeuJogador !== false;
   const estrela = souMeu ? obterEstrelaJogador(jogador) : obterEstrelaEditor(jogador);
   if (!estrela) return "";
-  const emoji = estrela === "dourada" ? "⭐" : "🥈";
+  const emoji = estrela === "dourada" ? "✮" : "🥈";
   const rotulo = estrela === "dourada" ? "Estrela Dourada" : "Estrela Prateada";
   return "<span class=\"estrela-badge-vaga\" title=\"" + rotulo + "\">" + emoji + "</span>";
 }
@@ -3842,6 +3859,64 @@ function registrarHistoricoPartidaOficial() {
   });
 }
 
+/** Chave de jogador pra estatística de liga: `_id` sozinho NÃO é único entre clubes (é só o
+ *  índice do jogador dentro do elenco dele) — precisa do nome do time junto. */
+function chaveJogadorLiga(nomeTime, idJogador) {
+  return nomeTime + "|" + idJogador;
+}
+
+/**
+ * Artilharia da liga (Correção — 2026-08-06): `partidasRodada` (os outros ~9 confrontos da
+ * mesma rodada, simulados minuto a minuto ao lado do jogo do usuário — ver `montarRodadaParalela`)
+ * já geram eventos de gol/assistência/cartão de verdade, mas antes eram descartados depois de
+ * extrair só o placar pra tabela. Aqui os gols/assistências/cartões REAIS de cada titular desses
+ * jogos entram no mesmo tipo de acumulador da Artilharia, só que por clube (`chaveJogadorLiga`) —
+ * é o que permite jogador de QUALQUER time aparecer no ranking por ter marcado de verdade, em vez
+ * de só o número sintético que `gerarStatsSinteticasTemporada` inventava pra ele.
+ */
+function registrarHistoricoRodadaParalela() {
+  if (!partidasRodada || partidasRodada.length === 0) return;
+  estado.statsTemporadaLigaPorJogador = estado.statsTemporadaLigaPorJogador || {};
+
+  partidasRodada.forEach(function (jogo) {
+    if (!jogo.partida || !jogo.casa || !jogo.fora) return;
+    ["casa", "fora"].forEach(function (lado) {
+      const timeSimulado = lado === "casa" ? jogo.casa : jogo.fora;
+      (timeSimulado.titulares || []).forEach(function (item) {
+        const chave = chaveJogadorLiga(timeSimulado.nome, item.jogador._id);
+        const stats = estado.statsTemporadaLigaPorJogador[chave] = estado.statsTemporadaLigaPorJogador[chave] ||
+          { jogos: 0, gols: 0, assistencias: 0, amarelos: 0, vermelhos: 0 };
+        stats.jogos++;
+      });
+    });
+
+    jogo.partida.eventos.forEach(function (evento) {
+      const timeDoLado = evento.lado === "casa" ? jogo.casa : jogo.fora;
+      if (!timeDoLado) return;
+      if (evento.tipo === "gol") {
+        if (evento.idJogador !== undefined && evento.idJogador !== null) {
+          const chave = chaveJogadorLiga(timeDoLado.nome, evento.idJogador);
+          const stats = estado.statsTemporadaLigaPorJogador[chave];
+          if (stats) stats.gols++;
+        }
+        if (evento.idJogadorAssistencia !== undefined && evento.idJogadorAssistencia !== null) {
+          const chaveAssist = chaveJogadorLiga(timeDoLado.nome, evento.idJogadorAssistencia);
+          const statsAssist = estado.statsTemporadaLigaPorJogador[chaveAssist];
+          if (statsAssist) statsAssist.assistencias++;
+        }
+      } else if (evento.tipo === "cartao-amarelo" || evento.tipo === "cartao-vermelho") {
+        if (evento.idJogador !== undefined && evento.idJogador !== null) {
+          const chave = chaveJogadorLiga(timeDoLado.nome, evento.idJogador);
+          const stats = estado.statsTemporadaLigaPorJogador[chave];
+          if (stats) {
+            if (evento.tipo === "cartao-amarelo") stats.amarelos++; else stats.vermelhos++;
+          }
+        }
+      }
+    });
+  });
+}
+
 /**
  * Notas de TODOS os titulares de um lado da partida (mandante OU visitante, qualquer um dos
  * dois — ao contrário de `calcularNotasPosJogo`, que só calcula pro MEU time). Usada pra
@@ -3944,6 +4019,7 @@ function fecharTemporadaNoHistoricoDosJogadores() {
 
   estado.statsTemporadaAtualPorJogador = {};
   estado.jogosTemporadaPorJogador = {};
+  estado.statsTemporadaLigaPorJogador = {};
 }
 
 /**
@@ -4347,15 +4423,27 @@ function montarCandidatosLigaTemporada(dados, divisaoChave, ano, progressoParcia
           notaMedia: notaMedia, jogos: stats.jogos, meu: true,
         });
       } else {
-        // Sistema de Estrelas Durante a Temporada: com `progressoParcial`, os outros ~19 clubes
-        // usam estatística sintética PROPORCIONAL às rodadas já disputadas (não a temporada inteira).
+        // Artilharia da liga (Correção — 2026-08-06): se esse jogador já entrou como titular numa
+        // rodada paralela simulada de verdade (`registrarHistoricoRodadaParalela`), usa o gol/
+        // assistência REAL dele em vez do número sintético — é o que faz jogador de QUALQUER time
+        // aparecer no topo por ter marcado de verdade. Reserva que nunca foi titular simulado (ou
+        // clube que ainda não jogou nenhuma rodada) continua com o sintético de sempre (Sistema de
+        // Estrelas Durante a Temporada, proporcional à rodada atual via `progressoParcial`).
+        const statsReais = estado.statsTemporadaLigaPorJogador[chaveJogadorLiga(time.nome, jogador._id)];
         const sint = progressoParcial
           ? gerarStatsSinteticasParcial(jogador, time.nome, divisaoChave, ano, progressoParcial.rodadasJogadas, progressoParcial.totalRodadas)
           : gerarStatsSinteticasTemporada(jogador, time.nome, divisaoChave, ano);
-        candidatos.push({
-          jogador: jogador, nomeTime: time.nome, pos: jogador.pos, gols: sint.gols, assistencias: sint.assistencias,
-          notaMedia: sint.notaMedia, jogos: sint.jogos, meu: false,
-        });
+        if (statsReais && statsReais.jogos > 0) {
+          candidatos.push({
+            jogador: jogador, nomeTime: time.nome, pos: jogador.pos, gols: statsReais.gols, assistencias: statsReais.assistencias,
+            notaMedia: sint.notaMedia, jogos: statsReais.jogos, meu: false,
+          });
+        } else {
+          candidatos.push({
+            jogador: jogador, nomeTime: time.nome, pos: jogador.pos, gols: sint.gols, assistencias: sint.assistencias,
+            notaMedia: sint.notaMedia, jogos: sint.jogos, meu: false,
+          });
+        }
       }
     });
   });
@@ -4402,9 +4490,18 @@ function calcularLiderancasDaLiga(dados, divisaoChave, ano, progressoParcial) {
  * critério de `calcularLiderancasDaLiga` — evita 1 jogo isolado virar "artilheiro").
  */
 function montarRankingArtilharia(dados, divisaoChave, ano, chave, limite, progressoParcial) {
+  // Critério de desempate (2026-08-06): 1) mais na estatística da aba (gols/assistências);
+  // 2) menos jogos disputados (quem fez a mesma produção em menos jogos fica acima); 3) a outra
+  // estatística (assistências desempata gols, e vice-versa); 4) maior força efetiva do jogador.
+  const outraChave = chave === "assistencias" ? "gols" : "assistencias";
   return montarCandidatosLigaTemporada(dados, divisaoChave, ano, progressoParcial)
     .filter(function (c) { return c.jogos >= 5; })
-    .sort(function (a, b) { return b[chave] - a[chave] || b.notaMedia - a.notaMedia; })
+    .sort(function (a, b) {
+      return b[chave] - a[chave]
+        || a.jogos - b.jogos
+        || b[outraChave] - a[outraChave]
+        || b.jogador.forca - a.jogador.forca;
+    })
     .slice(0, limite || 15);
 }
 
@@ -4513,7 +4610,7 @@ async function atualizarEstrelasDeTemporada(parcial) {
   // "vazar" sobre outro botão da tela seguinte (ex.: os atalhos do banner de Fim da Rodada).
   const partesAlerta = [];
   if (promovidosDourada.length > 0) {
-    partesAlerta.push("⭐ Nova Estrela Dourada! " + promovidosDourada.join(", ") + " se consagrou.");
+    partesAlerta.push("✮ Nova Estrela Dourada! " + promovidosDourada.join(", ") + " se consagrou.");
   }
   if (promovidosPrateada.length > 0) {
     partesAlerta.push("🥈 Nova Promessa! " + promovidosPrateada.join(", ") + " ganhou a Estrela Prateada.");
@@ -4928,6 +5025,7 @@ async function concluirRodadaOficial() {
   aplicarDesgastePosPartida();
   aplicarCartoesPosPartida();
   registrarHistoricoPartidaOficial(); // Perfil do Atleta: guarda a nota/confronto e soma gols/cartões da temporada
+  registrarHistoricoRodadaParalela(); // Artilharia da liga: soma gols/assistências/cartões REAIS dos outros clubes
   registrarDetalhePartidaOficial(); // Tela Tabela: guarda escalação/notas/estatísticas pra revisitar depois
   // A escalação titular volta a ser a de saída — trocas feitas "mexendo no
   // time" durante a partida valem só pra essa partida, não pra próxima rodada.
@@ -7293,7 +7391,7 @@ function renderizarArtilharia() {
 
   corpoEl.innerHTML = "";
   if (ranking.length === 0) {
-    corpoEl.innerHTML = "<tr><td colspan=\"5\" class=\"mensagem-vazia-perfil\">" +
+    corpoEl.innerHTML = "<tr><td colspan=\"6\" class=\"mensagem-vazia-perfil\">" +
       "Ninguém na divisão ainda jogou o mínimo de rodadas pra entrar no ranking.</td></tr>";
     return;
   }
@@ -7306,6 +7404,7 @@ function renderizarArtilharia() {
     tr.innerHTML =
       "<td class=\"col-pos\">" + (indice + 1) + "º</td>" +
       "<td class=\"col-time\">" + escaparHtml(c.jogador.nome) + marcadorEstrela + "</td>" +
+      "<td><span class=\"pos " + classeSetorPosicao(c.jogador.pos) + "\">" + escaparHtml(c.jogador.pos) + "</span></td>" +
       "<td>" + montarNomeComEscudo(c.nomeTime) + "</td>" +
       "<td>" + c.jogos + "</td>" +
       "<td>" + c[chave] + "</td>";
@@ -7645,7 +7744,7 @@ function renderizarListaNotasDetalhe(containerId, notas) {
     li.className = "item-nota-detalhe" + (n.craque ? " craque-do-jogo" : "");
     li.innerHTML =
       "<span class=\"pos\">" + escaparHtml(n.pos) + "</span>" +
-      "<span class=\"nome-nota-detalhe\">" + escaparHtml(n.nome) + (n.entrou ? " 🔄" : "") + (n.craque ? " ⭐" : "") + "</span>" +
+      "<span class=\"nome-nota-detalhe\">" + escaparHtml(n.nome) + (n.entrou ? " 🔄" : "") + (n.craque ? " ✮" : "") + "</span>" +
       "<span class=\"valor-nota-posjogo " + corNota + "\">" + n.nota.toFixed(1) + "</span>";
     el.appendChild(li);
   });
@@ -7877,6 +7976,7 @@ async function continuarJogoSalvo() {
     estado.carreiraPorJogador = registro.carreiraPorJogador || {};
     estado.jogosTemporadaPorJogador = registro.jogosTemporadaPorJogador || {};
     estado.statsTemporadaAtualPorJogador = registro.statsTemporadaAtualPorJogador || {};
+    estado.statsTemporadaLigaPorJogador = registro.statsTemporadaLigaPorJogador || {};
     estado.jogadoresParaEmprestimo = registro.jogadoresParaEmprestimo || {};
     estado.precoPedidoVenda = registro.precoPedidoVenda || {};
     estado.detalhesPartidaPorRodada = registro.detalhesPartidaPorRodada || {};
