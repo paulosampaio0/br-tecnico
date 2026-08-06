@@ -6,6 +6,16 @@ jogabilidade foi validada como correta pelo usuário (2026-08-03, commits
 **"consertar jogabilidade"**, o processo é comparar os valores atuais do
 código com os valores abaixo — não redesenhar o motor do zero.
 
+## Alavancas do técnico que pesam na partida (2026-08-06)
+
+Todas as escolhas do técnico interferem na simulação (`calcularForcaTime` + `processarLadoPartida` em `js/partida.js`):
+
+- **Estilo de jogo** (`AJUSTE_ESTILO_TATICA`): Ataque total `{+3.5 atk, -3 def}` · Ofensivo `{+2, -1.5}` · Equilibrado `{0,0}` · Contra-ataque/retranca `{-2 atk, +2 def}`. (Retranca foi fundida em "Contra-ataque (retranca)"; save antigo com estilo "retranca" migra pra "contra-ataque" no load.)
+- **Marcação** (`AJUSTE_MARCACAO_TATICA`): Leve `-1 def` · Normal `0` · Pesada `+1.5 def`.
+- **Concentrar ataques** (`AJUSTE_CONCENTRAR`): Pelo meio `{+1.4 meio}` (mais posse) · Pelos lados `{-0.5 meio, +0.9 atk}` + escanteios ×1.35 e mais chance de gol de escanteio.
+- **Formação** (`posturaFormacao` em `calcularForcaTime`): baseada no FORMATO relativo ao 4-4-2 (`(atacantes-2)-(defensores-4)`): mais gente à frente = `+1.1 atk / -0.9 def`; mais meias = `+1.3 meio`. Efeito medido em jogo: 4-3-3 marca e sofre mais que 4-4-2; 4-2-4 é o mais ofensivo; 5-4-1 sofre menos. (É somado por cima da média de força — o formato dá a POSTURA, a qualidade dos jogadores continua mandando.)
+- **Cobradores de bola parada** (`estado.cobradorPenaltiId/FaltaId/EscanteioId`, escolhidos antes do jogo, pré-preenchidos com o melhor de cada função via `garantirEscolhasTaticasPreenchidas`): pênalti e falta são cobrados pelo escolhido (`cobradorDoPapel` em partida.js); escanteio influencia a chance de gol de escanteio. Pênalti é AUTOMÁTICO com o cobrador pré-escolhido (não pausa mais). Capitão também vem pré-preenchido (maior liderança).
+
 ## Métricas-alvo (medidas por simulação Monte Carlo)
 
 Simular várias centenas/milhares de jogos com `simularJogoCompleto` /

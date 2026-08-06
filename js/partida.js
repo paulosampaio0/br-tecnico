@@ -16,13 +16,25 @@ const SETOR_POR_POSICAO = {
   ATD: "ataque", ATE: "ataque", ATA: "ataque",
 };
 
+// Estilos de jogo (2026-08-04): escala de 4 posturas. "Ataque total" arrisca tudo (cria muito mais e
+// se expõe muito mais); "Contra-ataque (retranca)" funde a antiga Retranca — defende muito e chuta
+// menos, vivendo do contragolpe. A antiga "contra-ataque" fraquinha e a "retranca" viraram essa uma só.
 const AJUSTE_ESTILO_TATICA = {
-  equilibrado: { ataque: 0, defesa: 0 },
+  "ataque-total": { ataque: 3.5, defesa: -3 },
   ofensivo: { ataque: 2, defesa: -1.5 },
-  "contra-ataque": { ataque: 0.5, defesa: 0.5 },
-  retranca: { ataque: -2, defesa: 2 },
+  equilibrado: { ataque: 0, defesa: 0 },
+  "contra-ataque": { ataque: -2, defesa: 2 },
 };
 const AJUSTE_MARCACAO_TATICA = { leve: -1, normal: 0, pesada: 1.5 };
+
+// Concentração de ataques (2026-08-04 — antes não fazia NADA na simulação): "meio" domina mais a
+// posse e o jogo central; "lados" troca um pouco de posse por presença de área (mais finalização de
+// beirada e mais escanteio). É o que faz a opção "Concentrar ataques" finalmente pesar na partida.
+const AJUSTE_CONCENTRAR = {
+  equilibrado: { meio: 0, ataque: 0 },
+  meio: { meio: 1.4, ataque: 0 },
+  lados: { meio: -0.5, ataque: 0.9 },
+};
 
 // Teto pro bônus/prejuízo TOTAL vindo das setas (Fase 3), pra não empilhar sem limite —
 // só o time do usuário usa setas de verdade, então sem teto o time dele destoava demais da IA.
@@ -219,6 +231,18 @@ function melhorCobrador(timeSimulado) {
   }, null);
 }
 
+/** Cobrador escolhido pelo técnico pra um papel de bola parada ("penalti"/"falta"/"escanteio"), se
+ * ele ainda estiver em campo (titular e não expulso); senão cai no melhor cobrador disponível. Times
+ * da CPU não têm `cobradores` definido, então sempre usam o melhor automático — que já é realista. */
+function cobradorDoPapel(timeSimulado, papel) {
+  const id = timeSimulado.cobradores ? timeSimulado.cobradores[papel] : null;
+  if (id !== null && id !== undefined) {
+    const emCampo = titularesEmCampo(timeSimulado).find(function (i) { return i.jogador._id === id; });
+    if (emCampo) return emCampo.jogador;
+  }
+  return melhorCobrador(timeSimulado);
+}
+
 /** Conversão de pênalti por habilidade do cobrador (Realismo — antes era taxa fixa 0.76 pra
  * todo mundo). Característica "Finalização" dá um empurrão extra. Usado tanto no pênalti
  * automático (CPU/adversário) quanto no interativo (usuário escolhe o cobrador, app.js). */
@@ -238,12 +262,10 @@ function taxaConversaoFaltaDireta(cobrador) {
  * habilidade (`taxaConversaoPenalti`), nunca mais taxa fixa igual pra qualquer um. */
 function concederPenalti(partida, atacante, ladoAtacante, permitirPausaPenalti, estatAtacante) {
   estatAtacante.noGol++;
-  if (permitirPausaPenalti) {
-    partida.pendencia = { tipo: "penalti", lado: ladoAtacante };
-    registrarEvento(partida, "penalti", ladoAtacante, "🎯 Pênalti marcado!");
-    return;
-  }
-  const cobrador = melhorCobrador(atacante);
+  // Cobrança automática pelo cobrador PRÉ-ESCOLHIDO antes do jogo (2026-08-04): o técnico define o
+  // batedor de pênalti na tela de escalação, então a partida não pausa mais pra escolher na hora.
+  // `permitirPausaPenalti` fica no parâmetro só por compatibilidade de assinatura, mas não é mais usado.
+  const cobrador = cobradorDoPapel(atacante, "penalti");
   if (!cobrador) return;
   const converteu = Math.random() < taxaConversaoPenalti(cobrador);
   if (converteu) {
@@ -256,7 +278,7 @@ function concederPenalti(partida, atacante, ladoAtacante, permitirPausaPenalti, 
 
 /** Cobrança de falta direta (fora da área, em posição perigosa) — bem mais rara que pênalti. */
 function resolverCobrancaFaltaDireta(partida, atacante, ladoAtacante, estatAtacante) {
-  const cobrador = melhorCobrador(atacante);
+  const cobrador = cobradorDoPapel(atacante, "falta");
   if (!cobrador) return;
   estatAtacante.finalizacoes++;
   const converteu = Math.random() < taxaConversaoFaltaDireta(cobrador);
@@ -404,10 +426,24 @@ function calcularForcaTime(titularesResolvidos, tatica) {
     ataque: contagem.ataque > 0 ? soma.ataque / contagem.ataque : 35,
   };
 
+  // Peso da FORMAÇÃO (2026-08-04): o FORMATO do time pesa, não só a média de força. Como o setor é
+  // uma média, só "contar" jogadores não bastava (o 3º atacante é mais fraco e derrubava a média — o
+  // time atacava MENOS). Então o efeito vem da POSTURA do formato, somada por cima da qualidade média:
+  // mais gente à frente que atrás = ataca mais e se expõe mais; mais gente atrás = defende mais; mais
+  // meias = domina mais o meio (posse). Baseline é o 4-4-2 (4 defesa · 4 meio · 2 ataque) = neutro.
+  const posturaFormacao = (contagem.ataque - 2) - (contagem.defesa - 4); // >0 ofensivo, <0 defensivo
+  setores.ataque += posturaFormacao * 1.1;
+  setores.defesa -= posturaFormacao * 0.9;
+  setores.meio += (contagem.meio - 4) * 1.3;
+
   const ajusteEstilo = AJUSTE_ESTILO_TATICA[tatica.estilo] || AJUSTE_ESTILO_TATICA.equilibrado;
   setores.ataque += ajusteEstilo.ataque;
   setores.defesa += ajusteEstilo.defesa;
   setores.defesa += AJUSTE_MARCACAO_TATICA[tatica.marcacao] || 0;
+
+  const ajusteConc = AJUSTE_CONCENTRAR[tatica.concentrar] || AJUSTE_CONCENTRAR.equilibrado;
+  setores.meio += ajusteConc.meio;
+  setores.ataque += ajusteConc.ataque;
 
   return setores;
 }
@@ -455,6 +491,10 @@ function criarTimeSimulado(nome, titularesResolvidos, tatica, setasPorVaga, opco
     nome: nome,
     titulares: titularesResolvidos, // guardado pra sortear nomes de jogadores nos eventos
     tatica: tatica, // guardado pra recalcular setoresBase depois de uma substituição tática da IA
+    concentrar: (tatica && tatica.concentrar) || "equilibrado", // "meio"/"lados"/"equilibrado" — pesa em posse e escanteio
+    // Cobradores de bola parada escolhidos pelo técnico (só o time do usuário passa isso; CPU usa o
+    // melhor cobrador automático). { penalti, falta, escanteio } com _id do titular, ou null.
+    cobradores: (extras && extras.cobradores) || null,
     opcoesMando: opcoesMando || null,
     setores: setores, // { defesa, meio, ataque } — força EFETIVA do setor, recalculada minuto a minuto (setas + reatividade da IA + expulsão)
     setoresBase: Object.assign({}, setores), // referência fixa (mando+tática já aplicados), sem setas/reatividade/expulsão
@@ -824,7 +864,30 @@ function processarLadoPartida(partida, atacante, defensor, ladoAtacante, permiti
 
   if (Math.random() < 0.04) estatDefensor.desarmes++;
   if (Math.random() < 0.05) estatAtacante.errosPasse++;
-  if (Math.random() < 0.055) estatAtacante.escanteios++; // ~5 por time numa partida de 90min, perto da média real
+
+  // Escanteios (2026-08-04): antes era só um número na estatística. Agora "Concentrar pelos lados"
+  // gera mais escanteios, e cada escanteio tem uma pequena chance de virar gol de cabeça —
+  // influenciada pela entrega do cobrador de escanteio escolhido e pela defesa/goleiro adversário.
+  const concentraLados = atacante.concentrar === "lados";
+  const chanceEscanteio = 0.055 * (concentraLados ? 1.35 : 1);
+  if (Math.random() < chanceEscanteio) {
+    estatAtacante.escanteios++;
+    const cobrador = cobradorDoPapel(atacante, "escanteio");
+    if (cobrador) {
+      const qualidadeEntrega = clamp((cobrador.forca - 30) / 20, 0.15, 1); // 0.15 a 1.0 conforme a força do cobrador
+      let chanceGolEscanteio = 0.035 * qualidadeEntrega;
+      chanceGolEscanteio *= clamp(1.1 - infoGoleiro.fator * 0.4, 0.6, 1.1); // goleiro nato afasta mais a bola
+      if (concentraLados) chanceGolEscanteio *= 1.25;
+      if (Math.random() < chanceGolEscanteio) {
+        estatAtacante.noGol++;
+        if (ladoAtacante === "casa") partida.placarCasa++; else partida.placarFora++;
+        const cabeceador = itemDeLinhaAleatorio(atacante).jogador;
+        registrarEvento(partida, "gol", ladoAtacante,
+          "⚽ Gol de escanteio! " + cabeceador.nome + sufixoEstrelaEvento(cabeceador) +
+          " sobe mais alto na cobrança de " + cobrador.nome + ".", cabeceador._id);
+      }
+    }
+  }
 
   // Faltas (Realismo — Sistema de Árbitro): quem comete é o `defensor` (trava a jogada do
   // atacante), escalado pelo rigor do juiz sorteado nesta partida — ver `partida.arbitro`.

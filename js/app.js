@@ -54,10 +54,10 @@ const LIMITE_AMARELOS_SUSPENSAO = 3; // 3 cartões amarelos = 1 jogo de suspens�
 
 const OPCOES_TATICA = {
   estilo: [
-    { v: "equilibrado", r: "Equilibrado" },
+    { v: "ataque-total", r: "Ataque total" },
     { v: "ofensivo", r: "Ofensivo" },
-    { v: "contra-ataque", r: "Contra-ataque" },
-    { v: "retranca", r: "Retranca" },
+    { v: "equilibrado", r: "Equilibrado" },
+    { v: "contra-ataque", r: "Contra-ataque (retranca)" },
   ],
   marcacao: [
     { v: "leve", r: "Leve" },
@@ -236,6 +236,9 @@ function salvarProgresso() {
     precoIngresso: estado.precoIngresso,
     contratos: estado.contratos,
     capitaoId: estado.capitaoId,
+    cobradorPenaltiId: estado.cobradorPenaltiId,
+    cobradorFaltaId: estado.cobradorFaltaId,
+    cobradorEscanteioId: estado.cobradorEscanteioId,
     relacionadosIds: estado.relacionadosIds,
     // Quem ainda está no elenco (contratos que venceram sem renovação saem — Fase 11).
     // Sem isso, recarregar o jogo traria de volta jogadores que já foram embora.
@@ -838,6 +841,10 @@ async function escalarEsteTime(time) {
     estado.contratos[jogador._id] = criarContratoInicial(jogador);
   });
   estado.capitaoId = null;
+  estado.cobradorPenaltiId = null;
+  estado.cobradorFaltaId = null;
+  estado.cobradorEscanteioId = null;
+  garantirEscolhasTaticasPreenchidas(); // capitão + cobradores já vêm pré-preenchidos com o melhor de cada função
   estado.jogadoresComprados = [];
   estado.proximoIdMercado = 100000;
   estado.propostasRecebidas = [];
@@ -1187,6 +1194,7 @@ function reencaixarFormacaoEmPartida(novaFormacaoId) {
 
 function renderizarCampo() {
   const emPartidaAoVivo = estaEmPartidaAtiva();
+  garantirEscolhasTaticasPreenchidas(); // capitão + cobradores sempre válidos e pré-preenchidos
 
   // Campo Tático Duplo (Correção): durante uma partida ativa, o campo de edição single-team
   // vira o campo duplo (mandante x visitante, estilo Flashscore/Sofascore) com a lista de
@@ -1204,6 +1212,7 @@ function renderizarCampo() {
     renderizarCampoDuploPartida();
     renderizarSubstituicoesPartida();
     montarSelectCapitao();
+    montarSelectsCobradores();
     return;
   }
 
@@ -1267,6 +1276,7 @@ function renderizarCampo() {
   });
 
   montarSelectCapitao();
+  montarSelectsCobradores();
 }
 
 /** Aba ativa do "Mexer no time": "meu" (interativo, com substituição) ou "adversario" (só leitura). */
@@ -1534,6 +1544,72 @@ function montarSelectCapitao() {
 /** Chamado pelo <select> de capitão — grava direto em `estado.capitaoId` (ou null pra "Sem capitão"). */
 function definirCapitao(valorSelect) {
   estado.capitaoId = valorSelect === "" ? null : Number(valorSelect);
+  salvarProgresso();
+  renderizarCampo();
+}
+
+/**
+ * Pré-preenche (ou repara) capitão e cobradores de bola parada com o melhor titular pra cada função:
+ * capitão = maior liderança (idade+força); pênalti/falta = maior taxa de conversão; escanteio = melhor
+ * entrega (força, favorecendo meias/laterais/pontas). Só mexe no que está null ou aponta pra alguém que
+ * NÃO é titular agora — nunca sobrescreve uma escolha válida do técnico. Roda no início da carreira, no
+ * load e a cada render do campo, pra acompanhar troca de escalação/formação.
+ */
+function garantirEscolhasTaticasPreenchidas() {
+  if (!estado.timeAtual) return;
+  const titulares = resolverTitulares(estado.timeAtual.jogadores, estado.formacaoId, estado.titulares);
+  if (titulares.length === 0) return;
+  const idsTitulares = new Set(titulares.map(function (i) { return i.jogador._id; }));
+  const linha = titulares.filter(function (i) { return i.vaga.pos !== "GOL"; });
+  const listaCobrador = linha.length > 0 ? linha : titulares;
+
+  function melhorPor(lista, escore) {
+    return lista.reduce(function (m, i) {
+      return (!m || escore(i.jogador) > escore(m.jogador)) ? i : m;
+    }, null);
+  }
+  function definirSeVazio(campo, lista, escore) {
+    if (estado[campo] !== null && estado[campo] !== undefined && idsTitulares.has(estado[campo])) return;
+    const melhor = melhorPor(lista, escore);
+    estado[campo] = melhor ? melhor.jogador._id : null;
+  }
+
+  definirSeVazio("capitaoId", titulares, calcularFatorLiderancaCapitao);
+  definirSeVazio("cobradorPenaltiId", listaCobrador, taxaConversaoPenalti);
+  definirSeVazio("cobradorFaltaId", listaCobrador, taxaConversaoFaltaDireta);
+  definirSeVazio("cobradorEscanteioId", listaCobrador, function (j) {
+    const wide = ["MEI", "LAT.D", "LAT.E", "ATE", "ATD"].indexOf(j.pos) !== -1 ? 5 : 0;
+    return j.forca + wide; // melhor "entrega": força, com um empurrão pra quem joga aberto/pelo meio
+  });
+}
+
+/** Monta os 3 <select> de cobradores (pênalti/falta/escanteio) com os titulares de linha atuais. */
+function montarSelectsCobradores() {
+  const titulares = resolverTitulares(estado.timeAtual.jogadores, estado.formacaoId, estado.titulares)
+    .filter(function (i) { return i.vaga.pos !== "GOL"; });
+
+  [
+    { id: "select-cobrador-penalti", campo: "cobradorPenaltiId" },
+    { id: "select-cobrador-falta", campo: "cobradorFaltaId" },
+    { id: "select-cobrador-escanteio", campo: "cobradorEscanteioId" },
+  ].forEach(function (cfg) {
+    const select = document.getElementById(cfg.id);
+    if (!select) return;
+    select.innerHTML = "";
+    titulares.forEach(function (item) {
+      const opcao = document.createElement("option");
+      opcao.value = item.jogador._id;
+      opcao.textContent = item.jogador.nome + " (" + item.vaga.pos + ")";
+      select.appendChild(opcao);
+    });
+    select.value = estado[cfg.campo] !== null && titulares.some(function (i) { return i.jogador._id === estado[cfg.campo]; })
+      ? estado[cfg.campo] : "";
+  });
+}
+
+/** Chamado pelos <select> de cobrador — grava o _id no campo certo do estado e re-renderiza. */
+function definirCobrador(campo, valorSelect) {
+  estado[campo] = valorSelect === "" ? null : Number(valorSelect);
   salvarProgresso();
   renderizarCampo();
 }
@@ -2768,7 +2844,11 @@ function calcularTimeSimuladoUsuario() {
   // Capitão (Gestão Humana): só o time do usuário tem essa mecânica — os outros 39 clubes da
   // liga são só tabela/estatística, sem elenco "de verdade" pra escolher um capitão.
   const time = criarTimeSimulado(estado.timeAtual.nome, titularesComFadiga, estado.tatica, estado.setas,
-    { mando: meuLadoNaPartida }, estado.capitaoId, { temEstrelaDourada: existeDouradaTitular });
+    { mando: meuLadoNaPartida }, estado.capitaoId, {
+      temEstrelaDourada: existeDouradaTitular,
+      // Cobradores de bola parada escolhidos pelo técnico (só o time do usuário) — pênalti/falta/escanteio.
+      cobradores: { penalti: estado.cobradorPenaltiId, falta: estado.cobradorFaltaId, escanteio: estado.cobradorEscanteioId },
+    });
 
   // Correção de bug — cartão vermelho: essa função RECRIA o time do zero toda vez que a
   // simulação retoma de uma pausa (pra escalação/tática valerem), o que apagaria a lista de
@@ -3659,7 +3739,7 @@ function acionarPainelAuxiliar() {
   } else if (auxiliarEstado.acaoAtual === "concentrar-lados") {
     aplicarAcaoTaticaRapidaAuxiliar("concentrar", "lados");
   } else if (auxiliarEstado.acaoAtual === "estilo-retranca") {
-    aplicarAcaoTaticaRapidaAuxiliar("estilo", "retranca");
+    aplicarAcaoTaticaRapidaAuxiliar("estilo", "contra-ataque"); // Retranca virou "Contra-ataque (retranca)"
   }
 }
 
@@ -6327,6 +6407,10 @@ function removerJogadorDoElenco(idJogador) {
     estado.relacionadosIds = estado.relacionadosIds.filter(function (id) { return id !== idJogador; });
   }
   if (estado.capitaoId === idJogador) estado.capitaoId = null; // o capitão saiu do clube — precisa escolher outro
+  // Cobradores: se quem saiu era um dos batedores, zera (o prefill escolhe outro no próximo render).
+  if (estado.cobradorPenaltiId === idJogador) estado.cobradorPenaltiId = null;
+  if (estado.cobradorFaltaId === idJogador) estado.cobradorFaltaId = null;
+  if (estado.cobradorEscanteioId === idJogador) estado.cobradorEscanteioId = null;
   Object.keys(estado.titulares).forEach(function (vagaId) {
     if (estado.titulares[vagaId] === idJogador) {
       delete estado.titulares[vagaId];
@@ -7788,6 +7872,8 @@ async function continuarJogoSalvo() {
     estado.precoPedidoVenda = registro.precoPedidoVenda || {};
     estado.detalhesPartidaPorRodada = registro.detalhesPartidaPorRodada || {};
     estado.tatica = registro.tatica || taticaPadrao();
+    // Fusão Retranca+Contra-ataque (2026-08-04): saves antigos com estilo "retranca" viram "contra-ataque".
+    if (estado.tatica.estilo === "retranca") estado.tatica.estilo = "contra-ataque";
     estado.setas = registro.setas || {};
     estado.temporada = registro.temporada || null;
     estado.energiaPorJogador = registro.energiaPorJogador || {};
@@ -7859,6 +7945,11 @@ async function continuarJogoSalvo() {
     if (estado.capitaoId !== null && !encontrarJogadorPorId(estado.timeAtual.jogadores, estado.capitaoId)) {
       estado.capitaoId = null; // o capitão salvo já não está mais no elenco (dispensado/vendido)
     }
+    // Cobradores de bola parada (2026-08-04) — saves antigos não têm; ficam null e são pré-preenchidos abaixo.
+    estado.cobradorPenaltiId = registro.cobradorPenaltiId !== undefined ? registro.cobradorPenaltiId : null;
+    estado.cobradorFaltaId = registro.cobradorFaltaId !== undefined ? registro.cobradorFaltaId : null;
+    estado.cobradorEscanteioId = registro.cobradorEscanteioId !== undefined ? registro.cobradorEscanteioId : null;
+    garantirEscolhasTaticasPreenchidas(); // preenche capitão/cobradores nulos ou inválidos com o melhor de cada função
 
     // Banco relacionado (Gestão de elenco): saves antigos de antes dessa função não têm
     // `relacionadosIds` — semeia com o padrão (melhores reservas por força). Saves que já
@@ -8559,6 +8650,15 @@ function ligarBotoes() {
 
   const selectCapitao = document.getElementById("select-capitao");
   if (selectCapitao) selectCapitao.addEventListener("change", function () { definirCapitao(selectCapitao.value); });
+
+  [
+    { id: "select-cobrador-penalti", campo: "cobradorPenaltiId" },
+    { id: "select-cobrador-falta", campo: "cobradorFaltaId" },
+    { id: "select-cobrador-escanteio", campo: "cobradorEscanteioId" },
+  ].forEach(function (cfg) {
+    const sel = document.getElementById(cfg.id);
+    if (sel) sel.addEventListener("change", function () { definirCobrador(cfg.campo, sel.value); });
+  });
 
   const btnVoltarEscalacaoFim = document.getElementById("btn-voltar-escalacao-fim");
   if (btnVoltarEscalacaoFim) {
