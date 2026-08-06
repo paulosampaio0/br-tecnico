@@ -387,8 +387,13 @@
 
     <header class="cabecalho cabecalho-lista">
       <button class="btn-voltar" id="btn-voltar-escalacao-selecao-rodada" type="button" aria-label="Voltar">←</button>
-      <h2 class="titulo-lista">Seleção da Rodada</h2>
+      <h2 class="titulo-lista" id="titulo-selecao-rodada">Seleção da Rodada</h2>
     </header>
+
+    <div class="abas abas-tipo-selecao" id="abas-tipo-selecao" role="tablist">
+      <button class="aba ativa" id="aba-selecao-rodada" type="button">⚽ Seleção da Rodada</button>
+      <button class="aba" id="aba-selecao-campeonato" type="button">🏆 Seleção do Campeonato</button>
+    </div>
 
     <div class="filtros-selecao-rodada">
       <div class="campo-filtro-selecao-rodada">
@@ -401,9 +406,13 @@
         <label for="select-divisao-selecao-rodada">Divisão</label>
         <select id="select-divisao-selecao-rodada"></select>
       </div>
-      <div class="campo-filtro-selecao-rodada">
+      <div class="campo-filtro-selecao-rodada" id="campo-filtro-rodada-numero">
         <label for="select-rodada-selecao-rodada">Rodada</label>
         <select id="select-rodada-selecao-rodada"></select>
+      </div>
+      <div class="campo-filtro-selecao-rodada" id="campo-filtro-rodada-campeonato" hidden>
+        <label>Período</label>
+        <p class="valor-filtro-somente-leitura" id="rotulo-periodo-campeonato">Até a —ª rodada</p>
       </div>
     </div>
 

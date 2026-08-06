@@ -7241,6 +7241,40 @@ function montarSelecaoDaRodada(dados, divisaoChave, numeroRodada) {
   return escolhidos;
 }
 
+/**
+ * Seleção do Campeonato (2026-08-06): mesmo esquema de vagas (`FORMACOES["4-3-3a"]`, idêntico
+ * a `VAGAS_SELECAO_CAMPEONATO`), mas com a Nota Média ACUMULADA da temporada em vez da nota
+ * sintética de 1 rodada só — reaproveita `montarCandidatosLigaTemporada` (mesma fonte de dados
+ * já usada pela Artilharia, real pro meu time e pros outros clubes que já marcaram gol de
+ * verdade na rodada paralela). Elegibilidade: jogador precisa ter disputado pelo menos 30% das
+ * rodadas já concluídas na divisão (senão 1 jogo isolado com nota alta dominaria a seleção).
+ */
+function montarSelecaoDoCampeonato(dados, divisaoChave, ano, progressoParcial) {
+  const candidatos = montarCandidatosLigaTemporada(dados, divisaoChave, ano, progressoParcial);
+  const rodadasJogadas = (progressoParcial && progressoParcial.rodadasJogadas) || 0;
+  const minJogos = Math.max(1, Math.ceil(rodadasJogadas * 0.3));
+
+  const elegiveis = candidatos.filter(function (c) { return c.jogos >= minJogos; });
+  const chaveDe = function (c) { return c.nomeTime + "|" + c.jogador._id; };
+  const usados = new Set();
+  const escolhidos = [];
+
+  FORMACOES["4-3-3a"].forEach(function (vaga) {
+    const opcoes = elegiveis
+      .filter(function (c) { return c.pos === vaga.pos && !usados.has(chaveDe(c)); })
+      .sort(function (a, b) { return b.notaMedia - a.notaMedia; });
+    const escolhido = opcoes[0] || elegiveis
+      .filter(function (c) { return !usados.has(chaveDe(c)); })
+      .sort(function (a, b) { return b.notaMedia - a.notaMedia; })[0];
+    if (escolhido) {
+      usados.add(chaveDe(escolhido));
+      escolhidos.push({ vaga: vaga, jogador: escolhido.jogador, nomeTime: escolhido.nomeTime, nota: escolhido.notaMedia });
+    }
+  });
+
+  return escolhidos;
+}
+
 function criarNoSelecaoRodada(item) {
   const botao = document.createElement("button");
   botao.type = "button";
@@ -7274,6 +7308,10 @@ function criarNoSelecaoRodada(item) {
 
 let dadosSelecaoRodadaCache = null;
 
+// Modo ativo na tela de Seleção ("rodada" ou "campeonato") — estado de UI efêmero, mesmo
+// padrão de `abaArtilhariaAtual`/`abaMexerTimeAtual` (não é salvo no progresso).
+let modoSelecaoAtual = "rodada";
+
 /** Última rodada já CONCLUÍDA (rodadaAtual - 1) da divisão informada — trava a Seleção da Rodada
  *  pra nunca mostrar escalações de jogos que ainda não aconteceram (Correção — vazamento de
  *  rodadas futuras). Retorna 0 se nenhuma rodada da divisão foi disputada ainda. */
@@ -7288,6 +7326,28 @@ function renderizarSelecaoRodada() {
   const avisoEl = document.getElementById("aviso-selecao-rodada");
   if (!campoEl || !dadosSelecaoRodadaCache) return;
 
+  if (modoSelecaoAtual === "campeonato") {
+    const progresso = obterProgressoRodadaAtual(divisaoSelecaoRodadaAtual);
+    const rodadasJogadas = (progresso && progresso.rodadasJogadas) || 0;
+    const rotuloPeriodoEl = document.getElementById("rotulo-periodo-campeonato");
+    if (rotuloPeriodoEl) rotuloPeriodoEl.textContent = "Até a " + rodadasJogadas + "ª rodada";
+
+    const semDadosAinda = rodadasJogadas < 1;
+    if (avisoEl) {
+      avisoEl.hidden = !semDadosAinda;
+      avisoEl.textContent = "A Seleção do Campeonato estará disponível após a 1ª rodada.";
+    }
+    campoEl.hidden = semDadosAinda;
+    if (semDadosAinda) { campoEl.innerHTML = ""; return; }
+
+    campoEl.innerHTML = "";
+    const anoAtual = estado.temporada ? estado.temporada.ano : ANO_INICIAL_BR_TECNICO;
+    montarSelecaoDoCampeonato(dadosSelecaoRodadaCache, divisaoSelecaoRodadaAtual, anoAtual, progresso)
+      .forEach(function (item) { campoEl.appendChild(criarNoSelecaoRodada(item)); });
+    return;
+  }
+
+  if (avisoEl) avisoEl.textContent = "A Seleção da Rodada estará disponível após a conclusão dos jogos.";
   const semRodadaDisponivel = !rodadaSelecaoRodadaAtual || rodadaSelecaoRodadaAtual < 1;
   if (avisoEl) avisoEl.hidden = !semRodadaDisponivel;
   campoEl.hidden = semRodadaDisponivel;
@@ -7299,6 +7359,28 @@ function renderizarSelecaoRodada() {
   campoEl.innerHTML = "";
   montarSelecaoDaRodada(dadosSelecaoRodadaCache, divisaoSelecaoRodadaAtual, rodadaSelecaoRodadaAtual)
     .forEach(function (item) { campoEl.appendChild(criarNoSelecaoRodada(item)); });
+}
+
+/** Alterna entre "Seleção da Rodada" e "Seleção do Campeonato" — mesma tela, só troca o que é
+ *  calculado/exibido (filtro de período e o próprio 11 ideal). Não mexe em navegação/Voltar. */
+function trocarModoSelecao(modo) {
+  if (modo === modoSelecaoAtual) return;
+  modoSelecaoAtual = modo;
+
+  const abaRodadaEl = document.getElementById("aba-selecao-rodada");
+  const abaCampeonatoEl = document.getElementById("aba-selecao-campeonato");
+  if (abaRodadaEl) abaRodadaEl.classList.toggle("ativa", modo === "rodada");
+  if (abaCampeonatoEl) abaCampeonatoEl.classList.toggle("ativa", modo === "campeonato");
+
+  const campoFiltroRodadaEl = document.getElementById("campo-filtro-rodada-numero");
+  const campoFiltroCampeonatoEl = document.getElementById("campo-filtro-rodada-campeonato");
+  if (campoFiltroRodadaEl) campoFiltroRodadaEl.hidden = modo === "campeonato";
+  if (campoFiltroCampeonatoEl) campoFiltroCampeonatoEl.hidden = modo !== "campeonato";
+
+  const tituloEl = document.getElementById("titulo-selecao-rodada");
+  if (tituloEl) tituloEl.textContent = modo === "campeonato" ? "Seleção do Campeonato" : "Seleção da Rodada";
+
+  renderizarSelecaoRodada();
 }
 
 function montarFiltrosSelecaoRodada(dados) {
@@ -8539,6 +8621,12 @@ function ligarBotoes() {
       if (veioDoPosJogoParaTabelaOuSelecao) abrirTelaPosJogo(); else abrirTelaEscalacao();
     });
   }
+
+  const abaSelecaoRodada = document.getElementById("aba-selecao-rodada");
+  if (abaSelecaoRodada) abaSelecaoRodada.addEventListener("click", function () { trocarModoSelecao("rodada"); });
+
+  const abaSelecaoCampeonato = document.getElementById("aba-selecao-campeonato");
+  if (abaSelecaoCampeonato) abaSelecaoCampeonato.addEventListener("click", function () { trocarModoSelecao("campeonato"); });
 
   const selectDivisaoSelecaoRodada = document.getElementById("select-divisao-selecao-rodada");
   if (selectDivisaoSelecaoRodada) {

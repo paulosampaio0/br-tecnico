@@ -962,6 +962,10 @@ body::before {
   gap: 4px;
 }
 
+.campo-filtro-selecao-rodada[hidden] {
+  display: none;
+}
+
 .campo-filtro-selecao-rodada label {
   font-size: 10.5px;
   color: var(--cinza-texto);
@@ -979,6 +983,19 @@ body::before {
 
 .campo-filtro-selecao-rodada select:disabled {
   opacity: 0.55;
+}
+
+.valor-filtro-somente-leitura {
+  width: 100%;
+  margin: 0;
+  padding: 8px 6px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--branco);
+  font-size: 12px;
+  opacity: 0.85;
+  white-space: nowrap;
 }
 
 .campo-selecao-rodada {
