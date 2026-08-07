@@ -55,6 +55,65 @@ const AJUSTE_ARMACAO_TATICA = {
 };
 
 /**
+ * Sinergia Tática (2026-08-07): avalia se as instruções escolhidas (estilo + armação + marcação)
+ * combinam entre si. Combinações "sintonizadas" dão um pequeno bônus, "incoerentes" penalizam —
+ * SEMPRE em magnitude pequena (±5% conversão, ±1.2 defesa, ±10% posse) pra não desequilibrar o
+ * balanceamento já calibrado, e SEMPRE simétrico (os dois times, inclusive a CPU, passam por aqui
+ * via `criarTimeSimulado`). Devolve tanto os efeitos numéricos (motor) quanto `avisos`/`pontuacao`
+ * (só pra UI da tela de tática). É uma função pura — não lê estado nem globals.
+ */
+function avaliarSinergiaTatica(tatica) {
+  const estilo = (tatica && tatica.estilo) || "equilibrado";
+  const armacao = (tatica && tatica.armacao) || "passes-curtos";
+  const marcacao = (tatica && tatica.marcacao) || "normal";
+
+  const avisos = [];
+  let conversao = 1, defesa = 0, retencao = 1, bonus = 0, alertas = 0;
+
+  function sintonia(texto, efeitos) {
+    avisos.push({ tipo: "bonus", texto: texto });
+    bonus++;
+    if (efeitos.conversao) conversao *= efeitos.conversao;
+    if (efeitos.retencao) retencao *= efeitos.retencao;
+    if (efeitos.defesa) defesa += efeitos.defesa;
+  }
+  function incoerencia(texto, efeitos) {
+    avisos.push({ tipo: "alerta", texto: texto });
+    alertas++;
+    if (efeitos.conversao) conversao *= efeitos.conversao;
+    if (efeitos.retencao) retencao *= efeitos.retencao;
+    if (efeitos.defesa) defesa += efeitos.defesa;
+  }
+
+  // Estilo × Armação
+  if (estilo === "posse" && armacao === "passes-curtos") {
+    sintonia("Posse + Passes curtos: +5% retenção de bola", { retencao: 1.10, conversao: 1.03 });
+  } else if (estilo === "posse" && armacao === "passes-longos") {
+    incoerencia("Passes longos reduzem a eficiência da Posse de Bola em -5%", { retencao: 0.90, conversao: 0.95 });
+  }
+  if (estilo === "contra-ataque" && armacao === "passes-longos") {
+    sintonia("Contra-ataque + Passes longos: +5% velocidade de transição", { conversao: 1.05 });
+  }
+  if (estilo === "ataque-total" && armacao === "cruzamentos") {
+    sintonia("Ataque total + Cruzamentos: mais bolas na área", { conversao: 1.03 });
+  }
+
+  // Estilo × Marcação
+  if (estilo === "ataque-total" && marcacao === "leve") {
+    incoerencia("Ataque total + Marcação leve: sua defesa fica exposta a contra-ataques", { defesa: -1.2 });
+  }
+  if (estilo === "contra-ataque" && marcacao === "pesada") {
+    sintonia("Contra-ataque + Marcação pesada: bloco defensivo sólido", { defesa: 0.8 });
+  }
+  if (estilo === "posse" && marcacao === "pesada") {
+    incoerencia("Marcação pesada atrapalha a saída de bola da Posse", { retencao: 0.95 });
+  }
+
+  const pontuacao = clamp(80 + bonus * 8 - alertas * 12, 40, 100);
+  return { pontuacao: pontuacao, avisos: avisos, conversao: conversao, defesa: defesa, retencao: retencao };
+}
+
+/**
  * Aptidões táticas (2026-08-06): quanto o ELENCO em campo favorece cada estilo/armação, calculado a
  * partir das características reais dos jogadores (`temCaracteristica`, js/dados.js). Cada aptidão é um
  * fator -1..+1 (0 = elenco mediano da liga) — fração de força efetiva do setor elegível que tem a
@@ -311,16 +370,36 @@ function melhorCobrador(timeSimulado) {
   }, null);
 }
 
+/** Melhor cobrador EM CAMPO pra um papel específico, escolhido pela habilidade do fundamento
+ * (não só força bruta): pênalti → maior conversão (FIN); falta/escanteio → maior "entrega"
+ * (Armação/Passe, com a força desempatando). É o fallback quando o cobrador pré-escolhido pelo
+ * técnico saiu/foi expulso, e também o batedor padrão dos times da CPU (que não escolhem à mão). */
+function melhorCobradorPorPapel(timeSimulado, papel) {
+  const linha = titularesEmCampo(timeSimulado).filter(function (i) { return i.vaga.pos !== "GOL"; });
+  const lista = linha.length > 0 ? linha : titularesEmCampo(timeSimulado);
+  if (lista.length === 0) return null;
+
+  function escore(jogador) {
+    if (papel === "penalti") return taxaConversaoPenalti(jogador);
+    // Falta e escanteio: quem sabe armar/passar entrega melhor a bola parada (mapa pedido: ARM/PAS).
+    return jogador.forca + (temCaracteristica(jogador, ["Armação", "Passe"]) ? 6 : 0);
+  }
+  return lista.reduce(function (melhor, item) {
+    return (!melhor || escore(item.jogador) > escore(melhor)) ? item.jogador : melhor;
+  }, null);
+}
+
 /** Cobrador escolhido pelo técnico pra um papel de bola parada ("penalti"/"falta"/"escanteio"), se
- * ele ainda estiver em campo (titular e não expulso); senão cai no melhor cobrador disponível. Times
- * da CPU não têm `cobradores` definido, então sempre usam o melhor automático — que já é realista. */
+ * ele ainda estiver em campo (titular e não expulso); senão cai no melhor cobrador DAQUELE fundamento
+ * disponível em campo (não só o mais forte). Times da CPU não têm `cobradores` definido, então sempre
+ * usam esse melhor automático por papel. */
 function cobradorDoPapel(timeSimulado, papel) {
   const id = timeSimulado.cobradores ? timeSimulado.cobradores[papel] : null;
   if (id !== null && id !== undefined) {
     const emCampo = titularesEmCampo(timeSimulado).find(function (i) { return i.jogador._id === id; });
     if (emCampo) return emCampo.jogador;
   }
-  return melhorCobrador(timeSimulado);
+  return melhorCobradorPorPapel(timeSimulado, papel);
 }
 
 /** Conversão de pênalti por habilidade do cobrador (Realismo — antes era taxa fixa 0.76 pra
@@ -485,8 +564,9 @@ function resolverTitulares(jogadores, formacaoId, titularesMap) {
  * minuto a minuto em `aplicarEfeitoSetasDoMinuto` (podem falhar), então não
  * dá mais pra somar de graça na força "de base" do time.
  */
-function calcularForcaTime(titularesResolvidos, tatica, aptidoes) {
+function calcularForcaTime(titularesResolvidos, tatica, aptidoes, sinergia) {
   const apt = aptidoes || calcularAptidoesTaticas(titularesResolvidos);
+  const sin = sinergia || avaliarSinergiaTatica(tatica);
   const soma = { defesa: 0, meio: 0, ataque: 0 };
   const contagem = { defesa: 0, meio: 0, ataque: 0 };
 
@@ -534,6 +614,11 @@ function calcularForcaTime(titularesResolvidos, tatica, aptidoes) {
   setores.meio += ajusteConc.meio;
   setores.ataque += ajusteConc.ataque;
 
+  // Sinergia Tática (2026-08-07): combinação incoerente que "expõe a defesa" (ex.: ataque total +
+  // marcação leve) tira um pouco da defesa; combinação sólida soma. A conversão/retenção da sinergia
+  // entram em `processarLadoPartida`/`pesoPosseDoMinuto`, não aqui.
+  setores.defesa += sin.defesa;
+
   return setores;
 }
 
@@ -569,7 +654,8 @@ function aplicarBonusMando(setores, opcoesMando) {
  */
 function criarTimeSimulado(nome, titularesResolvidos, tatica, setasPorVaga, opcoesMando, idCapitao, extras) {
   const aptidoes = calcularAptidoesTaticas(titularesResolvidos);
-  const setores = aplicarBonusMando(calcularForcaTime(titularesResolvidos, tatica, aptidoes), opcoesMando);
+  const sinergia = avaliarSinergiaTatica(tatica);
+  const setores = aplicarBonusMando(calcularForcaTime(titularesResolvidos, tatica, aptidoes, sinergia), opcoesMando);
 
   let capitao = null;
   if (idCapitao !== undefined && idCapitao !== null) {
@@ -586,6 +672,8 @@ function criarTimeSimulado(nome, titularesResolvidos, tatica, setasPorVaga, opco
     // Aptidões táticas (2026-08-06): quanto os titulares EM CAMPO favorecem cada estilo/armação — ver
     // `calcularAptidoesTaticas`. Recalculada em `recalcularSetoresBase` depois de substituição da IA.
     aptidoes: aptidoes,
+    // Sinergia Tática (2026-08-07): efeitos de coerência estilo+armação+marcação — ver `avaliarSinergiaTatica`.
+    sinergia: sinergia,
     // Cobradores de bola parada escolhidos pelo técnico (só o time do usuário passa isso; CPU usa o
     // melhor cobrador automático). { penalti, falta, escanteio } com _id do titular, ou null.
     cobradores: (extras && extras.cobradores) || null,
@@ -622,7 +710,9 @@ function recalcularSetoresBase(time) {
   // Posse (ou de Armação) precisa cair junto — senão o time continua "de posse" sem ter mais quem
   // troque o passe.
   time.aptidoes = calcularAptidoesTaticas(time.titulares);
-  time.setoresBase = aplicarBonusMando(calcularForcaTime(time.titulares, time.tatica, time.aptidoes), time.opcoesMando);
+  // Sinergia depende só da tática (não muda numa substituição), mas passa aqui pra o delta de
+  // defesa da sinergia continuar aplicado no recálculo.
+  time.setoresBase = aplicarBonusMando(calcularForcaTime(time.titulares, time.tatica, time.aptidoes, time.sinergia), time.opcoesMando);
 }
 
 // Setores "seguros" pra tirar de campo numa substituição tática (nunca mexe no goleiro).
@@ -913,6 +1003,7 @@ function processarLadoPartida(partida, atacante, defensor, ladoAtacante, permiti
     if (atacante.tatica && atacante.tatica.estilo === "posse") fatorTaticaConversao *= 1 + 0.06 * atacante.aptidoes.passe;
     if (armacaoAtacante === "chutes-longe") fatorTaticaConversao *= 0.62 + 0.28 * clamp(0.5 + 0.5 * atacante.aptidoes.chuteLonge, 0, 1);
     if (armacaoAtacante === "cruzamentos" && atacante.aptidoes.cabeceio > 0) fatorTaticaConversao *= 1 + 0.10 * atacante.aptidoes.cruzamento;
+    if (atacante.sinergia) fatorTaticaConversao *= atacante.sinergia.conversao; // Sinergia Tática (2026-08-07)
     let chanceGol = clamp((0.106 + diferenca * 0.003) * partida.fatorZebra[ladoDefensor] * fatorTaticaConversao, 0.02, 0.2);
     // Goleiro improvisado ou ausente (Correção de bug — 2026-07-25): quanto menor o fator,
     // mais essa penalidade empurra a chance de gol pra cima — praticamente certo de virar
@@ -1277,6 +1368,7 @@ function pesoPosseDoMinuto(time) {
   const estilo = time.tatica && time.tatica.estilo;
   if (estilo === "posse") peso *= 1 + 0.10 * clamp(0.5 + 0.5 * time.aptidoes.passe, 0, 1);
   else if (estilo === "contra-ataque") peso *= 0.93;
+  if (time.sinergia) peso *= time.sinergia.retencao; // Sinergia Tática (2026-08-07): retenção de bola
   return peso;
 }
 

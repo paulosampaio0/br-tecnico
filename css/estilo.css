@@ -1925,6 +1925,118 @@ body::before {
   color: #3a2b00;
 }
 
+/* Botões de tática com badges de risco/benefício (2026-08-07): viram cartão de 2 linhas
+   (rótulo em cima, tags embaixo), com cantos menos arredondados pra caber o texto extra. */
+.opcao.opcao-com-tags {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  min-height: 40px;
+  padding: 8px 14px;
+  border-radius: 14px;
+}
+
+.opcao .opcao-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.opcao .opcao-tag {
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 1.2;
+  padding: 2px 6px;
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.22);
+  color: inherit;
+  opacity: 0.85;
+}
+
+/* Indicador de Sinergia Tática (2026-08-07): barra de % + lista de alertas no topo da seção. */
+.indicador-sinergia {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 12px;
+  padding: 10px 12px;
+  margin-bottom: 14px;
+}
+
+.cabecalho-sinergia {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--cinza-texto);
+}
+
+.cabecalho-sinergia .valor-sinergia {
+  font-size: 15px;
+  color: var(--branco);
+}
+
+.barra-sinergia {
+  height: 8px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.1);
+  overflow: hidden;
+  margin: 8px 0;
+}
+
+.barra-sinergia-preenchida {
+  display: block;
+  height: 100%;
+  width: 0;
+  border-radius: 6px;
+  transition: width 0.25s ease;
+  background: var(--amarelo);
+}
+
+.barra-sinergia-preenchida.sinergia-boa { background: #46c46a; }
+.barra-sinergia-preenchida.sinergia-media { background: var(--amarelo); }
+.barra-sinergia-preenchida.sinergia-ruim { background: #e5533c; }
+
+.lista-avisos-sinergia {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.aviso-sinergia {
+  font-size: 11.5px;
+  line-height: 1.3;
+}
+
+.aviso-sinergia-bonus { color: #7fdd97; }
+.aviso-sinergia-alerta { color: #f0a08c; }
+.aviso-sinergia-neutro { color: var(--cinza-texto); }
+
+/* Grade 2x2 de Capitão + Cobradores (2026-08-07): economiza rolagem vertical no celular. */
+.grade-cobradores {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.controle-formacao-empilhado {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 4px;
+  min-width: 0; /* deixa a coluna 1fr encolher em vez de o <select> forçar a largura das opções */
+}
+
+.controle-formacao-empilhado select {
+  width: 100%;
+  min-width: 0;
+}
+
 .aviso-salvo {
   text-align: center;
   font-size: 12px;

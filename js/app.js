@@ -2665,6 +2665,20 @@ function anexarArrastoOrigemCompacta(botao, jogador, origem) {
 
 /* ---------- Tática ---------- */
 
+// Badges de Risco/Benefício (2026-08-07): descrevem em 1 linha o efeito que o motor JÁ produz pra
+// cada instrução (não somam efeito novo — são informativos). Só as opções mais "de trade-off" têm tag.
+const TAGS_TATICA = {
+  estilo: {
+    "ataque-total": [{ icon: "⚽", txt: "+Opções no ataque" }, { icon: "🚨", txt: "+Espaço na defesa" }],
+    "contra-ataque": [{ icon: "🛡️", txt: "+Solidez" }, { icon: "🐢", txt: "-Volume ofensivo" }],
+    posse: [{ icon: "🎯", txt: "+Controle" }, { icon: "🧠", txt: "Depende de bons passadores" }],
+  },
+  marcacao: {
+    pesada: [{ icon: "🟨", txt: "+Faltas/Cartões" }, { icon: "⚡", txt: "+Fôlego gasto" }],
+    leve: [{ icon: "🟢", txt: "-Faltas" }, { icon: "🛡️", txt: "-Eficiência de desarme" }],
+  },
+};
+
 function renderizarTatica() {
   Object.keys(OPCOES_TATICA).forEach(function (campo) {
     const container = document.getElementById("opcoes-" + campo);
@@ -2674,12 +2688,47 @@ function renderizarTatica() {
       const botao = document.createElement("button");
       botao.type = "button";
       botao.className = "opcao" + (estado.tatica[campo] === opcao.v ? " ativa" : "");
-      botao.textContent = opcao.r;
+      const tags = (TAGS_TATICA[campo] && TAGS_TATICA[campo][opcao.v]) || null;
+      botao.innerHTML = "<span class=\"opcao-rotulo\">" + escaparHtml(opcao.r) + "</span>" +
+        (tags ? "<span class=\"opcao-tags\">" + tags.map(function (t) {
+          return "<span class=\"opcao-tag\">" + t.icon + " " + escaparHtml(t.txt) + "</span>";
+        }).join("") + "</span>" : "");
+      if (tags) botao.classList.add("opcao-com-tags");
       botao.addEventListener("click", function () {
         definirTatica(campo, opcao.v);
       });
       container.appendChild(botao);
     });
+  });
+  renderizarSinergia();
+}
+
+/** Barra + alertas de Sinergia Tática no topo da seção (ver `avaliarSinergiaTatica`, partida.js). */
+function renderizarSinergia() {
+  const barraEl = document.getElementById("barra-sinergia-preenchida");
+  const valorEl = document.getElementById("valor-sinergia");
+  const listaEl = document.getElementById("lista-avisos-sinergia");
+  if (!barraEl || !valorEl || !listaEl) return;
+
+  const sin = avaliarSinergiaTatica(estado.tatica);
+  barraEl.style.width = sin.pontuacao + "%";
+  const faixa = sin.pontuacao >= 80 ? "boa" : sin.pontuacao >= 60 ? "media" : "ruim";
+  barraEl.className = "barra-sinergia-preenchida sinergia-" + faixa;
+  valorEl.textContent = sin.pontuacao + "%";
+
+  listaEl.innerHTML = "";
+  if (sin.avisos.length === 0) {
+    const li = document.createElement("li");
+    li.className = "aviso-sinergia aviso-sinergia-neutro";
+    li.textContent = "Instruções equilibradas, sem combinações de destaque.";
+    listaEl.appendChild(li);
+    return;
+  }
+  sin.avisos.forEach(function (aviso) {
+    const li = document.createElement("li");
+    li.className = "aviso-sinergia aviso-sinergia-" + aviso.tipo;
+    li.textContent = (aviso.tipo === "bonus" ? "✅ " : "⚠️ ") + aviso.texto;
+    listaEl.appendChild(li);
   });
 }
 

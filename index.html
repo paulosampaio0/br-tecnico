@@ -341,6 +341,17 @@
     </section>
 
     <section class="secao-tatica">
+      <div class="indicador-sinergia" id="indicador-sinergia">
+        <div class="cabecalho-sinergia">
+          <span class="rotulo-sinergia">⚙️ Sinergia Tática</span>
+          <span class="valor-sinergia" id="valor-sinergia">—</span>
+        </div>
+        <div class="barra-sinergia">
+          <span class="barra-sinergia-preenchida" id="barra-sinergia-preenchida"></span>
+        </div>
+        <ul class="lista-avisos-sinergia" id="lista-avisos-sinergia"></ul>
+      </div>
+
       <h3>Estilo de jogo</h3>
       <div class="grupo-opcoes" id="opcoes-estilo"></div>
 
@@ -353,24 +364,25 @@
       <h3>Concentrar ataques</h3>
       <div class="grupo-opcoes" id="opcoes-concentrar"></div>
 
-      <div class="controle-formacao">
-        <label for="select-capitao">© Capitão</label>
-        <select id="select-capitao"></select>
-      </div>
-
-      <h3>Cobradores de bola parada</h3>
+      <h3>Capitão e cobradores</h3>
       <p class="dica-cobradores">Já vêm pré-preenchidos com o melhor de cada função — troque se quiser.</p>
-      <div class="controle-formacao">
-        <label for="select-cobrador-penalti">🎯 Pênalti</label>
-        <select id="select-cobrador-penalti"></select>
-      </div>
-      <div class="controle-formacao">
-        <label for="select-cobrador-falta">🧱 Falta</label>
-        <select id="select-cobrador-falta"></select>
-      </div>
-      <div class="controle-formacao">
-        <label for="select-cobrador-escanteio">🚩 Escanteio</label>
-        <select id="select-cobrador-escanteio"></select>
+      <div class="grade-cobradores">
+        <div class="controle-formacao controle-formacao-empilhado">
+          <label for="select-capitao">© Capitão</label>
+          <select id="select-capitao"></select>
+        </div>
+        <div class="controle-formacao controle-formacao-empilhado">
+          <label for="select-cobrador-penalti">🎯 Pênalti</label>
+          <select id="select-cobrador-penalti"></select>
+        </div>
+        <div class="controle-formacao controle-formacao-empilhado">
+          <label for="select-cobrador-falta">🧱 Falta</label>
+          <select id="select-cobrador-falta"></select>
+        </div>
+        <div class="controle-formacao controle-formacao-empilhado">
+          <label for="select-cobrador-escanteio">🚩 Escanteio</label>
+          <select id="select-cobrador-escanteio"></select>
+        </div>
       </div>
     </section>
 
