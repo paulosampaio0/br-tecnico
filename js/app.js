@@ -115,6 +115,7 @@ let meuLadoNaPartida = "casa"; // se o meu time é "casa" ou "fora" na partida a
 let auxiliarEstado = {
   ultimoMinutoPorChave: {}, textoAtual: "", urgenciaAtual: "neutro", acaoAtual: null,
   rotuloAcaoAtual: null, ultimaChaveExibida: null, timeoutBadge: null,
+  minutoUltimaTroca: null, intervaloTrocaAtual: 0,
 };
 
 // Substituição direta por clique (Gestão de elenco: banco/não relacionados) — guarda quem foi
@@ -2868,21 +2869,36 @@ function renderizarSinergia() {
   const listaEl = document.getElementById("lista-avisos-sinergia");
   if (!barraEl || !valorEl || !listaEl) return;
 
+  // Coerência das 4 categorias de instrução (Estilo/Armação/Marcação/Concentrar) — a mesma função
+  // usada pelo motor. Somada ao encaixe com o ELENCO escalado (informativo), pra dar direção real.
   const sin = avaliarSinergiaTatica(estado.tatica);
-  barraEl.style.width = sin.pontuacao + "%";
-  const faixa = sin.pontuacao >= 80 ? "boa" : sin.pontuacao >= 60 ? "media" : "ruim";
+  let sinElenco = { avisos: [], bonus: 0, alertas: 0 };
+  if (estado.timeAtual && estado.timeAtual.jogadores) {
+    const titulares = resolverTitulares(estado.timeAtual.jogadores, estado.formacaoId, estado.titulares);
+    const aptidoes = calcularAptidoesTaticas(titulares);
+    sinElenco = avaliarSinergiaElenco(estado.tatica, aptidoes);
+  }
+
+  const avisos = sin.avisos.concat(sinElenco.avisos);
+  const bonusTotal = sin.avisos.filter(function (a) { return a.tipo === "bonus"; }).length + sinElenco.bonus;
+  const alertasTotal = sin.avisos.filter(function (a) { return a.tipo === "alerta"; }).length + sinElenco.alertas;
+  const pontuacao = Math.max(40, Math.min(100, 80 + bonusTotal * 8 - alertasTotal * 12));
+
+  barraEl.style.width = pontuacao + "%";
+  const faixa = pontuacao >= 80 ? "boa" : pontuacao >= 60 ? "media" : "ruim";
+  const rotuloFaixa = pontuacao >= 80 ? "Ótima" : pontuacao >= 60 ? "Boa" : "Fraca";
   barraEl.className = "barra-sinergia-preenchida sinergia-" + faixa;
-  valorEl.textContent = sin.pontuacao + "%";
+  valorEl.textContent = pontuacao + "% · " + rotuloFaixa;
 
   listaEl.innerHTML = "";
-  if (sin.avisos.length === 0) {
+  if (avisos.length === 0) {
     const li = document.createElement("li");
     li.className = "aviso-sinergia aviso-sinergia-neutro";
     li.textContent = "Instruções equilibradas, sem combinações de destaque.";
     listaEl.appendChild(li);
     return;
   }
-  sin.avisos.forEach(function (aviso) {
+  avisos.forEach(function (aviso) {
     const li = document.createElement("li");
     li.className = "aviso-sinergia aviso-sinergia-" + aviso.tipo;
     li.textContent = (aviso.tipo === "bonus" ? "✅ " : "⚠️ ") + aviso.texto;
@@ -3195,6 +3211,7 @@ function abrirTelaPartida() {
   auxiliarEstado = {
     ultimoMinutoPorChave: {}, textoAtual: "", urgenciaAtual: "neutro", acaoAtual: null,
     rotuloAcaoAtual: null, ultimaChaveExibida: null, timeoutBadge: null,
+    minutoUltimaTroca: null, intervaloTrocaAtual: 0,
   };
   renderizarPartida();
   renderizarRodadaParalela();
@@ -3742,6 +3759,10 @@ function renderizarControlesPartida() {
 /* ---------- Auxiliar técnico (dicas táticas em tempo real) ---------- */
 
 const COOLDOWN_PADRAO_AUXILIAR = 8; // minutos até a mesma dica poder repetir
+// Trava de estabilidade (2026-08-07): depois que uma dica aparece, ela fica fixa por um intervalo
+// sorteado de minutos de jogo antes de poder trocar — evita o "piscar" de texto a cada minuto.
+const INTERVALO_MIN_DICA_AUXILIAR = 5;  // mín. de minutos de jogo antes de trocar a dica exibida
+const INTERVALO_MAX_DICA_AUXILIAR = 10; // máx.
 
 /**
  * Percorre os "detectores" táticos e devolve todos os candidatos a dica que bateram a
@@ -3766,11 +3787,11 @@ function avaliarAuxiliar(partida) {
   const diffMeio = meuTime.setores.meio - advTime.setores.meio;
   if (diffMeio <= -3) {
     candidatos.push({ chave: "meio-perdendo", prioridade: 3, urgencia: "atencao",
-      texto: "O adversário está congestionando o meio. Que tal jogar mais pela lateral?",
-      acao: "concentrar-esquerda", rotuloAcao: "Pela esquerda" });
+      texto: "O adversário está sufocando o nosso meio-campo. Vamos fugir do congestionamento e atacar pelos lados.",
+      acao: "concentrar-lados", rotuloAcao: "Atacar pelos lados" });
   } else if (diffMeio >= 4) {
     candidatos.push({ chave: "meio-dominando", prioridade: 2, urgencia: "neutro",
-      texto: "Estamos com domínio total do meio-campo." });
+      texto: "Dominamos o meio-campo — é por aqui que o jogo passa. Vamos manter a bola e ditar o ritmo." });
   }
 
   // 2. Cansaço + sugestão de troca (nomeia o jogador mais cansado em campo).
@@ -3788,7 +3809,9 @@ function avaliarAuxiliar(partida) {
       prioridade: urgente ? 6 : 4,
       urgencia: urgente ? "alerta" : "atencao",
       texto: "O " + maisCansado.jogador.nome + " (" + maisCansado.vaga.pos + ") está " +
-        (urgente ? "muito cansado" : "cansando") + " e começando a errar passes. Pense numa substituição.",
+        (urgente ? "no limite físico (" + maisCansado.energia + "% de fôlego) e já não acompanha as jogadas" :
+          "sentindo o cansaço (" + maisCansado.energia + "% de fôlego) e começando a errar passes") +
+        ". Uma substituição segura o rendimento.",
       acao: "mexer-time", rotuloAcao: "Substituir " + maisCansado.jogador.nome,
     });
   }
@@ -3796,7 +3819,7 @@ function avaliarAuxiliar(partida) {
   // 3. Lado vulnerável — setas ofensivas abrindo espaço nas costas, ou lateral cansada/fora de posição.
   if (meuTime.fatorContraAtaqueConcedido > 1.15) {
     candidatos.push({ chave: "contra-ataque-exposto", prioridade: 4, urgencia: "atencao",
-      texto: "Estamos levando muitas bolas nas costas. Sugiro recuar a linha defensiva.",
+      texto: "Estamos muito abertos e levando bola nas costas da defesa. Recuar a linha e segurar o contragolpe evita sofrer um gol bobo.",
       acao: "estilo-retranca", rotuloAcao: "Recuar linha" });
   }
   const lateralFraca = titularesMeus.find(function (item) {
@@ -3807,30 +3830,33 @@ function avaliarAuxiliar(partida) {
     const ladoTexto = lateralFraca.vaga.pos === "LAT.D" ? "direita" : "esquerda";
     candidatos.push({
       chave: "lateral-" + lateralFraca.vaga.id, prioridade: 4, urgencia: "atencao",
-      texto: "A lateral " + ladoTexto + " está vulnerável — o ponta deles está achando espaço por ali.",
+      texto: "Nossa lateral " + ladoTexto + " está sendo explorada — o ponta deles leva vantagem por ali. Vale reforçar esse lado ou trocar o jogador.",
       acao: "mexer-time", rotuloAcao: "Mudar para " + lateralFraca.jogador.nome,
     });
   }
 
   // 4. Placar & postura (só no 2º tempo, quando faz sentido reagir).
   if (partida.tempo === 2) {
+    const diffPlacar = placarAdversario - meuPlacar;
     if (meuPlacar < placarAdversario) {
       candidatos.push({ chave: "postura-atras", prioridade: 5, urgencia: "atencao",
-        texto: "Estamos atrás no placar — precisamos nos lançar mais ao ataque." });
+        texto: diffPlacar >= 2
+          ? "O placar está difícil — precisamos partir pra cima com tudo, mesmo correndo risco atrás."
+          : "Estamos atrás no placar. Hora de subir a marcação e nos lançar mais ao ataque pra buscar o empate." });
     } else if (meuPlacar > placarAdversario && partida.minuto >= 70) {
       candidatos.push({ chave: "postura-segurar", prioridade: 5, urgencia: "neutro",
-        texto: "Estamos ganhando faltando pouco — hora de segurar o resultado." });
+        texto: "Vencendo na reta final — administrar a bola e fechar os espaços atrás garante os três pontos." });
     }
   }
 
   // 5. Pontaria / pressão
   if (minhasEstatisticas.finalizacoes >= 6 && meuPlacar === 0) {
     candidatos.push({ chave: "pontaria", prioridade: 3, urgencia: "neutro",
-      texto: "Estamos criando bastante, mas falta pontaria pra balançar as redes." });
+      texto: "Já são " + minhasEstatisticas.finalizacoes + " finalizações e o gol não sai. Falta capricho na hora de concluir — insista que uma vai entrar." });
   }
   if (estatisticasAdversario.finalizacoes >= 6) {
     candidatos.push({ chave: "sufoco", prioridade: 4, urgencia: "atencao",
-      texto: "Eles estão nos pressionando muito — precisamos respirar com a bola." });
+      texto: "Eles já finalizaram " + estatisticasAdversario.finalizacoes + " vezes — estamos sob pressão. Precisamos segurar a bola e dar um respiro ao time." });
   }
 
   // 6. Alertas de risco (prioridade alta — dominam o painel enquanto o risco existir).
@@ -3869,6 +3895,27 @@ function avaliarAuxiliar(partida) {
         " e pode ser exposto — o adversário está mandando jogadas naquele setor.",
       acao: "mexer-time", rotuloAcao: "Substituir " + alvo.nome,
     });
+  }
+
+  // 8. Leituras de fundo (prioridade baixa — só aparecem quando não há nada mais urgente, e agora
+  // rendem porque a trava as segura por 5-10 min em vez de piscar). Reaproveitam posse e sinergia.
+  const posse = calcularPosse(partida);
+  const minhaPosse = meuLadoNaPartida === "casa" ? posse.casa : posse.fora;
+  if (minhaPosse <= 38) {
+    candidatos.push({ chave: "posse-baixa", prioridade: 2, urgencia: "neutro",
+      texto: "Estamos com pouca posse (" + minhaPosse + "%). Trocar mais passes no meio tira o fôlego deles e nos dá o controle." });
+  }
+
+  const sin = avaliarSinergiaTatica(estado.tatica);
+  if (sin.pontuacao < 60) {
+    candidatos.push({ chave: "sinergia-fraca", prioridade: 3, urgencia: "atencao",
+      texto: "Nossas instruções táticas não estão casando bem (sinergia baixa). Vale rever o estilo, a armação e a concentração de ataques.",
+      acao: "mexer-time", rotuloAcao: "Ajustar tática" });
+  }
+
+  if (meuPlacar > placarAdversario && diffMeio >= 2) {
+    candidatos.push({ chave: "no-controle", prioridade: 1, urgencia: "neutro",
+      texto: "Jogo sob controle: à frente no placar e por cima no meio-campo. Mantenha a calma e o time fará o resto." });
   }
 
   return candidatos;
@@ -3932,9 +3979,19 @@ function renderizarPainelAuxiliar() {
   } else {
     const candidatos = avaliarAuxiliar(partidaAtual);
     const escolhida = escolherDicaAuxiliar(candidatos, partidaAtual.minuto);
-    if (escolhida) {
+
+    // Trava de estabilidade: uma vez exibida, a dica fica fixa por 5-10 min de jogo (intervalo
+    // sorteado a cada troca). Só troca quando a trava expira E surge uma dica de chave diferente.
+    const travaAtiva = auxiliarEstado.minutoUltimaTroca !== null &&
+      (partidaAtual.minuto - auxiliarEstado.minutoUltimaTroca) < auxiliarEstado.intervaloTrocaAtual;
+    const dicaNovaValida = escolhida && escolhida.chave !== auxiliarEstado.ultimaChaveExibida;
+
+    if (escolhida && dicaNovaValida && !travaAtiva) {
       chaveAtual = escolhida.chave;
       auxiliarEstado.ultimoMinutoPorChave[escolhida.chave] = partidaAtual.minuto;
+      auxiliarEstado.minutoUltimaTroca = partidaAtual.minuto;
+      auxiliarEstado.intervaloTrocaAtual = INTERVALO_MIN_DICA_AUXILIAR +
+        Math.floor(Math.random() * (INTERVALO_MAX_DICA_AUXILIAR - INTERVALO_MIN_DICA_AUXILIAR + 1));
       auxiliarEstado.textoAtual = escolhida.texto;
       auxiliarEstado.urgenciaAtual = escolhida.urgencia;
       auxiliarEstado.acaoAtual = escolhida.acao || null;
@@ -3944,6 +4001,10 @@ function renderizarPainelAuxiliar() {
       auxiliarEstado.urgenciaAtual = "neutro";
       auxiliarEstado.acaoAtual = null;
       auxiliarEstado.rotuloAcaoAtual = null;
+    } else {
+      // Trava ativa ou nenhuma dica nova: mantém a dica atual na tela, mas preserva a chave
+      // exibida pra que o indicador de "dica nova" (badge/pulso) não dispare de novo.
+      chaveAtual = auxiliarEstado.ultimaChaveExibida;
     }
   }
 
@@ -4001,6 +4062,8 @@ function acionarPainelAuxiliar() {
       pararIntervaloPartida();
     }
     abrirTelaEscalacao();
+  } else if (auxiliarEstado.acaoAtual === "concentrar-lados") {
+    aplicarAcaoTaticaRapidaAuxiliar("concentrar", "lados");
   } else if (auxiliarEstado.acaoAtual === "concentrar-esquerda") {
     aplicarAcaoTaticaRapidaAuxiliar("concentrar", "esquerda");
   } else if (auxiliarEstado.acaoAtual === "estilo-retranca") {

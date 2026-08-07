@@ -1995,8 +1995,9 @@ body::before {
 }
 
 .cabecalho-sinergia .valor-sinergia {
-  font-size: 15px;
+  font-size: 14px;
   color: var(--branco);
+  white-space: nowrap;
 }
 
 .barra-sinergia {

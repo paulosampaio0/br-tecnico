@@ -77,6 +77,8 @@ function avaliarSinergiaTatica(tatica) {
   const estilo = (tatica && tatica.estilo) || "equilibrado";
   const armacao = (tatica && tatica.armacao) || "passes-curtos";
   const marcacao = (tatica && tatica.marcacao) || "normal";
+  const concentrar = (tatica && tatica.concentrar) || "equilibrado";
+  const concentraPelosLados = concentrar === "lados" || concentrar === "esquerda" || concentrar === "direita";
 
   const avisos = [];
   let conversao = 1, defesa = 0, retencao = 1, bonus = 0, alertas = 0;
@@ -126,8 +128,68 @@ function avaliarSinergiaTatica(tatica) {
     sintonia("Ônibus + Passes longos: contra-ataque direto", { conversao: 1.05 });
   }
 
+  // Concentrar ataques × Armação/Estilo (2026-08-07): a 4ª categoria de instrução também entra na
+  // sinergia — com efeito no motor, simétrico (a CPU também tem `concentrar`). Magnitude pequena.
+  if (concentraPelosLados && armacao === "cruzamentos") {
+    sintonia("Ataque pelos lados + Cruzamentos: bola na área o tempo todo", { conversao: 1.04 });
+  }
+  if (concentrar === "meio" && armacao === "cruzamentos") {
+    incoerencia("Cruzamentos com o ataque concentrado no meio desperdiçam os alas", { conversao: 0.96 });
+  }
+  if (concentrar === "meio" && estilo === "posse") {
+    sintonia("Concentrar no meio + Posse: domínio central do jogo", { retencao: 1.05 });
+  }
+  if (concentrar === "meio" && armacao === "chutes-longe") {
+    sintonia("Concentrar no meio + Chutes de longe: finalização vem do miolo", { conversao: 1.03 });
+  }
+
   const pontuacao = clamp(80 + bonus * 8 - alertas * 12, 40, 100);
   return { pontuacao: pontuacao, avisos: avisos, conversao: conversao, defesa: defesa, retencao: retencao };
+}
+
+/**
+ * Encaixe Elenco × Instruções (2026-08-07): avalia se o ELENCO escalado favorece as instruções
+ * escolhidas, usando as aptidões já calculadas (`calcularAptidoesTaticas`). É PURAMENTE informativa
+ * (só a UI de Sinergia chama) — as aptidões já afetam o motor por outro caminho (`calcularForcaTime`/
+ * `processarLadoPartida`), então dar efeito aqui de novo seria contar dobrado. Devolve avisos +
+ * contadores pra somar na pontuação da barra. Fatores são -1..+1 (0 = elenco mediano da liga).
+ */
+function avaliarSinergiaElenco(tatica, aptidoes) {
+  const estilo = (tatica && tatica.estilo) || "equilibrado";
+  const armacao = (tatica && tatica.armacao) || "passes-curtos";
+  const concentrar = (tatica && tatica.concentrar) || "equilibrado";
+  const concentraPelosLados = concentrar === "lados" || concentrar === "esquerda" || concentrar === "direita";
+  const FORTE = 0.35, FRACO = -0.35;
+
+  const avisos = [];
+  let bonus = 0, alertas = 0;
+  function bom(texto) { avisos.push({ tipo: "bonus", texto: texto }); bonus++; }
+  function ruim(texto) { avisos.push({ tipo: "alerta", texto: texto }); alertas++; }
+
+  if (estilo === "posse") {
+    if (aptidoes.passe >= FORTE) bom("Seu meio-campo tem os armadores ideais pra Posse de bola.");
+    else if (aptidoes.passe <= FRACO) ruim("Seu elenco não tem armadores pra Posse — o estilo sai pela culatra.");
+  }
+  if (armacao === "passes-longos") {
+    if (aptidoes.passeLongo >= FORTE) bom("Você tem lançadores e velocistas pra fazer os Passes longos renderem.");
+    else if (aptidoes.passeLongo <= FRACO) ruim("Sem bons lançadores ou velocidade lá na frente, os Passes longos erram muito.");
+  }
+  if (armacao === "cruzamentos") {
+    if (aptidoes.cruzamento >= FORTE) bom("Seus alas cruzam bem — a Armação por Cruzamentos combina.");
+    else if (aptidoes.cruzamento <= FRACO) ruim("Faltam bons cruzadores nas pontas/laterais pra essa Armação.");
+    if (aptidoes.cabeceio >= FORTE) bom("Você tem cabeceadores pra aproveitar as bolas na área.");
+    else if (aptidoes.cabeceio <= FRACO) ruim("Falta jogo aéreo pra converter os cruzamentos em gol.");
+  }
+  if (armacao === "chutes-longe") {
+    if (aptidoes.chuteLonge >= FORTE) bom("Seu meio-campo tem finalizadores de fora da área.");
+    else if (aptidoes.chuteLonge <= FRACO) ruim("Poucos chutadores de longe no elenco pra essa Armação.");
+  }
+  if (concentraPelosLados) {
+    if (aptidoes.cruzamento >= FORTE) bom("Atacar pelos lados casa com os bons cruzadores do seu time.");
+    else if (aptidoes.cruzamento <= FRACO) ruim("Atacar pelos lados sem cruzadores de qualidade rende pouco.");
+  }
+
+  return { avisos: avisos, bonus: bonus, alertas: alertas };
 }
 
 /**
