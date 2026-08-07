@@ -4814,7 +4814,7 @@ function escolherOfertaPatrocinio(indiceOferta, totalRodadasOverride) {
   if (!oferta) return;
   const totalRodadas = totalRodadasOverride || (estado.temporada ? estado.temporada[estado.timeAtual.divisaoChave].calendario.length : 38);
   estado.patrocinio = {
-    nome: oferta.nome, valorPorRodada: oferta.valorPorRodada, bonusMeta: oferta.bonusMeta,
+    nome: oferta.nome, valorPorRodada: oferta.valorPorRodada, metas: oferta.metas || [],
     temporadasRestantes: oferta.temporadasRestantes,
   };
   estado.financas.patrocinioValorTemporada = Math.round(oferta.valorPorRodada * totalRodadas * 100) / 100;
@@ -5485,9 +5485,16 @@ async function processarFimDeTemporada() {
     estado.timeAtual.divisaoChave = "serie_a";
   }
 
-  // Bônus de meta do patrocínio (Gestão avançada — Patrocínio negociado) — paga antes de renovar o contrato.
-  if (estado.patrocinio && estado.patrocinio.bonusMeta > 0 && metaCumprida) {
-    estado.financas.caixa = Math.round((estado.financas.caixa + estado.patrocinio.bonusMeta) * 100) / 100;
+  // Metas Dinâmicas do patrocínio (2026-08-07): cada tier é avaliado contra o resultado REAL da
+  // temporada (posição final, `contextoTemporada`) — independente da meta da diretoria. Paga só o
+  // MAIOR tier batido (nunca soma G4 + Campeão), antes de renovar o contrato.
+  if (estado.patrocinio && estado.patrocinio.metas && estado.patrocinio.metas.length > 0) {
+    const bonusGanho = estado.patrocinio.metas.reduce(function (maior, meta) {
+      return avaliarMeta({ tipo: meta.tipo }, contextoTemporada) && meta.valor > maior ? meta.valor : maior;
+    }, 0);
+    if (bonusGanho > 0) {
+      estado.financas.caixa = Math.round((estado.financas.caixa + bonusGanho) * 100) / 100;
+    }
   }
 
   // Renova o patrocínio pra temporada nova, já considerando a divisão atualizada, o desempenho passado e a reputação nova.
@@ -5666,8 +5673,11 @@ function renderizarPatrocinioAvancado() {
   if (!textoEl || !listaEl) return;
 
   if (estado.patrocinio) {
+    const metasTexto = (estado.patrocinio.metas || []).map(function (meta) {
+      return formatarReais(meta.valor) + " se " + meta.rotulo;
+    }).join(" · ");
     textoEl.textContent = estado.patrocinio.nome + " — " + formatarReais(estado.patrocinio.valorPorRodada) + "/rodada" +
-      (estado.patrocinio.bonusMeta > 0 ? " + " + formatarReais(estado.patrocinio.bonusMeta) + " se bater a meta" : "") +
+      (metasTexto ? " + " + metasTexto : " (sem metas de bônus)") +
       " (" + estado.patrocinio.temporadasRestantes + (estado.patrocinio.temporadasRestantes === 1 ? " temporada restante" : " temporadas restantes") + ")";
   } else {
     textoEl.textContent = "Nenhum patrocínio fechado ainda.";
@@ -5678,10 +5688,13 @@ function renderizarPatrocinioAvancado() {
   (estado.ofertasPatrocinio || []).forEach(function (oferta, indice) {
     const li = document.createElement("li");
     li.className = "item-oferta-patrocinio";
+    const metasTexto = (oferta.metas || []).map(function (meta) {
+      return formatarReais(meta.valor) + " se " + meta.rotulo;
+    }).join(" · ");
     li.innerHTML =
       "<span class=\"oferta-patrocinio-nome\">" + escaparHtml(oferta.nome) + "</span>" +
-      "<span class=\"oferta-patrocinio-detalhe\">" + formatarReais(oferta.valorPorRodada) + "/rodada + " +
-        formatarReais(oferta.bonusMeta) + " se bater a meta · " + oferta.temporadasRestantes + "x</span>" +
+      "<span class=\"oferta-patrocinio-detalhe\">" + formatarReais(oferta.valorPorRodada) + "/rodada" +
+        (metasTexto ? " + " + metasTexto : " · sem metas de bônus") + " · " + oferta.temporadasRestantes + "x</span>" +
       "<button type=\"button\" class=\"btn btn-secundario btn-escolher-patrocinio\">Escolher</button>";
     li.querySelector(".btn-escolher-patrocinio").addEventListener("click", function () { escolherOfertaPatrocinio(indice); });
     listaEl.appendChild(li);
@@ -8301,6 +8314,13 @@ async function continuarJogoSalvo() {
     estado.socioTorcedor = registro.socioTorcedor || { ativo: false, plano: "basico", socios: 0 };
     estado.patrocinio = registro.patrocinio || null;
     estado.ofertasPatrocinio = registro.ofertasPatrocinio || [];
+    // Metas Dinâmicas (2026-08-07): saves antigos têm `bonusMeta` (valor único); migra pro tier "g4" —
+    // não temos mais o histórico de posição pra saber se já foi um "campeão", então fica no tier seguro.
+    if (estado.patrocinio && estado.patrocinio.metas === undefined) {
+      const bonusAntigo = estado.patrocinio.bonusMeta || 0;
+      estado.patrocinio.metas = bonusAntigo > 0 ? [{ tipo: "g4", rotulo: "G4 (4 primeiros)", valor: bonusAntigo }] : [];
+      delete estado.patrocinio.bonusMeta;
+    }
     if (estado.financas) garantirSetoresEstadio(estado.financas);
 
     // Saves de antes das Estrelas Dourada/Prateada e da Forma não têm esses campos.

@@ -292,10 +292,15 @@ const CONFIG_FINANCEIRO = {
 
   // --- Patrocínio negociado ---
 
+  // Metas Dinâmicas (2026-08-07): Seguro é fixo alto SEM bônus (0 = nenhuma meta oferecida);
+  // Equilibrado/Agressivo trocam parte do fixo por metas de posição final — o fator de bônus
+  // aqui é o valor pago no tier mais alto (Campeão); o tier G4 paga uma fração dele
+  // (`patrocinioMetaFatorG4`), nunca os dois juntos (ver pagamento no fim de temporada, app.js).
   patrocinioSeguroFatorFixo: 1.05,
-  patrocinioSeguroFatorBonus: 0.3,
+  patrocinioSeguroFatorBonus: 0,
   patrocinioEquilibradoFatorFixo: 0.85,
   patrocinioEquilibradoFatorBonus: 0.85,
+  patrocinioMetaFatorG4: 0.4, // tier G4 paga 40% do valor do tier Campeão
   patrocinioAgressivoFatorFixo: 0.55,
   patrocinioAgressivoFatorBonus: 1.8,
 
@@ -642,6 +647,11 @@ function avancarObraEstadio(financas) {
  * 3 propostas de patrocínio (Seguro / Equilibrado / Agressivo) a partir do valor-base de TEMPORADA
  * já calculado (o mesmo número que `definirPatrocinioDaTemporada` usava direto). `totalRodadas`
  * é quem converte esse total em valor por rodada — sem isso o valor fica 38x maior do que devia.
+ *
+ * Metas Dinâmicas (2026-08-07): em vez de UM bônus fixo pago se a meta da DIRETORIA foi cumprida,
+ * cada oferta com bônus > 0 traz `metas` escalonadas pela POSIÇÃO FINAL do clube (G4/Campeão) —
+ * paga só o maior tier batido, nunca soma os dois (ver pagamento em `processarFimDeTemporada`,
+ * app.js). Seguro não tem `metas` (array vazio): é 100% valor fixo, sem risco.
  */
 function gerarOfertasPatrocinio(valorBaseTemporada, totalRodadas) {
   const nomes = ["Seguro", "Equilibrado", "Agressivo"];
@@ -651,11 +661,17 @@ function gerarOfertasPatrocinio(valorBaseTemporada, totalRodadas) {
   const rodadas = totalRodadas > 0 ? totalRodadas : 38;
   return nomes.map(function (perfil, i) {
     const valorTemporadaPerfil = valorBaseTemporada * CONFIG_FINANCEIRO[fixoKeys[i]];
+    const fatorBonusCampeao = CONFIG_FINANCEIRO[bonusKeys[i]];
+    const bonusCampeao = Math.round(valorBaseTemporada * fatorBonusCampeao * 100) / 100;
+    const metas = fatorBonusCampeao > 0 ? [
+      { tipo: "g4", rotulo: "G4 (4 primeiros)", valor: Math.round(bonusCampeao * CONFIG_FINANCEIRO.patrocinioMetaFatorG4 * 100) / 100 },
+      { tipo: "campeao", rotulo: "Campeão", valor: bonusCampeao },
+    ] : [];
     return {
       perfil: perfil,
       nome: patrocinadores[Math.floor(Math.random() * patrocinadores.length)] + " (" + perfil + ")",
       valorPorRodada: Math.round((valorTemporadaPerfil / rodadas) * 100) / 100,
-      bonusMeta: Math.round(valorBaseTemporada * CONFIG_FINANCEIRO[bonusKeys[i]] * 100) / 100,
+      metas: metas,
       temporadasRestantes: 1 + Math.floor(Math.random() * 3),
     };
   });
@@ -1072,6 +1088,7 @@ function definirMetaTemporada(fracaoRankElenco, divisaoChave) {
 /** Se a meta foi cumprida, a partir do resultado real da temporada que terminou. */
 function avaliarMeta(meta, contexto) {
   switch (meta.tipo) {
+    case "campeao": return contexto.posicaoFinal === 1;
     case "g4": return contexto.posicaoFinal <= 4;
     case "fuga-rebaixamento": return !contexto.foiRebaixado;
     case "meio-tabela": return contexto.posicaoFinal <= 10;
