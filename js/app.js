@@ -3015,11 +3015,14 @@ function contarCartoesPorLado(partida, lado) {
   return { amarelos: amarelos, vermelhos: vermelhos };
 }
 
-/** Junta estatísticas da engine + posse + cartões num objeto plano pro quadro comparativo. */
-function montarDadosEstatisticasComparativas(lado) {
-  const estat = partidaAtual.estatisticas[lado];
-  const posse = calcularPosse(partidaAtual);
-  const cartoes = contarCartoesPorLado(partidaAtual, lado);
+/** Junta estatísticas da engine + posse + cartões num objeto plano pro quadro comparativo.
+ *  `partida` é opcional (default `partidaAtual`, jogo ao vivo) — explícito pros outros jogos
+ *  da rodada (ver `calcularNotasLadoPartida`, mesmo padrão). */
+function montarDadosEstatisticasComparativas(lado, partida) {
+  partida = partida || partidaAtual;
+  const estat = partida.estatisticas[lado];
+  const posse = calcularPosse(partida);
+  const cartoes = contarCartoesPorLado(partida, lado);
   return {
     posse: posse[lado],
     finalizacoes: estat.finalizacoes,
@@ -3922,15 +3925,20 @@ function registrarHistoricoRodadaParalela() {
  * dois — ao contrário de `calcularNotasPosJogo`, que só calcula pro MEU time). Usada pra
  * montar a aba "Escalações e Notas" da tela Tabela, onde os dois lados aparecem lado a lado.
  * Mesma fórmula de nota de sempre (base + resultado + eventos + variação aleatória).
+ * `partida`/`timeCasa`/`timeFora` são opcionais (default pro jogo ao vivo, `partidaAtual` +
+ * `timeCasaSimulado`/`timeForaSimulado`) — passados explicitamente pra calcular a nota de
+ * qualquer um dos outros jogos da rodada (`registrarDetalhesRodadaParalela`), que rodam em
+ * paralelo com seus próprios objetos de partida/time, sem tocar nesses globals.
  */
-function calcularNotasLadoPartida(lado) {
-  const timeSimulado = lado === "casa" ? timeCasaSimulado : timeForaSimulado;
-  const placarLado = lado === "casa" ? partidaAtual.placarCasa : partidaAtual.placarFora;
-  const placarAdversario = lado === "casa" ? partidaAtual.placarFora : partidaAtual.placarCasa;
+function calcularNotasLadoPartida(lado, partida, timeCasa, timeFora) {
+  partida = partida || partidaAtual;
+  const timeSimulado = lado === "casa" ? (timeCasa || timeCasaSimulado) : (timeFora || timeForaSimulado);
+  const placarLado = lado === "casa" ? partida.placarCasa : partida.placarFora;
+  const placarAdversario = lado === "casa" ? partida.placarFora : partida.placarCasa;
   const resultado = placarLado > placarAdversario ? 1 : placarLado < placarAdversario ? -1 : 0;
 
   const idsQueEntraram = new Set(
-    partidaAtual.eventos
+    partida.eventos
       .filter(function (e) { return e.tipo === "substituicao" && e.lado === lado; })
       .map(function (e) { return e.idJogadorEntra; })
   );
@@ -3938,7 +3946,7 @@ function calcularNotasLadoPartida(lado) {
   const notas = (timeSimulado.titulares || []).map(function (item) {
     const jogador = item.jogador;
     let nota = 6.2 + resultado * 0.3;
-    partidaAtual.eventos.forEach(function (evento) {
+    partida.eventos.forEach(function (evento) {
       if (evento.idJogador !== jogador._id || evento.lado !== lado) return;
       if (evento.tipo === "gol") nota += 1.4;
       else if (evento.tipo === "cartao-amarelo") nota -= 0.5;
@@ -3954,11 +3962,24 @@ function calcularNotasLadoPartida(lado) {
   return notas;
 }
 
+// Tipos de evento que entram no histórico salvo da rodada (Tabela — aba "Info da Partida"):
+// de propósito NÃO inclui "chance"/"falta" (ruído demais pra uma linha do tempo pós-jogo) —
+// assistência não é um tipo à parte, já vem embutida no texto do evento "gol".
+const TIPOS_EVENTO_HISTORICO = { gol: true, "cartao-amarelo": true, "cartao-vermelho": true, substituicao: true };
+
+/** Filtra e enxuga os eventos de uma partida pro formato salvo no histórico da rodada. */
+function filtrarEventosParaHistorico(eventos) {
+  return eventos
+    .filter(function (e) { return TIPOS_EVENTO_HISTORICO[e.tipo]; })
+    .map(function (e) { return { minuto: e.minuto, tipo: e.tipo, lado: e.lado, texto: e.texto }; });
+}
+
 /**
- * Tela Tabela — "Escalações e Notas" / "Info da Partida": guarda um retrato completo só da
- * partida que o USUÁRIO jogou nesta rodada oficial (os outros ~19 confrontos da rodada são só
- * placar agregado via `simularJogoCompleto`, sem minuto a minuto — não dá pra mostrar
- * escalação/nota de um jogo que nunca foi simulado em detalhe). Chamada de dentro de
+ * Tela Tabela — "Escalações e Notas" / "Info da Partida": guarda um retrato completo da
+ * partida que o USUÁRIO jogou nesta rodada oficial. `estado.detalhesPartidaPorRodada[divisao][rodada]`
+ * é uma LISTA (2026-08-06: antes guardava só esse 1 jogo; `registrarDetalhesRodadaParalela`,
+ * chamada logo depois, completa a lista com os outros ~9 confrontos da mesma rodada — que já
+ * são simulados minuto a minuto em paralelo, ver `partidasRodada`). Chamada de dentro de
  * `concluirRodadaOficial`, ANTES de `partidaAtual` ser descartado.
  */
 function registrarDetalhePartidaOficial() {
@@ -3976,12 +3997,49 @@ function registrarDetalhePartidaOficial() {
   if (craque) craque.craque = true;
 
   estado.detalhesPartidaPorRodada[divisaoChave] = estado.detalhesPartidaPorRodada[divisaoChave] || {};
-  estado.detalhesPartidaPorRodada[divisaoChave][numeroRodada] = {
+  estado.detalhesPartidaPorRodada[divisaoChave][numeroRodada] = [{
     casa: timeCasaSimulado.nome, fora: timeForaSimulado.nome,
     notasCasa: notasCasa, notasFora: notasFora,
     estatisticasCasa: montarDadosEstatisticasComparativas("casa"),
     estatisticasFora: montarDadosEstatisticasComparativas("fora"),
-  };
+    eventos: filtrarEventosParaHistorico(partidaAtual.eventos),
+  }];
+}
+
+/**
+ * Completa `estado.detalhesPartidaPorRodada` com os outros ~9 confrontos da rodada
+ * (`partidasRodada`, [js/app.js montarRodadaParalela]) — eles já rodam minuto a minuto junto
+ * com o jogo do usuário (mesmos dados que já alimentam a Artilharia da liga), então aqui é só
+ * extrair o mesmo retrato que `registrarDetalhePartidaOficial` já monta pro jogo do usuário,
+ * sem simular nada de novo. Chamada logo depois dela, dentro de `concluirRodadaOficial`.
+ */
+function registrarDetalhesRodadaParalela() {
+  if (!partidasRodada || partidasRodada.length === 0 || !partidaAtual || !estado.timeAtual) return;
+
+  const divisaoChave = estado.timeAtual.divisaoChave;
+  const numeroRodada = partidaAtual.numeroRodadaOficial;
+  estado.detalhesPartidaPorRodada[divisaoChave] = estado.detalhesPartidaPorRodada[divisaoChave] || {};
+  const lista = estado.detalhesPartidaPorRodada[divisaoChave][numeroRodada] =
+    estado.detalhesPartidaPorRodada[divisaoChave][numeroRodada] || [];
+
+  partidasRodada.forEach(function (jogo) {
+    if (!jogo.partida || !jogo.casa || !jogo.fora) return;
+    const notasCasa = calcularNotasLadoPartida("casa", jogo.partida, jogo.casa, jogo.fora);
+    const notasFora = calcularNotasLadoPartida("fora", jogo.partida, jogo.casa, jogo.fora);
+    let craque = null;
+    notasCasa.concat(notasFora).forEach(function (n) {
+      if (!craque || n.nota > craque.nota) craque = n;
+    });
+    if (craque) craque.craque = true;
+
+    lista.push({
+      casa: jogo.casa.nome, fora: jogo.fora.nome,
+      notasCasa: notasCasa, notasFora: notasFora,
+      estatisticasCasa: montarDadosEstatisticasComparativas("casa", jogo.partida),
+      estatisticasFora: montarDadosEstatisticasComparativas("fora", jogo.partida),
+      eventos: filtrarEventosParaHistorico(jogo.partida.eventos),
+    });
+  });
 }
 
 /**
@@ -5027,6 +5085,7 @@ async function concluirRodadaOficial() {
   registrarHistoricoPartidaOficial(); // Perfil do Atleta: guarda a nota/confronto e soma gols/cartões da temporada
   registrarHistoricoRodadaParalela(); // Artilharia da liga: soma gols/assistências/cartões REAIS dos outros clubes
   registrarDetalhePartidaOficial(); // Tela Tabela: guarda escalação/notas/estatísticas pra revisitar depois
+  registrarDetalhesRodadaParalela(); // Tela Tabela: idem pros outros ~9 jogos da rodada, já simulados em paralelo
   // A escalação titular volta a ser a de saída — trocas feitas "mexendo no
   // time" durante a partida valem só pra essa partida, não pra próxima rodada.
   if (partidaAtual.escalacaoInicial) estado.titulares = partidaAtual.escalacaoInicial;
@@ -7787,19 +7846,24 @@ function renderizarDetalheJogoRodada(res) {
   const secaoEl = document.getElementById("secao-detalhe-jogo-rodada");
   secaoEl.hidden = false;
 
+  // 2026-08-06: cada rodada guarda uma LISTA de jogos (o do usuário + os outros da rodada
+  // paralela, já simulados minuto a minuto — ver `registrarDetalhesRodadaParalela`). Save
+  // antigo (de antes desta mudança) guardava só 1 objeto solto pra essa mesma chave — trata
+  // como lista de 1 item na hora, sem precisar de migração à parte no load.
   const detalhesDaDivisao = estado.detalhesPartidaPorRodada[divisaoTabelaAtual] || {};
-  const detalhe = detalhesDaDivisao[rodadaResultadosExibida];
-  const temDetalhe = !!(detalhe && detalhe.casa === res.casa && detalhe.fora === res.fora);
+  const listaDaRodada = detalhesDaDivisao[rodadaResultadosExibida];
+  const arrayDaRodada = Array.isArray(listaDaRodada) ? listaDaRodada : (listaDaRodada ? [listaDaRodada] : []);
+  const detalhe = arrayDaRodada.find(function (d) { return d.casa === res.casa && d.fora === res.fora; });
 
   const abasEl = document.getElementById("abas-detalhe-jogo");
   const mensagemEl = document.getElementById("mensagem-vazia-detalhe-jogo");
 
-  if (!temDetalhe) {
+  if (!detalhe) {
     abasEl.hidden = true;
     document.getElementById("conteudo-detalhe-escalacoes").hidden = true;
     document.getElementById("conteudo-detalhe-info").hidden = true;
     mensagemEl.hidden = false;
-    mensagemEl.textContent = "Detalhes não disponíveis — só a partida do seu time é acompanhada minuto a minuto.";
+    mensagemEl.textContent = "Detalhes não disponíveis pra esse jogo (rodada de antes desta atualização).";
     return;
   }
 
@@ -7814,7 +7878,34 @@ function renderizarDetalheJogoRodada(res) {
 
   document.getElementById("detalhe-info-nome-casa").innerHTML = montarNomeComEscudo(detalhe.casa);
   document.getElementById("detalhe-info-nome-fora").innerHTML = montarNomeComEscudo(detalhe.fora);
+  renderizarEventosDetalhe("detalhe-info-lista-eventos", detalhe.eventos);
   renderizarQuadroEstatisticasComparativas("detalhe-info-linhas-estatisticas", detalhe.estatisticasCasa, detalhe.estatisticasFora);
+}
+
+/** Linha do tempo (gols/cartões/substituições) na aba "Info da Partida" da Tabela — mesmo
+ *  formato visual do feed de eventos ao vivo (`renderizarEventosPartida`), só que a partir da
+ *  lista já salva/filtrada (`filtrarEventosParaHistorico`) em vez de `partidaAtual.eventos`. */
+function renderizarEventosDetalhe(containerId, eventos) {
+  const el = document.getElementById(containerId);
+  if (!el) return;
+  el.innerHTML = "";
+
+  if (!eventos || eventos.length === 0) {
+    const vazio = document.createElement("li");
+    vazio.className = "item-evento item-vazio";
+    vazio.textContent = "Sem lances registrados.";
+    el.appendChild(vazio);
+    return;
+  }
+
+  eventos.slice().reverse().forEach(function (evento) {
+    const li = document.createElement("li");
+    li.className = "item-evento item-evento-" + evento.tipo;
+    li.innerHTML =
+      "<span class=\"minuto-evento\">" + evento.minuto + "'</span>" +
+      "<span class=\"texto-evento\">" + escaparHtml(evento.texto) + "</span>";
+    el.appendChild(li);
+  });
 }
 
 function renderizarListaNotasDetalhe(containerId, notas) {
