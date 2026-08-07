@@ -2692,7 +2692,9 @@ function anexarArrastoOrigemCompacta(botao, jogador, origem) {
 // cada instrução (não somam efeito novo — são informativos). Só as opções mais "de trade-off" têm tag.
 const TAGS_TATICA = {
   estilo: {
+    equilibrado: [{ icon: "⚖️", txt: "Sem pontos fracos" }, { icon: "🔋", txt: "Poupa energia" }],
     "ataque-total": [{ icon: "⚽", txt: "+Opções no ataque" }, { icon: "🚨", txt: "+Espaço na defesa" }],
+    ofensivo: [{ icon: "⚔️", txt: "+Chances criadas" }, { icon: "🛡️", txt: "-Defesa exposta" }, { icon: "⚡", txt: "+Fôlego gasto" }],
     "contra-ataque": [{ icon: "🛡️", txt: "+Solidez" }, { icon: "🐢", txt: "-Volume ofensivo" }],
     posse: [{ icon: "🎯", txt: "+Controle" }, { icon: "🧠", txt: "Depende de bons passadores" }],
     "pressao-alta": [{ icon: "⚡", txt: "+Desarme alto" }, { icon: "🚨", txt: "+Bolas nas costas" }],
@@ -4403,8 +4405,11 @@ function aplicarDesgastePosPartida() {
   // Tática ofensiva/pressão alta consome mais fôlego; retranca/posse cadenciada consome menos.
   // "Pressão Alta"/"Ônibus na Área" (2026-08-07) têm fator explícito (pedido: +30%/‑15% de gasto) —
   // os deltas de ataque/defesa deles não cruzam os limiares >=2 do resto da escala de propósito.
+  // "Equilibrado" (2026-08-07): ritmo controlado poupa as pernas — -8% de desgaste, o único estilo
+  // sem NENHUM trade-off negativo (os outros ganham em algo e perdem em algo).
   let fatorPostura = estado.tatica.estilo === "pressao-alta" ? 1.3
     : estado.tatica.estilo === "onibus" ? 0.85
+    : estado.tatica.estilo === "equilibrado" ? 0.92
     : ajusteEstilo.ataque >= 2 ? 1.2 : ajusteEstilo.defesa >= 2 ? 0.8 : 1;
   // Palestra "Cobrar mais empenho" (2026-08-07): 2º tempo com mais intensidade gasta +10% de fôlego.
   if (partidaAtual && partidaAtual.palestra === "empenho") fatorPostura *= 1.10;
