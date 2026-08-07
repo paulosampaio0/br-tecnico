@@ -2690,23 +2690,87 @@ function anexarArrastoOrigemCompacta(botao, jogador, origem) {
 
 // Badges de Risco/Benefício (2026-08-07): descrevem em 1 linha o efeito que o motor JÁ produz pra
 // cada instrução (não somam efeito novo — são informativos). Só as opções mais "de trade-off" têm tag.
-const TAGS_TATICA = {
+/** Vantagens/riscos de cada opção tática (2026-08-07) — fonte do popover ⓘ, não mais de badges
+ * dentro do botão (isso inflava demais a altura da tela). Textos reaproveitados dos comentários
+ * dos ajustes reais em partida.js (AJUSTE_ESTILO_TATICA/AJUSTE_MARCACAO_TATICA/AJUSTE_CONCENTRAR/
+ * AJUSTE_ARMACAO_TATICA) — nenhum número novo, só a explicação em texto. Campo/opção sem entrada
+ * (ou lista vazia) simplesmente não mostra o ícone ⓘ.
+ */
+const INFO_TATICA = {
   estilo: {
-    equilibrado: [{ icon: "⚖️", txt: "Sem pontos fracos" }, { icon: "🔋", txt: "Poupa energia" }],
-    "ataque-total": [{ icon: "⚽", txt: "+Opções no ataque" }, { icon: "🚨", txt: "+Espaço na defesa" }],
-    ofensivo: [{ icon: "⚔️", txt: "+Chances criadas" }, { icon: "🛡️", txt: "-Defesa exposta" }, { icon: "⚡", txt: "+Fôlego gasto" }],
-    "contra-ataque": [{ icon: "🛡️", txt: "+Solidez" }, { icon: "🐢", txt: "-Volume ofensivo" }],
-    posse: [{ icon: "🎯", txt: "+Controle" }, { icon: "🧠", txt: "Depende de bons passadores" }],
-    "pressao-alta": [{ icon: "⚡", txt: "+Desarme alto" }, { icon: "🚨", txt: "+Bolas nas costas" }],
-    onibus: [{ icon: "🧱", txt: "-Sofre gols" }, { icon: "🚫", txt: "-Quase anula o ataque" }],
+    equilibrado: [
+      { tipo: "vantagem", texto: "O único estilo sem nenhum ponto fraco: não perde força em ataque nem em defesa." },
+      { tipo: "vantagem", texto: "Ritmo controlado poupa as pernas: -8% de consumo de fôlego por partida." },
+    ],
+    "ataque-total": [
+      { tipo: "vantagem", texto: "Muito mais opções e volume de criação no ataque." },
+      { tipo: "risco", texto: "Defesa fica bem mais exposta a contra-ataques." },
+    ],
+    ofensivo: [
+      { tipo: "vantagem", texto: "Mais chances de gol criadas." },
+      { tipo: "risco", texto: "Defesa mais exposta." },
+      { tipo: "risco", texto: "+20% de consumo de fôlego por partida." },
+    ],
+    "contra-ataque": [
+      { tipo: "vantagem", texto: "Mais solidez defensiva — bloco mais difícil de furar." },
+      { tipo: "risco", texto: "Bem menos volume ofensivo — vive de poucas chances no contragolpe." },
+    ],
+    posse: [
+      { tipo: "vantagem", texto: "Com bons armadores no time (Passe/Armação), é o estilo mais forte de meio-campo do jogo." },
+      { tipo: "risco", texto: "Sem bons passadores, o efeito vira ao contrário — prejuízo real, de propósito." },
+    ],
+    "pressao-alta": [
+      { tipo: "vantagem", texto: "+25% de taxa de desarme na zona de ataque." },
+      { tipo: "risco", texto: "+30% de consumo de fôlego e mais exposto a bolas nas costas da zaga." },
+    ],
+    onibus: [
+      { tipo: "vantagem", texto: "-40% de chance de sofrer finalizações dentro da área." },
+      { tipo: "risco", texto: "Quase anula a própria criação de ataque." },
+    ],
   },
   marcacao: {
-    pesada: [{ icon: "🟨", txt: "+Faltas/Cartões" }, { icon: "⚡", txt: "+Fôlego gasto" }],
-    leve: [{ icon: "🟢", txt: "-Faltas" }, { icon: "🛡️", txt: "-Eficiência de desarme" }],
+    pesada: [
+      { tipo: "vantagem", texto: "Recupera a bola com muito mais eficiência de desarme." },
+      { tipo: "risco", texto: "Mais faltas/cartões e mais fôlego gasto." },
+    ],
+    leve: [
+      { tipo: "vantagem", texto: "Bem menos faltas cometidas." },
+      { tipo: "risco", texto: "Eficiência de desarme cai." },
+    ],
+  },
+  concentrar: {
+    meio: [
+      { tipo: "vantagem", texto: "Mais posse e domínio do jogo pelo meio-campo." },
+    ],
+    esquerda: [
+      { tipo: "vantagem", texto: "Mira o Lateral-Direito adversário — se ele for mais fraco, cria vantagem de verdade." },
+      { tipo: "risco", texto: "Mirar um lado FORTE do adversário atrapalha o seu próprio ataque." },
+    ],
+    direita: [
+      { tipo: "vantagem", texto: "Mira o Lateral-Esquerdo adversário — se ele for mais fraco, cria vantagem de verdade." },
+      { tipo: "risco", texto: "Mirar um lado FORTE do adversário atrapalha o seu próprio ataque." },
+    ],
+  },
+  armacao: {
+    "passes-longos": [
+      { tipo: "vantagem", texto: "Conversão cheia — é o contragolpe natural contra a Posse de bola adversária." },
+      { tipo: "risco", texto: "Mais erro de passe e abre mão de metade da vantagem de meio-campo." },
+    ],
+    cruzamentos: [
+      { tipo: "vantagem", texto: "Mais chance e qualidade de gol de escanteio/cabeceio." },
+      { tipo: "risco", texto: "Menos frequência de chance no jogo corrido." },
+    ],
+    "chutes-longe": [
+      { tipo: "vantagem", texto: "Cria chance mesmo contra defesa fechada — depende menos de furar a marcação." },
+      { tipo: "risco", texto: "Conversão nunca chega ao máximo, mesmo com bons finalizadores." },
+    ],
   },
 };
 
+let campoValorPopoverInfoTaticaAberto = null; // "campo|valor" do popover ⓘ aberto agora, ou null
+
 function renderizarTatica() {
+  fecharPopoverInfoTatica(); // evita popover órfão apontando pra um botão que vai ser recriado
   Object.keys(OPCOES_TATICA).forEach(function (campo) {
     const container = document.getElementById("opcoes-" + campo);
     if (!container) return;
@@ -2715,19 +2779,65 @@ function renderizarTatica() {
       const botao = document.createElement("button");
       botao.type = "button";
       botao.className = "opcao" + (estado.tatica[campo] === opcao.v ? " ativa" : "");
-      const tags = (TAGS_TATICA[campo] && TAGS_TATICA[campo][opcao.v]) || null;
+      const info = (INFO_TATICA[campo] && INFO_TATICA[campo][opcao.v]) || null;
       botao.innerHTML = "<span class=\"opcao-rotulo\">" + escaparHtml(opcao.r) + "</span>" +
-        (tags ? "<span class=\"opcao-tags\">" + tags.map(function (t) {
-          return "<span class=\"opcao-tag\">" + t.icon + " " + escaparHtml(t.txt) + "</span>";
-        }).join("") + "</span>" : "");
-      if (tags) botao.classList.add("opcao-com-tags");
+        (info && info.length > 0 ? "<span class=\"btn-info-tatica\" role=\"button\" tabindex=\"0\" title=\"Ver vantagens e riscos\">ⓘ</span>" : "");
       botao.addEventListener("click", function () {
         definirTatica(campo, opcao.v);
       });
+      const botaoInfo = botao.querySelector(".btn-info-tatica");
+      if (botaoInfo) {
+        botaoInfo.addEventListener("click", function (evento) {
+          evento.stopPropagation();
+          const chave = campo + "|" + opcao.v;
+          if (campoValorPopoverInfoTaticaAberto === chave) {
+            fecharPopoverInfoTatica();
+          } else {
+            abrirPopoverInfoTatica(botaoInfo, info);
+            campoValorPopoverInfoTaticaAberto = chave;
+          }
+        });
+      }
       container.appendChild(botao);
     });
   });
   renderizarSinergia();
+}
+
+/** Popover ⓘ (2026-08-07): pequena caixa flutuante com as vantagens/riscos da opção tática, ancorada
+ * no ícone clicado. `position: fixed` + reposicionamento via `getBoundingClientRect` — nunca vaza da
+ * tela, mesmo em mobile (375px). */
+function abrirPopoverInfoTatica(elementoIcone, itens) {
+  const popover = document.getElementById("popover-info-tatica");
+  const conteudo = document.getElementById("popover-info-tatica-conteudo");
+  if (!popover || !conteudo) return;
+  conteudo.innerHTML = itens.map(function (item) {
+    const icone = item.tipo === "vantagem" ? "🟢" : "🔴";
+    const rotulo = item.tipo === "vantagem" ? "Vantagem" : "Risco";
+    return "<p class=\"popover-info-tatica-item\"><strong>" + icone + " " + rotulo + ":</strong> " + escaparHtml(item.texto) + "</p>";
+  }).join("");
+  popover.hidden = false;
+  posicionarPopoverInfoTatica(elementoIcone, popover);
+}
+
+function posicionarPopoverInfoTatica(elementoIcone, popover) {
+  const rectIcone = elementoIcone.getBoundingClientRect();
+  const rectPopover = popover.getBoundingClientRect();
+  const margem = 8;
+  let esquerda = rectIcone.left;
+  let topo = rectIcone.bottom + 6;
+  esquerda = Math.max(margem, Math.min(esquerda, window.innerWidth - rectPopover.width - margem));
+  if (topo + rectPopover.height > window.innerHeight - margem) {
+    topo = rectIcone.top - rectPopover.height - 6;
+  }
+  popover.style.left = esquerda + "px";
+  popover.style.top = topo + "px";
+}
+
+function fecharPopoverInfoTatica() {
+  const popover = document.getElementById("popover-info-tatica");
+  if (popover) popover.hidden = true;
+  campoValorPopoverInfoTaticaAberto = null;
 }
 
 /** Barra + alertas de Sinergia Tática no topo da seção (ver `avaliarSinergiaTatica`, partida.js). */
@@ -9122,6 +9232,16 @@ function ligarBotoes() {
   if (btnAplicarFiltrosMercado) btnAplicarFiltrosMercado.addEventListener("click", function () {
     sobreposicaoFiltrosMercado.hidden = true;
     renderizarMercado();
+  });
+
+  // Popover ⓘ da tela de tática (2026-08-07): fecha ao clicar em qualquer lugar fora dele — o
+  // clique no próprio ícone que abriu já fecha via toggle (stopPropagation em renderizarTatica),
+  // então esse listener nunca conflita com aquele.
+  document.addEventListener("click", function (evento) {
+    const popover = document.getElementById("popover-info-tatica");
+    if (!popover || popover.hidden) return;
+    if (popover.contains(evento.target)) return;
+    fecharPopoverInfoTatica();
   });
 
   const btnFecharProposta = document.getElementById("btn-fechar-proposta");

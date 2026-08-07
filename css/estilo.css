@@ -1907,8 +1907,11 @@ body::before {
 }
 
 .opcao {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   min-height: 40px;
-  padding: 0 16px;
+  padding: 0 14px;
   border-radius: 20px;
   border: 1px solid rgba(255, 255, 255, 0.18);
   background: rgba(255, 255, 255, 0.05);
@@ -1925,33 +1928,46 @@ body::before {
   color: #3a2b00;
 }
 
-/* Botões de tática com badges de risco/benefício (2026-08-07): viram cartão de 2 linhas
-   (rótulo em cima, tags embaixo), com cantos menos arredondados pra caber o texto extra. */
-.opcao.opcao-com-tags {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 4px;
-  min-height: 40px;
-  padding: 8px 14px;
-  border-radius: 14px;
+/* Ícone ⓘ (2026-08-07): discreto, dentro do botão compacto — abre o popover de vantagens/riscos
+   em vez de inflar o botão com badges embutidos (formato antigo). */
+.btn-info-tatica {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 17px;
+  height: 17px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  border: 1px solid currentColor;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
+  opacity: 0.75;
+  -webkit-tap-highlight-color: transparent;
 }
 
-.opcao .opcao-tags {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px;
+/* Popover de vantagens/riscos (2026-08-07): pequena caixa flutuante ancorada no ⓘ clicado,
+   posicionada via JS (position: fixed) — nunca some junto com o scroll da lista de opções. */
+.popover-info-tatica {
+  position: fixed;
+  z-index: 60;
+  max-width: 260px;
+  background: linear-gradient(160deg, var(--navy-glass-1), var(--navy-glass-2));
+  border: 1px solid var(--navy-borda);
+  border-radius: 12px;
+  padding: 10px 12px;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.45);
 }
 
-.opcao .opcao-tag {
-  font-size: 10px;
-  font-weight: 600;
-  line-height: 1.2;
-  padding: 2px 6px;
-  border-radius: 8px;
-  background: rgba(0, 0, 0, 0.22);
-  color: inherit;
-  opacity: 0.85;
+.popover-info-tatica-item {
+  margin: 0 0 6px;
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--branco);
+}
+
+.popover-info-tatica-item:last-child {
+  margin-bottom: 0;
 }
 
 /* Indicador de Sinergia Tática (2026-08-07): barra de % + lista de alertas no topo da seção. */
