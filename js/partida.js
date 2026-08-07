@@ -432,15 +432,17 @@ function taxaConversaoFaltaDireta(cobrador) {
   return clamp(0.04 + (cobrador.forca - 35) * 0.006 + bonusCarac, 0.02, 0.22);
 }
 
-/** Concede um pênalti: pausa pro usuário escolher o cobrador (partida interativa do usuário) ou
- * resolve na hora com o melhor cobrador disponível (CPU/adversário) — sempre com conversão por
- * habilidade (`taxaConversaoPenalti`), nunca mais taxa fixa igual pra qualquer um. */
+/** Concede um pênalti: pausa pro usuário escolher o cobrador na hora, estilo Brasfoot (partida
+ * interativa do usuário, `permitirPausaPenalti`) ou resolve na hora com o melhor cobrador
+ * disponível (CPU/adversário) — sempre com conversão por habilidade (`taxaConversaoPenalti`),
+ * nunca mais taxa fixa igual pra qualquer um. */
 function concederPenalti(partida, atacante, ladoAtacante, permitirPausaPenalti, estatAtacante) {
   estatAtacante.noGol++;
-  // Cobrança automática pelo cobrador PRÉ-ESCOLHIDO antes do jogo (2026-08-04): o técnico define o
-  // batedor de pênalti na tela de escalação, então a partida não pausa mais pra escolher na hora.
-  // `permitirPausaPenalti` fica no parâmetro só por compatibilidade de assinatura, mas não é mais usado.
-  const cobrador = cobradorDoPapel(atacante, "penalti");
+  if (permitirPausaPenalti) {
+    partida.pendencia = { tipo: "penalti", lado: ladoAtacante };
+    return;
+  }
+  const cobrador = melhorCobradorPorPapel(atacante, "penalti");
   if (!cobrador) return;
   const converteu = Math.random() < taxaConversaoPenalti(cobrador);
   if (converteu) {
@@ -693,6 +695,9 @@ function criarTimeSimulado(nome, titularesResolvidos, tatica, setasPorVaga, opco
     // Cobradores de bola parada escolhidos pelo técnico (só o time do usuário passa isso; CPU usa o
     // melhor cobrador automático). { penalti, falta, escanteio } com _id do titular, ou null.
     cobradores: (extras && extras.cobradores) || null,
+    // Palestra no Intervalo (2026-08-07): instrução do técnico pro 2º tempo (só o time do usuário).
+    // "empenho" | "concentracao" | "trancar" | null — consumida em `processarLadoPartida`.
+    palestra: (extras && extras.palestra) || null,
     opcoesMando: opcoesMando || null,
     setores: setores, // { defesa, meio, ataque } — força EFETIVA do setor, recalculada minuto a minuto (setas + reatividade da IA + expulsão)
     setoresBase: Object.assign({}, setores), // referência fixa (mando+tática já aplicados), sem setas/reatividade/expulsão
@@ -837,6 +842,7 @@ function novaPartida(interativa) {
     numeroRodadaOficial: null,
     interativa: !!interativa,
     pendencia: null, // { tipo: "penalti", lado } ou { tipo: "expulsao", lado, idJogador, motivo } — pausa a simulação
+    palestra: null, // Palestra no Intervalo: instrução do 2º tempo escolhida pelo usuário ("empenho"/"concentracao"/"trancar")
     substituicoesFeitas: 0, // máx. 5 por partida, igual à regra oficial
     jogadoresQueSairam: [], // _ids que já saíram nesta partida (substituídos OU expulsos) — não podem voltar
     jogadoresQueJogaram: [], // _ids de quem entrou em campo (titular de saída + quem entrou depois) — pro pós-jogo
@@ -1038,6 +1044,10 @@ function processarLadoPartida(partida, atacante, defensor, ladoAtacante, permiti
   if (estiloDefensor === "pressao-alta") multEstiloFrequencia *= 1.10;
   if (estiloDefensor === "onibus") multEstiloFrequencia *= 0.6;
   if (estiloAtacante === "onibus") multEstiloFrequencia *= 0.5;
+  // Palestra no Intervalo (2026-08-07): "Trancar a casa" tira criação do próprio ataque (−20%) e,
+  // do lado que defende, faz o adversário criar menos chances (−15% de eficiência defensiva a mais).
+  if (atacante.palestra === "trancar") multEstiloFrequencia *= 0.8;
+  if (defensor.palestra === "trancar") multEstiloFrequencia *= 0.85;
 
   // Exposição a contra-ataque (Rebalanceamento de setas 2026-07-23): se o time que defende
   // tem zagueiro/lateral/volante com seta ofensiva bem-sucedida nesse minuto, fica mais fácil
@@ -1071,6 +1081,7 @@ function processarLadoPartida(partida, atacante, defensor, ladoAtacante, permiti
     if (armacaoAtacante === "chutes-longe") fatorTaticaConversao *= 0.62 + 0.28 * clamp(0.5 + 0.5 * atacante.aptidoes.chuteLonge, 0, 1);
     if (armacaoAtacante === "cruzamentos" && atacante.aptidoes.cabeceio > 0) fatorTaticaConversao *= 1 + 0.10 * atacante.aptidoes.cruzamento;
     if (atacante.sinergia) fatorTaticaConversao *= atacante.sinergia.conversao; // Sinergia Tática (2026-08-07)
+    if (atacante.palestra === "empenho") fatorTaticaConversao *= 1.05; // Palestra "Cobrar mais empenho" (2026-08-07)
     let chanceGol = clamp((0.106 + (diferenca + deltaDirecional) * 0.003) * partida.fatorZebra[ladoDefensor] * fatorTaticaConversao, 0.02, 0.2);
     // Goleiro improvisado ou ausente (Correção de bug — 2026-07-25): quanto menor o fator,
     // mais essa penalidade empurra a chance de gol pra cima — praticamente certo de virar

@@ -365,15 +365,11 @@
       <div class="grupo-opcoes" id="opcoes-concentrar"></div>
 
       <h3>Capitão e cobradores</h3>
-      <p class="dica-cobradores">Já vêm pré-preenchidos com o melhor de cada função — troque se quiser.</p>
+      <p class="dica-cobradores">Já vêm pré-preenchidos com o melhor de cada função — troque se quiser. No pênalti, você escolhe o batedor na hora, quando o juiz apitar.</p>
       <div class="grade-cobradores">
         <div class="controle-formacao controle-formacao-empilhado">
           <label for="select-capitao">© Capitão</label>
           <select id="select-capitao"></select>
-        </div>
-        <div class="controle-formacao controle-formacao-empilhado">
-          <label for="select-cobrador-penalti">🎯 Pênalti</label>
-          <select id="select-cobrador-penalti"></select>
         </div>
         <div class="controle-formacao controle-formacao-empilhado">
           <label for="select-cobrador-falta">🧱 Falta</label>
@@ -1040,6 +1036,26 @@
       <button class="btn btn-secundario" id="btn-mexer-time-partida" type="button" hidden>🔧 Mexer no time</button>
       <button class="btn btn-primario" id="btn-voltar-escalacao-fim" type="button" hidden>Voltar à escalação</button>
     </div>
+
+    <!-- Palestra no Intervalo (2026-08-07): instrução do técnico pro 2º tempo — só aparece aos 45' -->
+    <section class="palestra-intervalo" id="palestra-intervalo" hidden>
+      <h3 class="palestra-titulo">🎙 Palestra do intervalo</h3>
+      <p class="palestra-dica">Escolha a instrução para o 2º tempo:</p>
+      <div class="grupo-opcoes" id="opcoes-palestra">
+        <button class="opcao opcao-com-tags" type="button" data-palestra="empenho">
+          <span class="opcao-rotulo">🔥 Cobrar mais empenho</span>
+          <span class="opcao-tags"><span class="opcao-tag">🎯 +Finalização</span><span class="opcao-tag">🔋 +Desgaste</span></span>
+        </button>
+        <button class="opcao opcao-com-tags" type="button" data-palestra="concentracao">
+          <span class="opcao-rotulo">🛡️ Manter a concentração</span>
+          <span class="opcao-tags"><span class="opcao-tag">⚖️ Rendimento padrão</span></span>
+        </button>
+        <button class="opcao opcao-com-tags" type="button" data-palestra="trancar">
+          <span class="opcao-rotulo">🔒 Trancar a casa</span>
+          <span class="opcao-tags"><span class="opcao-tag">🧱 +Defesa</span><span class="opcao-tag">🚫 −Ataque</span></span>
+        </button>
+      </div>
+    </section>
 
     <button class="painel-auxiliar auxiliar-neutro" id="painel-auxiliar" type="button" hidden>
       <span class="badge-nova-dica-auxiliar" id="badge-nova-dica-auxiliar" hidden>💡 Nova Dica Tática</span>

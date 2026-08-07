@@ -2018,6 +2018,18 @@ body::before {
 .aviso-sinergia-alerta { color: #f0a08c; }
 .aviso-sinergia-neutro { color: var(--cinza-texto); }
 
+/* Palestra no Intervalo (2026-08-07): menu de instrução do 2º tempo, mostrado só aos 45'. */
+.palestra-intervalo {
+  margin: 12px 0;
+  padding: 12px;
+  border: 1px solid var(--borda, #2a3550);
+  border-radius: 10px;
+  background: var(--fundo-cartao, rgba(255, 255, 255, 0.03));
+}
+.palestra-titulo { margin: 0 0 4px; font-size: 1rem; }
+.palestra-dica { margin: 0 0 10px; color: var(--cinza-texto); font-size: 0.85rem; }
+.palestra-intervalo[hidden] { display: none; }
+
 /* Grade 2x2 de Capitão + Cobradores (2026-08-07): economiza rolagem vertical no celular. */
 .grade-cobradores {
   display: grid;

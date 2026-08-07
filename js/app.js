@@ -253,7 +253,6 @@ function salvarProgresso() {
     precoIngresso: estado.precoIngresso,
     contratos: estado.contratos,
     capitaoId: estado.capitaoId,
-    cobradorPenaltiId: estado.cobradorPenaltiId,
     cobradorFaltaId: estado.cobradorFaltaId,
     cobradorEscanteioId: estado.cobradorEscanteioId,
     relacionadosIds: estado.relacionadosIds,
@@ -860,7 +859,6 @@ async function escalarEsteTime(time) {
     estado.contratos[jogador._id] = criarContratoInicial(jogador);
   });
   estado.capitaoId = null;
-  estado.cobradorPenaltiId = null;
   estado.cobradorFaltaId = null;
   estado.cobradorEscanteioId = null;
   garantirEscolhasTaticasPreenchidas(); // capitão + cobradores já vêm pré-preenchidos com o melhor de cada função
@@ -1603,7 +1601,6 @@ function garantirEscolhasTaticasPreenchidas() {
   }
 
   definirSeVazio("capitaoId", titulares, calcularFatorLiderancaCapitao);
-  definirSeVazio("cobradorPenaltiId", listaCobrador, taxaConversaoPenalti);
   definirSeVazio("cobradorFaltaId", listaCobrador, taxaConversaoFaltaDireta);
   definirSeVazio("cobradorEscanteioId", listaCobrador, function (j) {
     const wide = ["MEI", "LAT.D", "LAT.E", "ATE", "ATD"].indexOf(j.pos) !== -1 ? 5 : 0;
@@ -1617,7 +1614,6 @@ function montarSelectsCobradores() {
     .filter(function (i) { return i.vaga.pos !== "GOL"; });
 
   [
-    { id: "select-cobrador-penalti", campo: "cobradorPenaltiId" },
     { id: "select-cobrador-falta", campo: "cobradorFaltaId" },
     { id: "select-cobrador-escanteio", campo: "cobradorEscanteioId" },
   ].forEach(function (cfg) {
@@ -2927,8 +2923,11 @@ function calcularTimeSimuladoUsuario() {
   const time = criarTimeSimulado(estado.timeAtual.nome, titularesComFadiga, estado.tatica, estado.setas,
     { mando: meuLadoNaPartida }, estado.capitaoId, {
       temEstrelaDourada: existeDouradaTitular,
-      // Cobradores de bola parada escolhidos pelo técnico (só o time do usuário) — pênalti/falta/escanteio.
-      cobradores: { penalti: estado.cobradorPenaltiId, falta: estado.cobradorFaltaId, escanteio: estado.cobradorEscanteioId },
+      // Cobradores de bola parada escolhidos pelo técnico (só o time do usuário) — falta/escanteio.
+      // Pênalti não entra aqui: o usuário escolhe o batedor na hora, quando o juiz apitar.
+      cobradores: { falta: estado.cobradorFaltaId, escanteio: estado.cobradorEscanteioId },
+      // Palestra no Intervalo: instrução do 2º tempo escolhida pelo usuário (persiste na recriação do time).
+      palestra: partidaAtual ? partidaAtual.palestra : null,
     });
 
   // Correção de bug — cartão vermelho: essa função RECRIA o time do zero toda vez que a
@@ -3401,6 +3400,7 @@ function renderizarPartida() {
   renderizarFluxoPartida();
   renderizarEventosPartida();
   renderizarControlesPartida();
+  renderizarPalestraIntervalo();
 }
 
 /** Cor sólida derivada do nome do clube (mesma semente do escudo gerado) — usada no Gráfico de Fluxo. */
@@ -3515,6 +3515,28 @@ function renderizarEventosPartida() {
 
   // O evento mais novo entra no topo — sempre volta o quadro pro topo pra mostrar o lance mais recente.
   listaEl.scrollTop = 0;
+}
+
+/** Palestra no Intervalo: grava a instrução do 2º tempo e re-renderiza (destaque + efeito no motor). */
+function definirPalestraIntervalo(escolha) {
+  if (!partidaAtual) return;
+  tocarSom("clique");
+  partidaAtual.palestra = escolha;
+  renderizarPalestraIntervalo();
+}
+
+/** Mostra o menu de palestra só no intervalo da partida do usuário; destaca a opção escolhida. */
+function renderizarPalestraIntervalo() {
+  const secao = document.getElementById("palestra-intervalo");
+  if (!secao) return;
+  const noIntervalo = !!(partidaAtual && partidaAtual.interativa && partidaAtual.status === "intervalo");
+  secao.hidden = !noIntervalo;
+  if (!noIntervalo) return;
+  // "Manter a concentração" é o padrão até o técnico escolher outra coisa.
+  if (!partidaAtual.palestra) partidaAtual.palestra = "concentracao";
+  secao.querySelectorAll("button[data-palestra]").forEach(function (botao) {
+    botao.classList.toggle("ativa", botao.getAttribute("data-palestra") === partidaAtual.palestra);
+  });
 }
 
 function renderizarControlesPartida() {
@@ -4242,9 +4264,11 @@ function aplicarDesgastePosPartida() {
   // Tática ofensiva/pressão alta consome mais fôlego; retranca/posse cadenciada consome menos.
   // "Pressão Alta"/"Ônibus na Área" (2026-08-07) têm fator explícito (pedido: +30%/‑15% de gasto) —
   // os deltas de ataque/defesa deles não cruzam os limiares >=2 do resto da escala de propósito.
-  const fatorPostura = estado.tatica.estilo === "pressao-alta" ? 1.3
+  let fatorPostura = estado.tatica.estilo === "pressao-alta" ? 1.3
     : estado.tatica.estilo === "onibus" ? 0.85
     : ajusteEstilo.ataque >= 2 ? 1.2 : ajusteEstilo.defesa >= 2 ? 0.8 : 1;
+  // Palestra "Cobrar mais empenho" (2026-08-07): 2º tempo com mais intensidade gasta +10% de fôlego.
+  if (partidaAtual && partidaAtual.palestra === "empenho") fatorPostura *= 1.10;
 
   const vagaPorJogador = {};
   Object.keys(estado.titulares).forEach(function (vagaId) {
@@ -6633,7 +6657,6 @@ function removerJogadorDoElenco(idJogador) {
   }
   if (estado.capitaoId === idJogador) estado.capitaoId = null; // o capitão saiu do clube — precisa escolher outro
   // Cobradores: se quem saiu era um dos batedores, zera (o prefill escolhe outro no próximo render).
-  if (estado.cobradorPenaltiId === idJogador) estado.cobradorPenaltiId = null;
   if (estado.cobradorFaltaId === idJogador) estado.cobradorFaltaId = null;
   if (estado.cobradorEscanteioId === idJogador) estado.cobradorEscanteioId = null;
   Object.keys(estado.titulares).forEach(function (vagaId) {
@@ -8296,7 +8319,7 @@ async function continuarJogoSalvo() {
       estado.capitaoId = null; // o capitão salvo já não está mais no elenco (dispensado/vendido)
     }
     // Cobradores de bola parada (2026-08-04) — saves antigos não têm; ficam null e são pré-preenchidos abaixo.
-    estado.cobradorPenaltiId = registro.cobradorPenaltiId !== undefined ? registro.cobradorPenaltiId : null;
+    // Pênalti não é mais pré-escolhido (2026-08-07): volta a pausar a partida pro usuário bater na hora.
     estado.cobradorFaltaId = registro.cobradorFaltaId !== undefined ? registro.cobradorFaltaId : null;
     estado.cobradorEscanteioId = registro.cobradorEscanteioId !== undefined ? registro.cobradorEscanteioId : null;
     garantirEscolhasTaticasPreenchidas(); // preenche capitão/cobradores nulos ou inválidos com o melhor de cada função
@@ -8998,6 +9021,13 @@ function ligarBotoes() {
   const btnMexerTimePartida = document.getElementById("btn-mexer-time-partida");
   if (btnMexerTimePartida) btnMexerTimePartida.addEventListener("click", abrirTelaEscalacao);
 
+  const opcoesPalestra = document.getElementById("opcoes-palestra");
+  if (opcoesPalestra) {
+    opcoesPalestra.querySelectorAll("button[data-palestra]").forEach(function (botao) {
+      botao.addEventListener("click", function () { definirPalestraIntervalo(botao.getAttribute("data-palestra")); });
+    });
+  }
+
   const painelAuxiliar = document.getElementById("painel-auxiliar");
   if (painelAuxiliar) painelAuxiliar.addEventListener("click", acionarPainelAuxiliar);
 
@@ -9008,7 +9038,6 @@ function ligarBotoes() {
   if (selectCapitao) selectCapitao.addEventListener("change", function () { definirCapitao(selectCapitao.value); });
 
   [
-    { id: "select-cobrador-penalti", campo: "cobradorPenaltiId" },
     { id: "select-cobrador-falta", campo: "cobradorFaltaId" },
     { id: "select-cobrador-escanteio", campo: "cobradorEscanteioId" },
   ].forEach(function (cfg) {
