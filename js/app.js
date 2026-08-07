@@ -49,6 +49,7 @@ const ROTULO_STATUS_PARTIDA = {
 
 const VELOCIDADES_PARTIDA = [1, 2, 3];
 const TAMANHO_BANCO_RELACIONADO = 9; // reservas convocados pra partida (igual às regras oficiais)
+const LIMIAR_ENERGIA_MINIMA_BANCO = 50; // Auto-Preenchimento do Banco (2026-08-07): energia abaixo disso não entra na seleção automática
 const LIMITE_SUBSTITUICOES = 5; // máx. de substituições por partida
 const LIMITE_AMARELOS_SUSPENSAO = 3; // 3 cartões amarelos = 1 jogo de suspensão
 
@@ -70,6 +71,7 @@ const OPCOES_TATICA = {
   concentrar: [
     { v: "equilibrado", r: "Equilibrado" },
     { v: "meio", r: "Pelo meio" },
+    { v: "lados", r: "Pelos lados" },
     { v: "esquerda", r: "Pela esquerda" },
     { v: "direita", r: "Pela direita" },
   ],
@@ -2041,15 +2043,24 @@ function retirarMelhoresPorPosicao(candidatos, posicoes, qtd) {
  * Completa uma lista de ids de relacionados até `TAMANHO_BANCO_RELACIONADO`, seguindo a
  * Composição Padrão do Banco (1 GOL/2 ZAG/1 LD/1 LE/2 meio/2 ataque). Não mexe em quem já
  * está escolhido — só usa as vagas que sobraram, sempre com os jogadores de maior força do
- * grupo "Não Relacionados" disponível. Se faltar gente na posição exata de algum balde
- * (elenco incompleto naquela posição), a vaga cai pro fallback: melhor força disponível de
- * qualquer posição, garantindo as 9 vagas sempre que o elenco tiver jogadores suficientes.
+ * grupo "Não Relacionados" disponível (excluindo suspensos, lesionados e com energia abaixo
+ * de `LIMIAR_ENERGIA_MINIMA_BANCO`). Se faltar gente na posição exata de algum balde (elenco
+ * incompleto naquela posição), a vaga cai pro fallback: melhor força disponível de qualquer
+ * posição, garantindo as 9 vagas sempre que o elenco tiver jogadores elegíveis suficientes.
+ * Trava o goleiro reserva em exatamente 1 (2026-08-07): qualquer goleiro excedente é retirado
+ * do pool antes do fallback, senão o "melhor força, qualquer posição" empilhava 2+ goleiros
+ * no banco à custa de setores como lateral/volante que ficavam sem ninguém.
  */
 function completarBancoAteCheio(jogadores, idsJaEscolhidos) {
   const escolhidos = idsJaEscolhidos.slice();
   const idsUsados = new Set(escolhidos);
   const disponiveis = jogadores
-    .filter(function (j) { return !idsUsados.has(j._id); })
+    .filter(function (j) {
+      return !idsUsados.has(j._id) &&
+        !jogadorEstaSuspenso(j._id) &&
+        !jogadorEstaLesionado(j._id) &&
+        obterEnergiaJogador(j._id) >= LIMIAR_ENERGIA_MINIMA_BANCO;
+    })
     .sort(function (a, b) { return a.forca - b.forca; }); // crescente: retirarMelhoresPorPosicao tira do fim (maior força)
 
   COMPOSICAO_PADRAO_BANCO.forEach(function (balde) {
@@ -2059,8 +2070,14 @@ function completarBancoAteCheio(jogadores, idsJaEscolhidos) {
     retirarMelhoresPorPosicao(disponiveis, balde.posicoes, qtd).forEach(function (j) { escolhidos.push(j._id); });
   });
 
+  // Nunca 2º goleiro: se o elenco tinha mais de 1 GOL disponível, o excedente fica no pool
+  // depois do balde acima — remove antes do fallback pra não ser escolhido "por força".
+  for (let i = disponiveis.length - 1; i >= 0; i--) {
+    if (disponiveis[i].pos === "GOL") disponiveis.splice(i, 1);
+  }
+
   // Fallback: sobrou vaga (posição-alvo em falta no elenco) — completa com o melhor força
-  // disponível, de qualquer posição.
+  // disponível, de qualquer posição (exceto GOL, travado acima).
   while (escolhidos.length < TAMANHO_BANCO_RELACIONADO && disponiveis.length > 0) {
     escolhidos.push(disponiveis.pop()._id);
   }
@@ -2741,6 +2758,10 @@ const INFO_TATICA = {
   concentrar: {
     meio: [
       { tipo: "vantagem", texto: "Mais posse e domínio do jogo pelo meio-campo." },
+    ],
+    lados: [
+      { tipo: "vantagem", texto: "Ataca pelos dois corredores ao mesmo tempo — mais cruzamentos e jogadas de linha de fundo, imprevisível pro adversário." },
+      { tipo: "risco", texto: "Não mira o lado mais fraco do adversário como Pela esquerda/direita fazem — menos exploração cirúrgica." },
     ],
     esquerda: [
       { tipo: "vantagem", texto: "Mira o Lateral-Direito adversário — se ele for mais fraco, cria vantagem de verdade." },
@@ -5143,8 +5164,18 @@ function atualizarInfoRodada() {
     const meuPlacarAoVivo = souCasaAoVivo ? partidaAtual.placarCasa : partidaAtual.placarFora;
     const placarAdversarioAoVivo = souCasaAoVivo ? partidaAtual.placarFora : partidaAtual.placarCasa;
     if (elMando) elMando.textContent = "🔴 Ao vivo · " + partidaAtual.minuto + "'";
-    if (elMeuTime) elMeuTime.textContent = nomeMeuTimeAoVivo + " " + meuPlacarAoVivo;
-    if (elAdversario) elAdversario.textContent = placarAdversarioAoVivo + " " + nomeAdversarioAoVivo;
+    if (elMeuTime) {
+      elMeuTime.innerHTML = '<span class="nome-time-com-escudo">' +
+        '<span class="mini-escudo-time">' + montarEscudoClube(nomeMeuTimeAoVivo) + "</span>" +
+        '<span class="texto-nome-time">' + escaparHtml(nomeMeuTimeAoVivo) + " " + meuPlacarAoVivo + "</span>" +
+        "</span>";
+    }
+    if (elAdversario) {
+      elAdversario.innerHTML = '<span class="nome-time-com-escudo cartao-proximo-jogo-visitante">' +
+        '<span class="mini-escudo-time">' + montarEscudoClube(nomeAdversarioAoVivo) + "</span>" +
+        '<span class="texto-nome-time">' + placarAdversarioAoVivo + " " + escaparHtml(nomeAdversarioAoVivo) + "</span>" +
+        "</span>";
+    }
     if (elInfo) elInfo.textContent = "Partida pausada — mexa no time e volte pro jogo";
     return;
   }
@@ -5183,8 +5214,8 @@ function atualizarInfoRodada() {
     (souCasa ? "em casa contra " : "fora contra ") + adversario;
 
   if (elMando) elMando.textContent = souCasa ? "🏠 Em casa" : "✈️ Fora";
-  if (elMeuTime) elMeuTime.textContent = estado.timeAtual.nome;
-  if (elAdversario) elAdversario.textContent = adversario;
+  if (elMeuTime) elMeuTime.innerHTML = montarNomeComEscudo(estado.timeAtual.nome);
+  if (elAdversario) elAdversario.innerHTML = montarNomeComEscudo(adversario, "cartao-proximo-jogo-visitante");
   if (elInfo) {
     elInfo.textContent = "Rodada " + numeroRodada + "/" + totalRodadas + " — " +
       (ROTULO_DIVISAO_CAMPEONATO[estado.timeAtual.divisaoChave] || "Campeonato");
@@ -5198,16 +5229,14 @@ const NOME_SETOR_RELATORIO = { defesa: "defesa", meio: "meio-campo", ataque: "at
 /**
  * Relatório do Auxiliar Técnico (Pré-Jogo, aba "Adversário"): esquema/estilo do rival, jogador
  * mais perigoso e a brecha tática (setor mais fraco da escalação automática dele). Só faz sentido
- * antes do jogo começar — durante uma partida ativa o botão some (o "Mexer no time" já mostra o
+ * antes do jogo começar — durante uma partida ativa o card some (o "Mexer no time" já mostra o
  * adversário ao vivo).
  */
 async function atualizarRelatorioAdversario() {
-  const botao = document.getElementById("btn-toggle-relatorio-adversario");
   const cartao = document.getElementById("cartao-relatorio-adversario");
-  if (!botao || !cartao) return;
+  if (!cartao) return;
 
   if (estaEmPartidaAtiva() || !estado.temporada) {
-    botao.hidden = true;
     cartao.hidden = true;
     return;
   }
@@ -5217,7 +5246,6 @@ async function atualizarRelatorioAdversario() {
   const rodada = temporadaDivisao.calendario[numeroRodada - 1];
   const meuJogo = rodada && rodada.find(function (j) { return j.casa === estado.timeAtual.nome || j.fora === estado.timeAtual.nome; });
   if (!meuJogo) {
-    botao.hidden = true;
     cartao.hidden = true;
     return;
   }
@@ -5226,12 +5254,13 @@ async function atualizarRelatorioAdversario() {
   const dados = await carregarDados();
   const oponenteInfo = buscarTimePorNome(dados, nomeAdversario);
   if (!oponenteInfo) {
-    botao.hidden = true;
+    cartao.hidden = true;
     return;
   }
 
-  botao.hidden = false;
-  botao.textContent = "🔍 Relatório do Auxiliar Técnico — " + nomeAdversario;
+  cartao.hidden = false;
+  const elNomeTime = document.getElementById("relatorio-adversario-nome-time");
+  if (elNomeTime) elNomeTime.textContent = nomeAdversario;
 
   const oponenteDisponivel = jogadoresDisponiveisParaEscalar(oponenteInfo.jogadores, oponenteInfo.nome);
   const titularesMap = autoEscalarMelhores(oponenteDisponivel, "4-4-2a");
@@ -5314,11 +5343,6 @@ async function atualizarRelatorioAdversario() {
     brechaTexto = "—";
   }
   document.getElementById("relatorio-adversario-fraqueza").textContent = brechaTexto;
-}
-
-function alternarRelatorioAdversario() {
-  const cartao = document.getElementById("cartao-relatorio-adversario");
-  if (cartao) cartao.hidden = !cartao.hidden;
 }
 
 /** Atualiza caixa/posição/reputação no topo fixo do hub (escalação). */
@@ -8524,9 +8548,6 @@ async function continuarJogoSalvo() {
     // Armação (2026-08-06): saves anteriores não têm o campo — e blindagem contra qualquer valor
     // órfão de estilo/armação que não exista mais em OPCOES_TATICA (versão futura removeu algo).
     if (!estado.tatica.armacao) estado.tatica.armacao = "passes-curtos";
-    // Ataque Direcionado (2026-08-07): "lados" virou "esquerda" (preserva o bônus de escanteio que
-    // já tinha, em vez de cair no genérico "equilibrado" pela blindagem de órfão logo abaixo).
-    if (estado.tatica.concentrar === "lados") estado.tatica.concentrar = "esquerda";
     if (!OPCOES_TATICA.estilo.some(function (o) { return o.v === estado.tatica.estilo; })) estado.tatica.estilo = "equilibrado";
     if (!OPCOES_TATICA.armacao.some(function (o) { return o.v === estado.tatica.armacao; })) estado.tatica.armacao = "passes-curtos";
     if (!OPCOES_TATICA.concentrar.some(function (o) { return o.v === estado.tatica.concentrar; })) estado.tatica.concentrar = "equilibrado";
@@ -9331,9 +9352,6 @@ function ligarBotoes() {
 
   const painelAuxiliar = document.getElementById("painel-auxiliar");
   if (painelAuxiliar) painelAuxiliar.addEventListener("click", acionarPainelAuxiliar);
-
-  const btnRelatorioAdversario = document.getElementById("btn-toggle-relatorio-adversario");
-  if (btnRelatorioAdversario) btnRelatorioAdversario.addEventListener("click", alternarRelatorioAdversario);
 
   const selectCapitao = document.getElementById("select-capitao");
   if (selectCapitao) selectCapitao.addEventListener("change", function () { definirCapitao(selectCapitao.value); });

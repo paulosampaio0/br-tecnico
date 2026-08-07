@@ -38,14 +38,16 @@ const AJUSTE_ESTILO_TATICA = {
 };
 const AJUSTE_MARCACAO_TATICA = { leve: -1, normal: 0, pesada: 1.5 };
 
-// Concentração de ataques (2026-08-04 — antes não fazia NADA na simulação; 2026-08-07 — "lados"
-// virou ataque DIRECIONADO de verdade): "meio" domina mais a posse e o jogo central; "esquerda"/
-// "direita" miram um lado específico da defesa adversária (mais presença de área e escanteio). O
-// alvo individual é resolvido em `ajusteAtaqueDirecionado` — os deltas aqui são só o "fundo" de
-// posse/presença de área.
+// Concentração de ataques (2026-08-04 — antes não fazia NADA na simulação; 2026-08-07 — "esquerda"/
+// "direita" viraram ataque DIRECIONADO de verdade; "lados" voltou como opção que distribui o ataque
+// pelos DOIS corredores): "meio" domina mais a posse e o jogo central; "esquerda"/"direita" miram um
+// lado específico da defesa adversária (mais presença de área e escanteio); "lados" mira os dois
+// laterais pela força MÉDIA deles, sem explorar cirurgicamente o mais fraco. O alvo individual é
+// resolvido em `ajusteAtaqueDirecionado` — os deltas aqui são só o "fundo" de posse/presença de área.
 const AJUSTE_CONCENTRAR = {
   equilibrado: { meio: 0, ataque: 0 },
   meio: { meio: 1.4, ataque: 0 },
+  lados: { meio: -0.5, ataque: 0.9 },
   esquerda: { meio: -0.5, ataque: 0.9 },
   direita: { meio: -0.5, ataque: 0.9 },
 };
@@ -1011,7 +1013,7 @@ function calcularVantagemMeio(setoresAtacante, setoresDefensor) {
  */
 function ajusteAtaqueDirecionado(atacante, defensor) {
   const direcao = atacante.concentrar;
-  if (direcao !== "esquerda" && direcao !== "direita" && direcao !== "meio") return 0;
+  if (direcao !== "esquerda" && direcao !== "direita" && direcao !== "meio" && direcao !== "lados") return 0;
 
   const defensores = titularesEmCampo(defensor).filter(function (i) {
     return i.vaga.pos === "ZAG" || i.vaga.pos === "LAT.D" || i.vaga.pos === "LAT.E" || i.vaga.pos === "VOL";
@@ -1022,13 +1024,22 @@ function ajusteAtaqueDirecionado(atacante, defensor) {
   let alvos;
   if (direcao === "esquerda") alvos = defensores.filter(function (i) { return i.vaga.pos === "LAT.D"; });
   else if (direcao === "direita") alvos = defensores.filter(function (i) { return i.vaga.pos === "LAT.E"; });
+  else if (direcao === "lados") alvos = defensores.filter(function (i) { return i.vaga.pos === "LAT.D" || i.vaga.pos === "LAT.E"; });
   else alvos = defensores.filter(function (i) { return i.vaga.pos === "ZAG" || i.vaga.pos === "VOL"; }); // meio
 
   if (alvos.length === 0) return 0;
-  const alvo = alvos.reduce(function (pior, i) {
-    return (!pior || i.jogador.forca * i.eficiencia < pior.jogador.forca * pior.eficiencia) ? i : pior;
-  }, null);
-  const forcaAlvo = alvo.jogador.forca * alvo.eficiencia;
+
+  // "Lados" (2026-08-07) distribui o ataque pelos DOIS laterais, então usa a força MÉDIA dos alvos
+  // em vez do pior — diferente de esquerda/direita, que miram cirurgicamente o lado mais fraco.
+  let forcaAlvo;
+  if (direcao === "lados") {
+    forcaAlvo = alvos.reduce(function (s, i) { return s + i.jogador.forca * i.eficiencia; }, 0) / alvos.length;
+  } else {
+    const alvo = alvos.reduce(function (pior, i) {
+      return (!pior || i.jogador.forca * i.eficiencia < pior.jogador.forca * pior.eficiencia) ? i : pior;
+    }, null);
+    forcaAlvo = alvo.jogador.forca * alvo.eficiencia;
+  }
 
   return clamp((mediaDef - forcaAlvo) * 0.15, -1.5, 1.5);
 }
@@ -1218,7 +1229,7 @@ function processarLadoPartida(partida, atacante, defensor, ladoAtacante, permiti
   // vem vs. o que se faz com ela, mas a frequência de escanteio é o único ponto onde se tocam).
   // 2026-08-07: "lados" virou ataque direcionado (esquerda/direita) — "meio" não gera esse bônus
   // de escanteio (o ataque não vem mais pela ponta nesse caso).
-  const concentraLados = atacante.concentrar === "esquerda" || atacante.concentrar === "direita";
+  const concentraLados = atacante.concentrar === "esquerda" || atacante.concentrar === "direita" || atacante.concentrar === "lados";
   const cruzando = armacaoAtacante === "cruzamentos";
   const chanceEscanteio = Math.min(0.055 * (concentraLados ? 1.35 : 1) * (cruzando ? 1.2 : 1), 0.095);
   if (Math.random() < chanceEscanteio) {

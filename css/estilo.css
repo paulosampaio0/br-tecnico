@@ -630,9 +630,9 @@ body::before {
   min-width: 64px;
   padding: 8px 10px;
   border-radius: 12px;
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  background: rgba(255, 255, 255, 0.05);
-  color: var(--cinza-texto);
+  border: 1px solid var(--amarelo);
+  background: var(--amarelo);
+  color: #3a2b00;
   font-family: var(--fonte-titulo);
   font-size: 11px;
   font-weight: 600;
@@ -652,7 +652,7 @@ body::before {
 
 .hub-nav-item.ativo {
   background: var(--amarelo);
-  border-color: var(--amarelo);
+  border-color: #3a2b00;
   color: #3a2b00;
 }
 
@@ -694,6 +694,21 @@ body::before {
   white-space: nowrap;
 }
 
+.cartao-proximo-jogo-time .nome-time-com-escudo {
+  display: inline-flex;
+  max-width: 100%;
+}
+
+.cartao-proximo-jogo-time .mini-escudo-time {
+  width: 22px;
+  height: 22px;
+}
+
+/* Escudo sempre na ponta de fora do card — visitante espelha o mandante (Nome->Escudo). */
+.cartao-proximo-jogo-visitante {
+  flex-direction: row-reverse;
+}
+
 .cartao-proximo-jogo-vs {
   flex-shrink: 0;
   color: var(--cinza-texto);
@@ -719,17 +734,6 @@ body::before {
 }
 
 /* Relatório do Auxiliar Técnico (Pré-Jogo, aba "Adversário") */
-.btn-relatorio-adversario {
-  background: rgba(255, 255, 255, 0.06);
-  border: 1px solid rgba(255, 255, 255, 0.14);
-  border-radius: var(--raio);
-  color: var(--branco);
-  font-size: 13px;
-  font-weight: 600;
-  padding: 10px 12px;
-  text-align: left;
-}
-
 .cartao-relatorio-adversario {
   border-radius: var(--raio);
   background: rgba(255, 255, 255, 0.05);
