@@ -72,7 +72,6 @@ const OPCOES_TATICA = {
     { v: "meio", r: "Pelo meio" },
     { v: "esquerda", r: "Pela esquerda" },
     { v: "direita", r: "Pela direita" },
-    { v: "brecha", r: "Explorar brecha rival" },
   ],
   armacao: [
     { v: "passes-curtos", r: "Passes curtos" },
@@ -3634,8 +3633,8 @@ function avaliarAuxiliar(partida) {
   const diffMeio = meuTime.setores.meio - advTime.setores.meio;
   if (diffMeio <= -3) {
     candidatos.push({ chave: "meio-perdendo", prioridade: 3, urgencia: "atencao",
-      texto: "O adversário está congestionando o meio. Que tal explorar a brecha na defesa rival?",
-      acao: "concentrar-brecha", rotuloAcao: "Explorar brecha rival" });
+      texto: "O adversário está congestionando o meio. Que tal jogar mais pela lateral?",
+      acao: "concentrar-esquerda", rotuloAcao: "Pela esquerda" });
   } else if (diffMeio >= 4) {
     candidatos.push({ chave: "meio-dominando", prioridade: 2, urgencia: "neutro",
       texto: "Estamos com domínio total do meio-campo." });
@@ -3869,8 +3868,8 @@ function acionarPainelAuxiliar() {
       pararIntervaloPartida();
     }
     abrirTelaEscalacao();
-  } else if (auxiliarEstado.acaoAtual === "concentrar-brecha") {
-    aplicarAcaoTaticaRapidaAuxiliar("concentrar", "brecha");
+  } else if (auxiliarEstado.acaoAtual === "concentrar-esquerda") {
+    aplicarAcaoTaticaRapidaAuxiliar("concentrar", "esquerda");
   } else if (auxiliarEstado.acaoAtual === "estilo-retranca") {
     aplicarAcaoTaticaRapidaAuxiliar("estilo", "contra-ataque"); // Retranca virou "Contra-ataque (retranca)"
   }

@@ -40,15 +40,14 @@ const AJUSTE_MARCACAO_TATICA = { leve: -1, normal: 0, pesada: 1.5 };
 
 // Concentração de ataques (2026-08-04 — antes não fazia NADA na simulação; 2026-08-07 — "lados"
 // virou ataque DIRECIONADO de verdade): "meio" domina mais a posse e o jogo central; "esquerda"/
-// "direita" miram um lado específico da defesa adversária (mais presença de área e escanteio);
-// "brecha" mira automaticamente o defensor mais fraco em campo, onde estiver. O alvo individual é
-// resolvido em `ajusteAtaqueDirecionado` — os deltas aqui são só o "fundo" de posse/presença de área.
+// "direita" miram um lado específico da defesa adversária (mais presença de área e escanteio). O
+// alvo individual é resolvido em `ajusteAtaqueDirecionado` — os deltas aqui são só o "fundo" de
+// posse/presença de área.
 const AJUSTE_CONCENTRAR = {
   equilibrado: { meio: 0, ataque: 0 },
   meio: { meio: 1.4, ataque: 0 },
   esquerda: { meio: -0.5, ataque: 0.9 },
   direita: { meio: -0.5, ataque: 0.9 },
-  brecha: { meio: -0.3, ataque: 0.6 },
 };
 
 /**
@@ -1003,17 +1002,16 @@ function calcularVantagemMeio(setoresAtacante, setoresDefensor) {
 }
 
 /**
- * Ataque Direcionado (2026-08-07): "Concentrar ataques" em esquerda/direita/meio/brecha mira um
+ * Ataque Direcionado (2026-08-07): "Concentrar ataques" em esquerda/direita/meio mira um
  * DEFENSOR INDIVIDUAL do adversário em campo, não só a média do setor — mirar um lado fraco ajuda
  * de verdade, mirar um lado forte atrapalha. Devolve um delta pequeno (±1.5) somado à diferença de
  * força na hora de calcular frequência de chance (`processarLadoPartida`). "esquerda" mira o
  * Lateral-Direito adversário, "direita" mira o Lateral-Esquerdo (o ataque vem DAQUELE lado do campo,
- * contra o lateral que defende esse lado) — "brecha" mira automaticamente o defensor mais fraco em
- * campo, onde quer que ele jogue.
+ * contra o lateral que defende esse lado).
  */
 function ajusteAtaqueDirecionado(atacante, defensor) {
   const direcao = atacante.concentrar;
-  if (direcao !== "esquerda" && direcao !== "direita" && direcao !== "meio" && direcao !== "brecha") return 0;
+  if (direcao !== "esquerda" && direcao !== "direita" && direcao !== "meio") return 0;
 
   const defensores = titularesEmCampo(defensor).filter(function (i) {
     return i.vaga.pos === "ZAG" || i.vaga.pos === "LAT.D" || i.vaga.pos === "LAT.E" || i.vaga.pos === "VOL";
@@ -1024,8 +1022,7 @@ function ajusteAtaqueDirecionado(atacante, defensor) {
   let alvos;
   if (direcao === "esquerda") alvos = defensores.filter(function (i) { return i.vaga.pos === "LAT.D"; });
   else if (direcao === "direita") alvos = defensores.filter(function (i) { return i.vaga.pos === "LAT.E"; });
-  else if (direcao === "meio") alvos = defensores.filter(function (i) { return i.vaga.pos === "ZAG" || i.vaga.pos === "VOL"; });
-  else alvos = defensores; // brecha: qualquer defensor em campo, sempre o mais fraco
+  else alvos = defensores.filter(function (i) { return i.vaga.pos === "ZAG" || i.vaga.pos === "VOL"; }); // meio
 
   if (alvos.length === 0) return 0;
   const alvo = alvos.reduce(function (pior, i) {
@@ -1064,7 +1061,7 @@ function processarLadoPartida(partida, atacante, defensor, ladoAtacante, permiti
   if (armacaoAtacante === "passes-longos") vantagemMeio = 1 + (vantagemMeio - 1) * 0.5;
 
   // Ataque Direcionado (2026-08-07): mira um defensor individual do adversário (esquerda/direita/
-  // meio/brecha) — soma um delta pequeno na diferença de força usada tanto na frequência quanto
+  // meio) — soma um delta pequeno na diferença de força usada tanto na frequência quanto
   // (via `diferenca`) na conversão.
   const deltaDirecional = ajusteAtaqueDirecionado(atacante, defensor);
 
@@ -1219,8 +1216,8 @@ function processarLadoPartida(partida, atacante, defensor, ladoAtacante, permiti
   // "Cruzamentos" (Armação, 2026-08-06) soma OUTRA frequência de escanteio — cap explícito pra não
   // dobrar o efeito de "Concentrar pelos lados" (as duas mexem em eixos diferentes: de onde a bola
   // vem vs. o que se faz com ela, mas a frequência de escanteio é o único ponto onde se tocam).
-  // 2026-08-07: "lados" virou ataque direcionado (esquerda/direita) — meio/brecha não geram esse
-  // bônus de escanteio (o ataque não vem mais pela ponta nesses casos).
+  // 2026-08-07: "lados" virou ataque direcionado (esquerda/direita) — "meio" não gera esse bônus
+  // de escanteio (o ataque não vem mais pela ponta nesse caso).
   const concentraLados = atacante.concentrar === "esquerda" || atacante.concentrar === "direita";
   const cruzando = armacaoAtacante === "cruzamentos";
   const chanceEscanteio = Math.min(0.055 * (concentraLados ? 1.35 : 1) * (cruzando ? 1.2 : 1), 0.095);
