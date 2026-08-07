@@ -130,15 +130,13 @@ function aplicarOverridesEditor(dados) {
     });
   });
 
-  // Estrela Editor: jogadores marcados como "Estrela Dourada" no formulário viram Estrela Dourada
-  // globalmente (mesmo mecanismo de `JOGADORES_EMBLEMATICOS`, por nome — reaproveita o Sistema de
-  // Estrelas já existente). Campo renomeado de `estrelaEditor` pra `estrelaDouradaEditor` na
-  // reformulação de Estrelas Prata/Dourada — corrigido aqui pra voltar a funcionar.
-  Object.values(overrides).forEach(function (over) {
-    [].concat(over.adicionados || [], Object.values(over.editados || {})).forEach(function (jogador) {
-      if (jogador && jogador.estrelaDouradaEditor && jogador.nome) JOGADORES_EMBLEMATICOS.add(jogador.nome);
-    });
-  });
+  // Estrela Dourada marcada manualmente no Editor já propaga sozinha por `obterEstrelaEditor`/
+  // `obterEstrelaJogador` (leem `jogador.estrelaDouradaEditor` direto). NÃO injetar o nome em
+  // `JOGADORES_EMBLEMATICOS` aqui (Correção — Editor de Times): isso fazia o próprio checkbox
+  // "Estrela Dourada" travar pra sempre depois de marcado e salvo uma vez, porque o formulário
+  // trata "está no Set fixo de emblemáticos" e "foi marcado manualmente" como a mesma coisa
+  // (`ehEmblematico` desabilita o checkbox) — o Set fixo deve ficar só com os jogadores de
+  // verdade emblemáticos (`JOGADORES_EMBLEMATICOS`, banco de dados, não editável pelo usuário).
 }
 
 /** Reconstrói `cacheDados` a partir de `cacheDadosBrutos` + overrides do Editor — chamar sempre

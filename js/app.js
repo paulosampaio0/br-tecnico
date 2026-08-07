@@ -768,8 +768,8 @@ function criarItemJogador(jogador, mostrarEnergia) {
   const formaJogador = mostrarEnergia ? obterFormaJogador(jogador._id) : "neutra";
   const prefixoForma = formaJogador === "alta" ? "<span class=\"tag-forma\" title=\"Em alta\">🟢⬆️</span> "
     : formaJogador === "baixa" ? "<span class=\"tag-forma\" title=\"Em baixa\">🔴⬇️</span> " : "";
-  const sufixoEstrelaStatus = estrelaStatus === "dourada" ? " <span class=\"tag-estrela-status\" title=\"Estrela Dourada\">✮</span>"
-    : estrelaStatus === "prateada" ? " <span class=\"tag-estrela-status\" title=\"Estrela Prateada\">🥈</span>" : "";
+  const sufixoEstrelaStatus = estrelaStatus === "dourada" ? " <span class=\"tag-estrela-status\" title=\"Estrela Dourada\">⭐</span>"
+    : estrelaStatus === "prateada" ? " <span class=\"tag-estrela-status\" title=\"Estrela Prateada\">✮</span>" : "";
   const valorMercado = calcularValorMercado(jogador, estrelaStatus);
 
   let blocoEnergia = "";
@@ -2144,10 +2144,10 @@ function obterFormaJogador(idJogador) {
 }
 
 const MARCADOR_FORMA_COMPACTO = { alta: " 🟢⬆️", baixa: " 🔴⬇️" };
-const MARCADOR_ESTRELA_COMPACTO = { dourada: " ✮", prateada: " 🥈" };
+const MARCADOR_ESTRELA_COMPACTO = { dourada: " ⭐", prateada: " ✮" };
 
 /**
- * "35 🟢⬆️ Felipe ✮" — força + forma + sobrenome curto + estrela, texto único reaproveitado em
+ * "35 🟢⬆️ Felipe ⭐" — força + forma + sobrenome curto + estrela, texto único reaproveitado em
  * TODO card de jogador (Padronização de cards): titular no campo, "Mexer no time" e Banco/Não Relacionados.
  * `ehMeuJogador` (default true): `_id` é só o índice dentro do elenco de cada clube (não é globalmente
  * único) — passar `false` pro lado adversário do campo duplo, senão ele "herdaria" estrela/forma de um
@@ -2206,7 +2206,7 @@ function montarEstrelaBadgeVaga(jogador, ehMeuJogador) {
   const souMeu = ehMeuJogador !== false;
   const estrela = souMeu ? obterEstrelaJogador(jogador) : obterEstrelaEditor(jogador);
   if (!estrela) return "";
-  const emoji = estrela === "dourada" ? "✮" : "🥈";
+  const emoji = estrela === "dourada" ? "⭐" : "✮";
   const rotulo = estrela === "dourada" ? "Estrela Dourada" : "Estrela Prateada";
   return "<span class=\"estrela-badge-vaga\" title=\"" + rotulo + "\">" + emoji + "</span>";
 }
@@ -4668,7 +4668,7 @@ async function atualizarEstrelasDeTemporada(parcial) {
   // "vazar" sobre outro botão da tela seguinte (ex.: os atalhos do banner de Fim da Rodada).
   const partesAlerta = [];
   if (promovidosDourada.length > 0) {
-    partesAlerta.push("✮ Nova Estrela Dourada! " + promovidosDourada.join(", ") + " se consagrou.");
+    partesAlerta.push("⭐ Nova Estrela Dourada! " + promovidosDourada.join(", ") + " se consagrou.");
   }
   if (promovidosPrateada.length > 0) {
     partesAlerta.push("🥈 Nova Promessa! " + promovidosPrateada.join(", ") + " ganhou a Estrela Prateada.");
@@ -7917,7 +7917,7 @@ function renderizarListaNotasDetalhe(containerId, notas) {
     li.className = "item-nota-detalhe" + (n.craque ? " craque-do-jogo" : "");
     li.innerHTML =
       "<span class=\"pos\">" + escaparHtml(n.pos) + "</span>" +
-      "<span class=\"nome-nota-detalhe\">" + escaparHtml(n.nome) + (n.entrou ? " 🔄" : "") + (n.craque ? " ✮" : "") + "</span>" +
+      "<span class=\"nome-nota-detalhe\">" + escaparHtml(n.nome) + (n.entrou ? " 🔄" : "") + (n.craque ? " ⭐" : "") + "</span>" +
       "<span class=\"valor-nota-posjogo " + corNota + "\">" + n.nota.toFixed(1) + "</span>";
     el.appendChild(li);
   });
