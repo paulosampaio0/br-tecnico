@@ -23,22 +23,32 @@ const SETOR_POR_POSICAO = {
 // verdade vem escalado pela aptidão de passe do elenco em `calcularForcaTime` — com bons armadores é
 // forte, sem eles vira prejuízo real (ver ali). `defesa: 0.4` fica de propósito abaixo de 2, pra não
 // mudar o gasto de energia em `aplicarDesgastePosPartida` (só sobe além de estilos com defesa>=2).
+// "Pressão Alta"/"Ônibus na Área" (2026-08-07): dois extremos situacionais, além da escala normal
+// de postura. O grosso do efeito pedido (desarme/finalizações sofridas/bolas nas costas/fôlego) vem
+// de multiplicadores explícitos em `processarLadoPartida`/`aplicarDesgastePosPartida` (app.js) — os
+// deltas de setor aqui são só o "fundo" da postura, deliberadamente moderados.
 const AJUSTE_ESTILO_TATICA = {
   "ataque-total": { ataque: 3.5, defesa: -3 },
   ofensivo: { ataque: 2, defesa: -1.5 },
   equilibrado: { ataque: 0, defesa: 0 },
   posse: { ataque: -0.6, defesa: 0.4 },
   "contra-ataque": { ataque: -2, defesa: 2 },
+  "pressao-alta": { ataque: 1, defesa: -1.5 },
+  onibus: { ataque: -2, defesa: 1.5 },
 };
 const AJUSTE_MARCACAO_TATICA = { leve: -1, normal: 0, pesada: 1.5 };
 
-// Concentração de ataques (2026-08-04 — antes não fazia NADA na simulação): "meio" domina mais a
-// posse e o jogo central; "lados" troca um pouco de posse por presença de área (mais finalização de
-// beirada e mais escanteio). É o que faz a opção "Concentrar ataques" finalmente pesar na partida.
+// Concentração de ataques (2026-08-04 — antes não fazia NADA na simulação; 2026-08-07 — "lados"
+// virou ataque DIRECIONADO de verdade): "meio" domina mais a posse e o jogo central; "esquerda"/
+// "direita" miram um lado específico da defesa adversária (mais presença de área e escanteio);
+// "brecha" mira automaticamente o defensor mais fraco em campo, onde estiver. O alvo individual é
+// resolvido em `ajusteAtaqueDirecionado` — os deltas aqui são só o "fundo" de posse/presença de área.
 const AJUSTE_CONCENTRAR = {
   equilibrado: { meio: 0, ataque: 0 },
   meio: { meio: 1.4, ataque: 0 },
-  lados: { meio: -0.5, ataque: 0.9 },
+  esquerda: { meio: -0.5, ataque: 0.9 },
+  direita: { meio: -0.5, ataque: 0.9 },
+  brecha: { meio: -0.3, ataque: 0.6 },
 };
 
 /**
@@ -107,6 +117,12 @@ function avaliarSinergiaTatica(tatica) {
   }
   if (estilo === "posse" && marcacao === "pesada") {
     incoerencia("Marcação pesada atrapalha a saída de bola da Posse", { retencao: 0.95 });
+  }
+  if (estilo === "pressao-alta" && marcacao === "leve") {
+    incoerencia("Pressão alta sem marcação forte não recupera a bola", { conversao: 0.97 });
+  }
+  if (estilo === "onibus" && armacao === "passes-longos") {
+    sintonia("Ônibus + Passes longos: contra-ataque direto", { conversao: 1.05 });
   }
 
   const pontuacao = clamp(80 + bonus * 8 - alertas * 12, 40, 100);
@@ -938,6 +954,40 @@ function calcularVantagemMeio(setoresAtacante, setoresDefensor) {
   return clamp(1 + diferencaMeio * 0.015, 0.8, 1.25);
 }
 
+/**
+ * Ataque Direcionado (2026-08-07): "Concentrar ataques" em esquerda/direita/meio/brecha mira um
+ * DEFENSOR INDIVIDUAL do adversário em campo, não só a média do setor — mirar um lado fraco ajuda
+ * de verdade, mirar um lado forte atrapalha. Devolve um delta pequeno (±1.5) somado à diferença de
+ * força na hora de calcular frequência de chance (`processarLadoPartida`). "esquerda" mira o
+ * Lateral-Direito adversário, "direita" mira o Lateral-Esquerdo (o ataque vem DAQUELE lado do campo,
+ * contra o lateral que defende esse lado) — "brecha" mira automaticamente o defensor mais fraco em
+ * campo, onde quer que ele jogue.
+ */
+function ajusteAtaqueDirecionado(atacante, defensor) {
+  const direcao = atacante.concentrar;
+  if (direcao !== "esquerda" && direcao !== "direita" && direcao !== "meio" && direcao !== "brecha") return 0;
+
+  const defensores = titularesEmCampo(defensor).filter(function (i) {
+    return i.vaga.pos === "ZAG" || i.vaga.pos === "LAT.D" || i.vaga.pos === "LAT.E" || i.vaga.pos === "VOL";
+  });
+  if (defensores.length === 0) return 0;
+  const mediaDef = defensores.reduce(function (s, i) { return s + i.jogador.forca * i.eficiencia; }, 0) / defensores.length;
+
+  let alvos;
+  if (direcao === "esquerda") alvos = defensores.filter(function (i) { return i.vaga.pos === "LAT.D"; });
+  else if (direcao === "direita") alvos = defensores.filter(function (i) { return i.vaga.pos === "LAT.E"; });
+  else if (direcao === "meio") alvos = defensores.filter(function (i) { return i.vaga.pos === "ZAG" || i.vaga.pos === "VOL"; });
+  else alvos = defensores; // brecha: qualquer defensor em campo, sempre o mais fraco
+
+  if (alvos.length === 0) return 0;
+  const alvo = alvos.reduce(function (pior, i) {
+    return (!pior || i.jogador.forca * i.eficiencia < pior.jogador.forca * pior.eficiencia) ? i : pior;
+  }, null);
+  const forcaAlvo = alvo.jogador.forca * alvo.eficiencia;
+
+  return clamp((mediaDef - forcaAlvo) * 0.15, -1.5, 1.5);
+}
+
 /** Roda os sorteios de UM time atacando no minuto atual (chances, cartões, etc.). */
 function processarLadoPartida(partida, atacante, defensor, ladoAtacante, permitirPausaPenalti) {
   const ladoDefensor = ladoAtacante === "casa" ? "fora" : "casa";
@@ -957,20 +1007,37 @@ function processarLadoPartida(partida, atacante, defensor, ladoAtacante, permiti
   const diferenca = atacante.setores.ataque - defesaEfetiva;
   const armacaoAtacante = atacante.armacao || "passes-curtos";
   const ajusteArmacao = AJUSTE_ARMACAO_TATICA[armacaoAtacante] || AJUSTE_ARMACAO_TATICA["passes-curtos"];
+  const estiloAtacante = (atacante.tatica && atacante.tatica.estilo) || "equilibrado";
+  const estiloDefensor = (defensor.tatica && defensor.tatica.estilo) || "equilibrado";
 
   // "Passes longos" (Armação, 2026-08-06): pula o meio-campo — metade da vantagem/desvantagem
   // de meio deixa de valer, é o preço de tentar jogar por cima da marcação do adversário.
   let vantagemMeio = calcularVantagemMeio(atacante.setores, defensor.setores);
   if (armacaoAtacante === "passes-longos") vantagemMeio = 1 + (vantagemMeio - 1) * 0.5;
 
+  // Ataque Direcionado (2026-08-07): mira um defensor individual do adversário (esquerda/direita/
+  // meio/brecha) — soma um delta pequeno na diferença de força usada tanto na frequência quanto
+  // (via `diferenca`) na conversão.
+  const deltaDirecional = ajusteAtaqueDirecionado(atacante, defensor);
+
   // "Chutes de longe" (Armação, 2026-08-06): a resposta a um time fechado atrás — a defesa do
   // adversário conta menos pra frequência de chance (o chutador não depende de furar a linha),
   // só que a conversão (mais abaixo) nunca é boa. Contra defesa fraca isso é PIOR que o normal.
-  let diferencaFrequencia = diferenca;
+  let diferencaFrequencia = diferenca + deltaDirecional;
   if (armacaoAtacante === "chutes-longe") {
     diferencaFrequencia = atacante.setores.ataque * 0.6 + atacante.setores.meio * 0.4
-      - (defesaEfetiva * 0.55 + 35 * 0.45);
+      - (defesaEfetiva * 0.55 + 35 * 0.45) + deltaDirecional;
   }
+
+  // Pressão Alta/Ônibus na Área (2026-08-07): dois extremos situacionais de estilo, aplicados como
+  // multiplicador de FREQUÊNCIA (dentro do clamp de `probChance`, nunca por fora — regra do
+  // balanceamento). Pressão Alta do time que DEFENDE sobe a linha e se expõe a bolas nas costas
+  // (+10% de chance sofrida); Ônibus na Área do time que defende fecha o espaço (-40%); Ônibus do
+  // time que ATACA quase anula a própria criação (-50%, "vive só de defender").
+  let multEstiloFrequencia = 1;
+  if (estiloDefensor === "pressao-alta") multEstiloFrequencia *= 1.10;
+  if (estiloDefensor === "onibus") multEstiloFrequencia *= 0.6;
+  if (estiloAtacante === "onibus") multEstiloFrequencia *= 0.5;
 
   // Exposição a contra-ataque (Rebalanceamento de setas 2026-07-23): se o time que defende
   // tem zagueiro/lateral/volante com seta ofensiva bem-sucedida nesse minuto, fica mais fácil
@@ -984,7 +1051,7 @@ function processarLadoPartida(partida, atacante, defensor, ladoAtacante, permiti
   // Armação (2026-08-06): o multiplicador de frequência (`ajusteArmacao.freq`) entra DENTRO do
   // clamp — nunca por fora, senão o teto de 0.23 estoura e a taxa de goleada foge da faixa-alvo.
   const probChance = clamp(
-    (0.125 + diferencaFrequencia * 0.005) * vantagemMeio * ajusteArmacao.freq * defensor.fatorContraAtaqueConcedido,
+    (0.125 + diferencaFrequencia * 0.005) * vantagemMeio * ajusteArmacao.freq * multEstiloFrequencia * defensor.fatorContraAtaqueConcedido,
     0.055, 0.23
   );
 
@@ -1004,7 +1071,7 @@ function processarLadoPartida(partida, atacante, defensor, ladoAtacante, permiti
     if (armacaoAtacante === "chutes-longe") fatorTaticaConversao *= 0.62 + 0.28 * clamp(0.5 + 0.5 * atacante.aptidoes.chuteLonge, 0, 1);
     if (armacaoAtacante === "cruzamentos" && atacante.aptidoes.cabeceio > 0) fatorTaticaConversao *= 1 + 0.10 * atacante.aptidoes.cruzamento;
     if (atacante.sinergia) fatorTaticaConversao *= atacante.sinergia.conversao; // Sinergia Tática (2026-08-07)
-    let chanceGol = clamp((0.106 + diferenca * 0.003) * partida.fatorZebra[ladoDefensor] * fatorTaticaConversao, 0.02, 0.2);
+    let chanceGol = clamp((0.106 + (diferenca + deltaDirecional) * 0.003) * partida.fatorZebra[ladoDefensor] * fatorTaticaConversao, 0.02, 0.2);
     // Goleiro improvisado ou ausente (Correção de bug — 2026-07-25): quanto menor o fator,
     // mais essa penalidade empurra a chance de gol pra cima — praticamente certo de virar
     // gol quando não há goleiro de verdade em campo.
@@ -1084,7 +1151,9 @@ function processarLadoPartida(partida, atacante, defensor, ladoAtacante, permiti
     }
   }
 
-  if (Math.random() < 0.04) estatDefensor.desarmes++;
+  // Pressão Alta (2026-08-07): quem pressiona rouba mais bola no campo de ataque adversário (+25%).
+  const taxaDesarme = 0.04 * (estiloDefensor === "pressao-alta" ? 1.25 : 1);
+  if (Math.random() < taxaDesarme) estatDefensor.desarmes++;
   // Armação — erro de passe (2026-08-06): cada opção pesa diferente no `AJUSTE_ARMACAO_TATICA.erroPasse`
   // (curtos erra menos, longos erra bem mais); Posse com bons armadores reduz ainda mais o erro.
   let chanceErroPasse = ajusteArmacao.erroPasse;
@@ -1097,7 +1166,9 @@ function processarLadoPartida(partida, atacante, defensor, ladoAtacante, permiti
   // "Cruzamentos" (Armação, 2026-08-06) soma OUTRA frequência de escanteio — cap explícito pra não
   // dobrar o efeito de "Concentrar pelos lados" (as duas mexem em eixos diferentes: de onde a bola
   // vem vs. o que se faz com ela, mas a frequência de escanteio é o único ponto onde se tocam).
-  const concentraLados = atacante.concentrar === "lados";
+  // 2026-08-07: "lados" virou ataque direcionado (esquerda/direita) — meio/brecha não geram esse
+  // bônus de escanteio (o ataque não vem mais pela ponta nesses casos).
+  const concentraLados = atacante.concentrar === "esquerda" || atacante.concentrar === "direita";
   const cruzando = armacaoAtacante === "cruzamentos";
   const chanceEscanteio = Math.min(0.055 * (concentraLados ? 1.35 : 1) * (cruzando ? 1.2 : 1), 0.095);
   if (Math.random() < chanceEscanteio) {
@@ -1368,6 +1439,8 @@ function pesoPosseDoMinuto(time) {
   const estilo = time.tatica && time.tatica.estilo;
   if (estilo === "posse") peso *= 1 + 0.10 * clamp(0.5 + 0.5 * time.aptidoes.passe, 0, 1);
   else if (estilo === "contra-ataque") peso *= 0.93;
+  else if (estilo === "pressao-alta") peso *= 1.06; // sobe a linha e pressiona perto do campo de ataque
+  else if (estilo === "onibus") peso *= 0.88; // abre mão da bola pra fechar o espaço
   if (time.sinergia) peso *= time.sinergia.retencao; // Sinergia Tática (2026-08-07): retenção de bola
   return peso;
 }
@@ -1423,7 +1496,11 @@ function escolherTaticaIA(titularesResolvidos, mando, nomeTime) {
   else if (apt.passeLongo >= 0.40 && apt.passe < 0.20) armacao = "passes-longos";
   else if (apt.chuteLonge >= 0.45) armacao = "chutes-longe";
 
-  const concentrar = armacao === "cruzamentos" ? "lados" : (apt.passe >= 0.35 ? "meio" : "equilibrado");
+  // Ataque Direcionado (2026-08-07): time de cruzamento manda pra um lado — determinístico por
+  // hash do nome (metade esquerda, metade direita), não sorteado, mesmo critério de estabilidade
+  // do resto da função.
+  const concentrar = armacao === "cruzamentos" ? (hashNomeTime(nomeTime || "") % 2 === 0 ? "esquerda" : "direita")
+    : (apt.passe >= 0.35 ? "meio" : "equilibrado");
 
   return { estilo: estilo, marcacao: "normal", concentrar: concentrar, armacao: armacao };
 }

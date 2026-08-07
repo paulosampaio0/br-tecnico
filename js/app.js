@@ -59,6 +59,8 @@ const OPCOES_TATICA = {
     { v: "ofensivo", r: "Ofensivo" },
     { v: "ataque-total", r: "Ataque total" },
     { v: "contra-ataque", r: "Contra-ataque (retranca)" },
+    { v: "pressao-alta", r: "Pressão alta" },
+    { v: "onibus", r: "Ônibus na área" },
   ],
   marcacao: [
     { v: "leve", r: "Leve" },
@@ -68,7 +70,9 @@ const OPCOES_TATICA = {
   concentrar: [
     { v: "equilibrado", r: "Equilibrado" },
     { v: "meio", r: "Pelo meio" },
-    { v: "lados", r: "Pelos lados" },
+    { v: "esquerda", r: "Pela esquerda" },
+    { v: "direita", r: "Pela direita" },
+    { v: "brecha", r: "Explorar brecha rival" },
   ],
   armacao: [
     { v: "passes-curtos", r: "Passes curtos" },
@@ -2672,6 +2676,8 @@ const TAGS_TATICA = {
     "ataque-total": [{ icon: "⚽", txt: "+Opções no ataque" }, { icon: "🚨", txt: "+Espaço na defesa" }],
     "contra-ataque": [{ icon: "🛡️", txt: "+Solidez" }, { icon: "🐢", txt: "-Volume ofensivo" }],
     posse: [{ icon: "🎯", txt: "+Controle" }, { icon: "🧠", txt: "Depende de bons passadores" }],
+    "pressao-alta": [{ icon: "⚡", txt: "+Desarme alto" }, { icon: "🚨", txt: "+Bolas nas costas" }],
+    onibus: [{ icon: "🧱", txt: "-Sofre gols" }, { icon: "🚫", txt: "-Quase anula o ataque" }],
   },
   marcacao: {
     pesada: [{ icon: "🟨", txt: "+Faltas/Cartões" }, { icon: "⚡", txt: "+Fôlego gasto" }],
@@ -3579,8 +3585,8 @@ function avaliarAuxiliar(partida) {
   const diffMeio = meuTime.setores.meio - advTime.setores.meio;
   if (diffMeio <= -3) {
     candidatos.push({ chave: "meio-perdendo", prioridade: 3, urgencia: "atencao",
-      texto: "O adversário está congestionando o meio. Que tal explorar os ataques pelas pontas?",
-      acao: "concentrar-lados", rotuloAcao: "Mudar para ataque pelas pontas" });
+      texto: "O adversário está congestionando o meio. Que tal explorar a brecha na defesa rival?",
+      acao: "concentrar-brecha", rotuloAcao: "Explorar brecha rival" });
   } else if (diffMeio >= 4) {
     candidatos.push({ chave: "meio-dominando", prioridade: 2, urgencia: "neutro",
       texto: "Estamos com domínio total do meio-campo." });
@@ -3814,8 +3820,8 @@ function acionarPainelAuxiliar() {
       pararIntervaloPartida();
     }
     abrirTelaEscalacao();
-  } else if (auxiliarEstado.acaoAtual === "concentrar-lados") {
-    aplicarAcaoTaticaRapidaAuxiliar("concentrar", "lados");
+  } else if (auxiliarEstado.acaoAtual === "concentrar-brecha") {
+    aplicarAcaoTaticaRapidaAuxiliar("concentrar", "brecha");
   } else if (auxiliarEstado.acaoAtual === "estilo-retranca") {
     aplicarAcaoTaticaRapidaAuxiliar("estilo", "contra-ataque"); // Retranca virou "Contra-ataque (retranca)"
   }
@@ -4234,7 +4240,11 @@ function aplicarDesgastePosPartida() {
   const recuperacaoBaseDM = calcularRecuperacaoDM(nivelDM);
   const ajusteEstilo = AJUSTE_ESTILO_TATICA[estado.tatica.estilo] || AJUSTE_ESTILO_TATICA.equilibrado;
   // Tática ofensiva/pressão alta consome mais fôlego; retranca/posse cadenciada consome menos.
-  const fatorPostura = ajusteEstilo.ataque >= 2 ? 1.2 : ajusteEstilo.defesa >= 2 ? 0.8 : 1;
+  // "Pressão Alta"/"Ônibus na Área" (2026-08-07) têm fator explícito (pedido: +30%/‑15% de gasto) —
+  // os deltas de ataque/defesa deles não cruzam os limiares >=2 do resto da escala de propósito.
+  const fatorPostura = estado.tatica.estilo === "pressao-alta" ? 1.3
+    : estado.tatica.estilo === "onibus" ? 0.85
+    : ajusteEstilo.ataque >= 2 ? 1.2 : ajusteEstilo.defesa >= 2 ? 0.8 : 1;
 
   const vagaPorJogador = {};
   Object.keys(estado.titulares).forEach(function (vagaId) {
@@ -8208,8 +8218,12 @@ async function continuarJogoSalvo() {
     // Armação (2026-08-06): saves anteriores não têm o campo — e blindagem contra qualquer valor
     // órfão de estilo/armação que não exista mais em OPCOES_TATICA (versão futura removeu algo).
     if (!estado.tatica.armacao) estado.tatica.armacao = "passes-curtos";
+    // Ataque Direcionado (2026-08-07): "lados" virou "esquerda" (preserva o bônus de escanteio que
+    // já tinha, em vez de cair no genérico "equilibrado" pela blindagem de órfão logo abaixo).
+    if (estado.tatica.concentrar === "lados") estado.tatica.concentrar = "esquerda";
     if (!OPCOES_TATICA.estilo.some(function (o) { return o.v === estado.tatica.estilo; })) estado.tatica.estilo = "equilibrado";
     if (!OPCOES_TATICA.armacao.some(function (o) { return o.v === estado.tatica.armacao; })) estado.tatica.armacao = "passes-curtos";
+    if (!OPCOES_TATICA.concentrar.some(function (o) { return o.v === estado.tatica.concentrar; })) estado.tatica.concentrar = "equilibrado";
     estado.setas = registro.setas || {};
     estado.temporada = registro.temporada || null;
     estado.energiaPorJogador = registro.energiaPorJogador || {};
