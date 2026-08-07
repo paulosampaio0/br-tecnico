@@ -109,15 +109,21 @@ function simularJogoCompleto(timeCasaInfo, timeForaInfo) {
   for (let m = 0; m < 90; m++) {
     simularMinuto(partida, casa, fora);
   }
-  return { golsCasa: partida.placarCasa, golsFora: partida.placarFora };
+  // Departamento Médico & Lesões (2026-08-07): devolve as lesões geradas nesse jogo — é assim que
+  // a outra divisão (simulada 100% automática, sem tela) também alimenta `estado.lesoesPorClube`.
+  return { golsCasa: partida.placarCasa, golsFora: partida.placarFora, lesoes: partida.lesoesNaPartida };
 }
 
 /** Mesma ideia de criarTimeSimuladoAutomatico (app.js), mas sem depender da tela. */
 function criarTimeSimuladoAutomaticoPuro(timeInfo, mando) {
-  const titularesMap = autoEscalarMelhores(timeInfo.jogadores, "4-4-2a");
-  const titulares = resolverTitulares(timeInfo.jogadores, "4-4-2a", titularesMap);
+  // Departamento Médico & Lesões (2026-08-07): quem está lesionado não entra na escalação automática —
+  // vale pros ~40 clubes da liga (não só o do usuário), ver `jogadoresDisponiveisParaEscalar` (app.js).
+  const jogadoresDisponiveis = typeof jogadoresDisponiveisParaEscalar === "function"
+    ? jogadoresDisponiveisParaEscalar(timeInfo.jogadores, timeInfo.nome) : timeInfo.jogadores;
+  const titularesMap = autoEscalarMelhores(jogadoresDisponiveis, "4-4-2a");
+  const titulares = resolverTitulares(jogadoresDisponiveis, "4-4-2a", titularesMap);
   const idsEscalados = new Set(titulares.map(function (item) { return item.jogador._id; }));
-  const reservas = timeInfo.jogadores.filter(function (j) { return !idsEscalados.has(j._id); });
+  const reservas = jogadoresDisponiveis.filter(function (j) { return !idsEscalados.has(j._id); });
   const tatica = escolherTaticaIA(titulares, mando, timeInfo.nome);
   return criarTimeSimulado(timeInfo.nome, titulares, tatica, {}, { mando: mando }, null, { reservas: reservas });
 }

@@ -470,6 +470,30 @@ function resolverCobrancaFaltaDireta(partida, atacante, ladoAtacante, estatAtaca
 }
 
 /**
+ * Departamento Médico & Lesões (2026-08-07): sistema LEVE — a maioria das faltas não machuca
+ * ninguém (~1% de chance); quando machuca, quase sempre é curto (1-2 rodadas fora); lesão grave
+ * (5+ rodadas) é rara. Vale pros 40 clubes da liga (ver `registrarLesoesDaPartida`, app.js).
+ */
+const CHANCE_LESAO_POR_FALTA = 0.01;
+const TABELA_GRAVIDADE_LESAO = [
+  { prob: 0.55, rodadas: 1, nome: "Pancada no tornozelo" },
+  { prob: 0.28, rodadas: 2, nome: "Estiramento na coxa" },
+  { prob: 0.12, rodadas: 3, nome: "Entorse no joelho" },
+  { prob: 0.04, rodadas: 5, nome: "Lesão muscular" },
+  { prob: 0.01, rodadas: 8, nome: "Lesão grave no joelho" },
+];
+
+function sortearGravidadeLesao() {
+  const rolagem = Math.random();
+  let acumulado = 0;
+  for (let i = 0; i < TABELA_GRAVIDADE_LESAO.length; i++) {
+    acumulado += TABELA_GRAVIDADE_LESAO[i].prob;
+    if (rolagem < acumulado) return TABELA_GRAVIDADE_LESAO[i];
+  }
+  return TABELA_GRAVIDADE_LESAO[0];
+}
+
+/**
  * Falta cometida pelo `defensor` contra o `atacante` — sorteia o infrator (ponderado por
  * posição), decide a zona (comum / perigosa-cobrança-direta / dentro-da-área-pênalti) e, à
  * parte disso, se o juiz também aplica cartão (escalado pelo rigor de `partida.arbitro`).
@@ -488,6 +512,21 @@ function processarFalta(partida, defensor, ladoDefensor, atacante, ladoAtacante,
     resolverCobrancaFaltaDireta(partida, atacante, ladoAtacante, estatAtacante);
   } else {
     registrarEvento(partida, "chance", ladoDefensor, "Falta de " + nomeInfrator + ".", infrator ? infrator._id : null);
+  }
+
+  // Departamento Médico & Lesões: a vítima é um jogador do time QUE SOFREU a falta (`atacante`),
+  // não o infrator — é ele quem levou a pancada.
+  if (Math.random() < CHANCE_LESAO_POR_FALTA) {
+    const vitima = jogadorAleatorio(atacante);
+    if (vitima) {
+      const gravidade = sortearGravidadeLesao();
+      partida.lesoesNaPartida.push({
+        idJogador: vitima._id, nome: vitima.nome, lado: ladoAtacante,
+        tipoLesao: gravidade.nome, rodadas: gravidade.rodadas, minuto: partida.minuto,
+      });
+      registrarEvento(partida, "lesao", ladoAtacante,
+        "🩺 " + vitima.nome + sufixoEstrelaEvento(vitima) + " sente e pode ter sofrido uma lesão (" + gravidade.nome + ").", vitima._id);
+    }
   }
 
   if (!infrator) return;
@@ -849,6 +888,9 @@ function novaPartida(interativa) {
     cartoesNoJogoPorJogador: {}, // _id -> qtd de amarelos NESTA partida (2º vira vermelho)
     jogadoresExpulsos: [], // [{ idJogador, lado, minuto, motivo: "vermelho-direto"|"segundo-amarelo" }]
     arbitro: sortearArbitro(), // Sistema de Árbitro (Realismo): { nome, rigor } — vive só nesta partida, não é salvo
+    // Departamento Médico & Lesões (2026-08-07): [{ idJogador, nome, lado, tipoLesao, rodadas, minuto }] —
+    // o app.js lê isso depois da partida pra gravar em `estado.lesoesPorClube` (vale pros 40 clubes da liga).
+    lesoesNaPartida: [],
   };
 }
 

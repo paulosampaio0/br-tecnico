@@ -153,6 +153,9 @@ const estado = {
   evolucao: {}, // { _id: { forca, idade } } — os ajustes que ficam de temporada em temporada
   cartoesAmarelos: {}, // { _id: contagem atual, zera ao suspender }
   suspensoAte: {}, // { _id: número da última rodada em que ainda está suspenso }
+  // Departamento Médico & Lesões (2026-08-07): { nomeClube: { _id: { nomeJogador, tipoLesao, rodadaRetorno } } }
+  // — cobre os 40 clubes da liga (chave por clube porque `_id` só é único DENTRO do elenco de cada um).
+  lesoesPorClube: {},
   financas: null, // { caixa, caixaInicialClube, historico, ... } — ver js/financas.js (Fase 9-10)
   precoIngresso: "normal", // "barato" | "normal" | "caro" — decisão do técnico (Fase 10)
   contratos: {}, // { _id: { anosRestantes, multiplicadorSalario } } — ver js/financas.js (Fase 11)
@@ -249,6 +252,7 @@ function salvarProgresso() {
     evolucao: estado.evolucao,
     cartoesAmarelos: estado.cartoesAmarelos,
     suspensoAte: estado.suspensoAte,
+    lesoesPorClube: estado.lesoesPorClube,
     financas: estado.financas,
     precoIngresso: estado.precoIngresso,
     contratos: estado.contratos,
@@ -757,6 +761,9 @@ function criarItemJogador(jogador, mostrarEnergia) {
   item.className = "item-jogador";
 
   const prefixoSuspenso = jogadorEstaSuspenso(jogador._id) ? "<span class=\"tag-suspenso\">🚫 Suspenso</span> " : "";
+  const lesaoAtual = jogadorEstaLesionado(jogador._id) ? obterLesaoJogador(jogador._id) : null;
+  const prefixoLesionado = lesaoAtual
+    ? "<span class=\"tag-lesionado\" title=\"" + escaparHtml(lesaoAtual.tipoLesao) + "\">🩺 Lesionado (volta na rodada " + lesaoAtual.rodadaRetorno + ")</span> " : "";
   const prefixoExpulso = jogadorFoiExpulsoNestaPartida(jogador._id) ? "<span class=\"tag-expulso\">🔴 Expulso</span> " : "";
   const prefixoCapitao = estado.capitaoId === jogador._id
     ? "<span class=\"tag-capitao\" title=\"Capitão do time\">©</span> " : "";
@@ -788,10 +795,16 @@ function criarItemJogador(jogador, mostrarEnergia) {
 
   const caracteristicas = [jogador.caracteristica_1, jogador.caracteristica_2].filter(Boolean).join("/");
 
+  // Departamento Médico: só faz sentido antecipar retorno do MEU elenco (`mostrarEnergia` já
+  // significa isso, ver comentário acima) — fora de partida, senão a rodada de retorno mudaria
+  // no meio de um jogo já em andamento.
+  const botaoAntecipar = (mostrarEnergia && lesaoAtual && !estaEmPartidaAtiva())
+    ? "<button type=\"button\" class=\"btn-antecipar-lesao\" title=\"Departamento Médico: antecipar retorno\">🩺 Antecipar</button>" : "";
+
   item.innerHTML =
     "<span class=\"pos " + classeSetorPosicao(jogador.pos) + "\">" + escaparHtml(jogador.pos) + "</span>" +
     "<span class=\"info\">" +
-      "<span class=\"nome\">" + prefixoExpulso + prefixoSuspenso + prefixoCapitao + prefixoForma +
+      "<span class=\"nome\">" + prefixoExpulso + prefixoSuspenso + prefixoLesionado + prefixoCapitao + prefixoForma +
         escaparHtml(jogador.nome) + sufixoEstrelaStatus + "</span>" +
       "<span class=\"detalhes\">" +
         jogador.idade + " anos · " + escaparHtml(jogador.nac) + " · " +
@@ -801,7 +814,14 @@ function criarItemJogador(jogador, mostrarEnergia) {
       "<span class=\"valor\">" + jogador.forca + "</span>" +
       "<span class=\"rotulo\">força</span>" +
     "</span>" +
-    blocoEnergia;
+    blocoEnergia + botaoAntecipar;
+
+  if (botaoAntecipar) {
+    item.querySelector(".btn-antecipar-lesao").addEventListener("click", function (evento) {
+      evento.stopPropagation();
+      anteciparRetornoLesao(jogador._id);
+    });
+  }
   return item;
 }
 
@@ -859,6 +879,7 @@ async function escalarEsteTime(time) {
     estado.contratos[jogador._id] = criarContratoInicial(jogador);
   });
   estado.capitaoId = null;
+  estado.lesoesPorClube = {}; // temporada nova nesse clube — ninguém começa lesionado
   estado.cobradorFaltaId = null;
   estado.cobradorEscanteioId = null;
   garantirEscolhasTaticasPreenchidas(); // capitão + cobradores já vêm pré-preenchidos com o melhor de cada função
@@ -898,7 +919,7 @@ function abrirTelaEscalacao() {
   document.getElementById("topo-hub-escudo").innerHTML = montarEscudoClube(estado.timeAtual.nome);
   document.getElementById("btn-voltar-partida").hidden = !(partidaAtual && partidaAtual.status !== "fim");
 
-  if (!partidaAtual) removerSuspensosDaEscalacao();
+  if (!partidaAtual) { removerSuspensosDaEscalacao(); removerLesionadosDaEscalacao(); }
   renderizarInfoSubstituicoes();
   montarSelectFormacao();
   renderizarCampo();
@@ -1036,7 +1057,7 @@ function aplicarEscalacaoAutomatica() {
   if (estaEmPartidaAtiva()) return;
 
   const novosTitulares = gerarEscalacaoAutomatica(estado.timeAtual.jogadores, estado.formacaoId, {
-    elegivel: function (jogador) { return !jogadorEstaSuspenso(jogador._id); },
+    elegivel: function (jogador) { return !jogadorEstaSuspenso(jogador._id) && !jogadorEstaLesionado(jogador._id); },
     energiaPorJogador: estado.energiaPorJogador,
   });
 
@@ -1090,7 +1111,7 @@ function sugerirSubstituicao() {
   const idsEmCampo = new Set(Object.values(estado.titulares));
   const jaSairam = new Set(partidaAtual.jogadoresQueSairam || []);
   const bancoDisponivel = calcularBancoRelacionado().filter(function (j) {
-    return !idsEmCampo.has(j._id) && !jaSairam.has(j._id) && !jogadorEstaSuspenso(j._id);
+    return !idsEmCampo.has(j._id) && !jaSairam.has(j._id) && !jogadorEstaSuspenso(j._id) && !jogadorEstaLesionado(j._id);
   });
 
   const candidatosMesmaPos = bancoDisponivel.filter(function (j) { return j.pos === maisCansado.vaga.pos; });
@@ -2292,22 +2313,25 @@ function criarNodeCompactoJogador(jogador, origem) {
   // reserva pra cima de um titular em campo é uma substituição de verdade (ver `resolverDropJogador`).
   const travadoParaEdicao = origem.tipo === "naoRelacionado" && estaEmPartidaAtiva();
   const jaSaiu = origem.tipo === "banco" && jaSaiuDaPartidaAoVivo(jogador._id);
-  if (jogadorEstaSuspenso(jogador._id) || travadoParaEdicao || jaSaiu) {
+  const lesionado = jogadorEstaLesionado(jogador._id);
+  if (jogadorEstaSuspenso(jogador._id) || lesionado || travadoParaEdicao || jaSaiu) {
     botao.disabled = true;
     botao.title = jaSaiu ? "Já foi substituído nesta partida — não pode voltar a jogar."
       : travadoParaEdicao ? "Não relacionados só podem ser chamados antes da partida."
+      : lesionado ? "Jogador lesionado (" + obterLesaoJogador(jogador._id).tipoLesao + ")."
       : "Jogador suspenso.";
   }
 
   const energia = obterEnergiaJogador(jogador._id);
   const tagCapitao = estado.capitaoId === jogador._id ? "<span class=\"tags-compacto-jogador\" title=\"Capitão\">©</span>" : "";
   const tagSuspenso = jogadorEstaSuspenso(jogador._id) ? "<span class=\"tags-compacto-jogador\" title=\"Suspenso\">🚫</span>" : "";
+  const tagLesionado = lesionado ? "<span class=\"tags-compacto-jogador\" title=\"Lesionado\">🩺</span>" : "";
   const tagSaiu = jaSaiu ? "<span class=\"tags-compacto-jogador\" title=\"Já saiu da partida\">🔻</span>" : "";
 
   // Player Node compacto (Hierarquia Visual Compacta) — mesmo padrão do campinho: círculo +
   // selo de estrela, força + seta de fase + nome, barra de energia com % sobreposta, traits.
   botao.innerHTML =
-    tagCapitao + tagSuspenso + tagSaiu +
+    tagCapitao + tagSuspenso + tagLesionado + tagSaiu +
     "<span class=\"avatar-compacto-wrap\">" +
       "<span class=\"avatar-compacto-jogador " + classeSetorPosicao(jogador.pos) + "\">" + escaparHtml(jogador.pos) + "</span>" +
       montarFaseBadgeVaga(jogador._id) +
@@ -2812,10 +2836,13 @@ async function iniciarAmistoso() {
  * `classico` (IA dos Clubes Adversários): joga com intensidade extra a partida inteira.
  */
 function criarTimeSimuladoAutomatico(time, mando, bonusExtraIA, classico) {
-  const titularesMap = autoEscalarMelhores(time.jogadores, "4-4-2a");
-  const titulares = resolverTitulares(time.jogadores, "4-4-2a", titularesMap);
+  // Departamento Médico & Lesões: quem está lesionado não entra na escalação automática — vale
+  // pros ~40 clubes da liga, não só o do usuário.
+  const jogadoresDisponiveis = jogadoresDisponiveisParaEscalar(time.jogadores, time.nome);
+  const titularesMap = autoEscalarMelhores(jogadoresDisponiveis, "4-4-2a");
+  const titulares = resolverTitulares(jogadoresDisponiveis, "4-4-2a", titularesMap);
   const idsEscalados = new Set(titulares.map(function (item) { return item.jogador._id; }));
-  const reservas = time.jogadores.filter(function (j) { return !idsEscalados.has(j._id); });
+  const reservas = jogadoresDisponiveis.filter(function (j) { return !idsEscalados.has(j._id); });
   const tatica = escolherTaticaIA(titulares, mando, time.nome);
   return criarTimeSimulado(time.nome, titulares, tatica, {}, { mando: mando, bonusExtraIA: !!bonusExtraIA }, null,
     { reservas: reservas, classico: !!classico });
@@ -4236,6 +4263,119 @@ function removerSuspensosDaEscalacao() {
   }
 }
 
+/* ---------- Departamento Médico & Lesões (2026-08-07) ---------- */
+
+/** Lesão ativa (se houver) de um jogador de QUALQUER clube — usado tanto na escalação automática
+ * da CPU (`jogadoresDisponiveisParaEscalar`) quanto na tela do MEU elenco. */
+function obterLesaoJogadorEmClube(idJogador, nomeClube) {
+  if (!estado.temporada) return null;
+  const lesoesTime = estado.lesoesPorClube[nomeClube];
+  const lesao = lesoesTime && lesoesTime[idJogador];
+  if (!lesao || lesao.rodadaRetorno <= estado.temporada.rodadaAtual) return null;
+  return lesao;
+}
+
+/** Lesão do jogador NO MEU elenco (atalho — o resto do jogo só mexe no clube do usuário). */
+function obterLesaoJogador(idJogador) {
+  if (!estado.timeAtual) return null;
+  return obterLesaoJogadorEmClube(idJogador, estado.timeAtual.nome);
+}
+
+function jogadorEstaLesionado(idJogador) {
+  return !!obterLesaoJogador(idJogador);
+}
+
+/** Filtra lesionados de um elenco pra escalação automática — vale pros ~40 clubes da liga
+ * (não só o do usuário, ver `criarTimeSimuladoAutomatico`/`criarTimeSimuladoAutomaticoPuro`).
+ * Nunca deixa a lista vazia (evita crash num cenário extremo de "clube inteiro machucado"). */
+function jogadoresDisponiveisParaEscalar(jogadores, nomeClube) {
+  if (!estado.temporada) return jogadores;
+  const disponiveis = jogadores.filter(function (j) { return !obterLesaoJogadorEmClube(j._id, nomeClube); });
+  return disponiveis.length > 0 ? disponiveis : jogadores;
+}
+
+/**
+ * Grava as lesões geradas numa partida simulada (`partida.lesoesNaPartida`, ver partida.js) no
+ * dicionário global por clube — chamado pro jogo do usuário, pelos ~9 jogos paralelos da mesma
+ * rodada e pelos jogos automáticos da outra divisão. `rodadaBase` é a rodada que ACABOU de
+ * acontecer; o retorno é contado a partir dela.
+ */
+function registrarLesoesDaPartida(nomeClubeCasa, nomeClubeFora, lesoesNaPartida, rodadaBase) {
+  if (!lesoesNaPartida || lesoesNaPartida.length === 0) return;
+  lesoesNaPartida.forEach(function (lesao) {
+    const nomeClube = lesao.lado === "casa" ? nomeClubeCasa : nomeClubeFora;
+    if (!estado.lesoesPorClube[nomeClube]) estado.lesoesPorClube[nomeClube] = {};
+    // Uma lesão nova sobrescreve a anterior (raríssimo acontecer 2x na mesma rodada) — sempre
+    // fica valendo a mais recente, nunca soma tempo de recuperação.
+    estado.lesoesPorClube[nomeClube][lesao.idJogador] = {
+      nomeJogador: lesao.nome, tipoLesao: lesao.tipoLesao, rodadaRetorno: rodadaBase + lesao.rodadas,
+    };
+  });
+}
+
+/** Tira da escalação titular quem estiver lesionado — chamado junto com `removerSuspensosDaEscalacao`. */
+function removerLesionadosDaEscalacao() {
+  if (!estado.timeAtual || !estado.temporada) return;
+  const removidos = [];
+  Object.keys(estado.titulares).forEach(function (idVaga) {
+    const idJogador = estado.titulares[idVaga];
+    if (!jogadorEstaLesionado(idJogador)) return;
+    const jogador = encontrarJogadorPorId(estado.timeAtual.jogadores, idJogador);
+    delete estado.titulares[idVaga];
+    delete estado.setas[idVaga];
+    if (jogador) removidos.push(jogador.nome);
+  });
+  if (removidos.length > 0) {
+    salvarProgresso();
+    alert("🩺 Machucado(s), fora da escalação: " + removidos.join(", ") + ".");
+  }
+}
+
+/**
+ * Custo pra "antecipar o retorno" de um jogador lesionado (Departamento Médico): quanto mais
+ * força o jogador tem e quantas rodadas ainda faltam, mais caro; nível maior de DM dá desconto
+ * (nível 1 é neutro, nível 5 é 40% mais barato). Sempre adianta pelo menos 1 rodada, nunca deixa
+ * negativo (o jogador simplesmente volta na hora se já era a última rodada de lesão).
+ */
+function calcularCustoAntecipacaoRetorno(jogador, rodadasRestantes, nivelDM) {
+  const fatorDM = 1 - (Math.max(1, nivelDM || 1) - 1) * 0.1; // nível 5 = 0.6 (40% mais barato)
+  const custoBase = jogador.forca * rodadasRestantes * 0.15; // em R$ milhões
+  return Math.round(custoBase * fatorDM * 100) / 100;
+}
+
+/** Departamento Médico: paga pra tirar 1 rodada da lesão do jogador (nunca deixa a rodada de
+ * retorno menor que a rodada seguinte — não dá pra "curar" no meio da rodada em andamento). */
+function anteciparRetornoLesao(idJogador) {
+  if (!estado.timeAtual || !estado.temporada || !estado.financas) return;
+  const lesao = obterLesaoJogador(idJogador);
+  if (!lesao) return;
+  const jogador = encontrarJogadorPorId(estado.timeAtual.jogadores, idJogador);
+  if (!jogador) return;
+
+  const rodadasRestantes = lesao.rodadaRetorno - estado.temporada.rodadaAtual;
+  const nivelDM = estado.infraestrutura ? estado.infraestrutura.dm : 1;
+  const custo = calcularCustoAntecipacaoRetorno(jogador, rodadasRestantes, nivelDM);
+
+  const confirmou = confirm(
+    "Investir " + formatarReais(custo) + " no Departamento Médico pra antecipar em 1 rodada o retorno de " +
+    jogador.nome + " (" + lesao.tipoLesao + ")?"
+  );
+  if (!confirmou) return;
+  if (estado.financas.caixa < custo) {
+    alert("Caixa insuficiente pra essa antecipação.");
+    return;
+  }
+
+  estado.financas.caixa = Math.round((estado.financas.caixa - custo) * 100) / 100;
+  const nomeClube = estado.timeAtual.nome;
+  estado.lesoesPorClube[nomeClube][idJogador].rodadaRetorno = Math.max(
+    estado.temporada.rodadaAtual + 1, lesao.rodadaRetorno - 1
+  );
+  salvarProgresso();
+  if (typeof timeExibidoNoElenco !== "undefined" && timeExibidoNoElenco) abrirTelaElenco(timeExibidoNoElenco);
+  if (typeof renderizarFinancas === "function") renderizarFinancas();
+}
+
 /* ---------- Evolução, energia e desgaste (Fase 7) ---------- */
 
 /** Aplica por cima do elenco "de fábrica" os ajustes de força/idade acumulados. */
@@ -4979,8 +5119,9 @@ async function atualizarRelatorioAdversario() {
   botao.hidden = false;
   botao.textContent = "🔍 Relatório do Auxiliar Técnico — " + nomeAdversario;
 
-  const titularesMap = autoEscalarMelhores(oponenteInfo.jogadores, "4-4-2a");
-  const titulares = resolverTitulares(oponenteInfo.jogadores, "4-4-2a", titularesMap);
+  const oponenteDisponivel = jogadoresDisponiveisParaEscalar(oponenteInfo.jogadores, oponenteInfo.nome);
+  const titularesMap = autoEscalarMelhores(oponenteDisponivel, "4-4-2a");
+  const titulares = resolverTitulares(oponenteDisponivel, "4-4-2a", titularesMap);
 
   const porSetor = { defesa: [], meio: [], ataque: [] };
   const porSetorDetalhado = { zaga: [], laterais: [] };
@@ -5178,6 +5319,13 @@ async function concluirRodadaOficial() {
   const temporadaDivisao = estado.temporada[divisaoChave];
   const numeroRodada = partidaAtual.numeroRodadaOficial;
 
+  // Departamento Médico & Lesões: grava as lesões do MEU jogo e das ~9 partidas paralelas da
+  // mesma rodada (a outra divisão entra mais abaixo, quando ela é simulada).
+  registrarLesoesDaPartida(timeCasaSimulado.nome, timeForaSimulado.nome, partidaAtual.lesoesNaPartida, numeroRodada);
+  partidasRodada.forEach(function (jogo) {
+    registrarLesoesDaPartida(jogo.casa.nome, jogo.fora.nome, jogo.partida.lesoesNaPartida, numeroRodada);
+  });
+
   // Cota de TV, patrocínio e bilheteria (se for em casa) entram; folha e custos fixos saem.
   if (estado.financas) {
     const meuPlacar = meuLadoNaPartida === "casa" ? partidaAtual.placarCasa : partidaAtual.placarFora;
@@ -5255,6 +5403,7 @@ async function concluirRodadaOficial() {
       const casaInfo = buscarTimePorNome(dados, jogo.casa);
       const foraInfo = buscarTimePorNome(dados, jogo.fora);
       const placar = simularJogoCompleto(casaInfo, foraInfo);
+      registrarLesoesDaPartida(jogo.casa, jogo.fora, placar.lesoes, numeroRodada);
       return { casa: jogo.casa, fora: jogo.fora, golsCasa: placar.golsCasa, golsFora: placar.golsFora };
     });
     resultadosOutra.forEach(function (res) {
@@ -5477,6 +5626,8 @@ async function processarFimDeTemporada() {
   // Cartões e suspensões são da temporada — zeram na virada do ano.
   estado.cartoesAmarelos = {};
   estado.suspensoAte = {};
+  // Lesões também são da temporada — vale pros 40 clubes da liga, não só o do usuário.
+  estado.lesoesPorClube = {};
 
   // Se o MEU time subiu ou desceu, atualiza em que divisão ele está agora.
   if (resultado.rebaixados.indexOf(estado.timeAtual.nome) !== -1) {
@@ -6898,6 +7049,7 @@ function aplicarDemissao(motivo) {
   estado.setas = {};
   estado.cartoesAmarelos = {};
   estado.suspensoAte = {};
+  estado.lesoesPorClube = {};
 
   mostrarTela("tela-inicio");
   atualizarBotaoContinuar();
@@ -8117,6 +8269,10 @@ function escolherJogadorParaVaga(idVaga, idJogador) {
     alert("Esse jogador está suspenso por cartão e não pode ser escalado nesta rodada.");
     return;
   }
+  if (jogadorEstaLesionado(idJogador)) {
+    alert("Esse jogador está lesionado (" + obterLesaoJogador(idJogador).tipoLesao + ") e não pode ser escalado agora.");
+    return;
+  }
 
   const idAntigoNaVaga = estado.titulares[idVaga];
   const emPartidaAtiva = estaEmPartidaAtiva();
@@ -8267,6 +8423,7 @@ async function continuarJogoSalvo() {
     estado.evolucao = registro.evolucao || {};
     estado.cartoesAmarelos = registro.cartoesAmarelos || {};
     estado.suspensoAte = registro.suspensoAte || {};
+    estado.lesoesPorClube = registro.lesoesPorClube || {}; // saves de antes do Departamento Médico & Lesões não têm isso
     // Saves antigos (de antes da Fase 9) não têm financas — cria do zero nesse caso.
     estado.financas = registro.financas || criarFinancasIniciais(estado.timeAtual.jogadores, estado.timeAtual.divisaoChave);
     estado.precoIngresso = registro.precoIngresso || "normal";
