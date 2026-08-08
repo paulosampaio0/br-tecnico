@@ -161,10 +161,12 @@ const CONFIG_FINANCEIRO = {
 
   // --- Empréstimos (Fase 17) ---
 
-  emprestimoIdadeMaxima: 23, // só jovens vão por empréstimo — reflete o mercado nacional
+  emprestimoIdadeReferencia: 23, // idade "de mercado" pro empréstimo — acima disso o clube dono resiste mais
   emprestimoChanceBase: 0.85,
   emprestimoPenalidadePorPercentualOrigem: 0.006, // cada ponto % que o clube de origem banca reduz a chance de aceitar
   emprestimoPenalidadePorForca: 0.02, // por ponto de força acima de 30, reduz a chance (jogador mais cobiçado)
+  emprestimoPenalidadePorIdade: 0.025, // por ano acima da idade de referência, reduz a chance (jogador mais consolidado)
+  emprestimoPenalidadeTitular: 0.35, // titular no time atual — o clube dono raramente abre mão dele
   emprestimoFatorClausulaVitrineMinima: 0.10,
   emprestimoFatorClausulaVitrineMaxima: 0.20,
   emprestimoChanceEventoVitrinePorRodada: 0.03,
@@ -1047,11 +1049,18 @@ function calcularFatorForcaAnalise(nivelAnalise) {
    Empréstimos (Fase 17)
    ============================================================ */
 
-/** Chance (0-1) do clube de origem topar emprestar o jogador nessas condições. */
-function calcularChanceAceiteEmprestimo(jogador, percentualFolhaOrigem) {
+/**
+ * Chance (0-1) do clube de origem topar emprestar o jogador nessas condições. Agora que o botão
+ * "Emprestar" aparece pra qualquer atleta (não só até 23 anos), a decisão do clube dono pesa 3
+ * fatores: idade (acima da faixa "de empréstimo", resiste mais — jogador consolidado), força/salário
+ * (mais cobiçado = mais resistência) e se é titular no time atual (bem mais difícil de liberar).
+ */
+function calcularChanceAceiteEmprestimo(jogador, percentualFolhaOrigem, ehTitular) {
   const chance = CONFIG_FINANCEIRO.emprestimoChanceBase
     - percentualFolhaOrigem * CONFIG_FINANCEIRO.emprestimoPenalidadePorPercentualOrigem
-    - Math.max(0, jogador.forca - 30) * CONFIG_FINANCEIRO.emprestimoPenalidadePorForca;
+    - Math.max(0, jogador.forca - 30) * CONFIG_FINANCEIRO.emprestimoPenalidadePorForca
+    - Math.max(0, jogador.idade - CONFIG_FINANCEIRO.emprestimoIdadeReferencia) * CONFIG_FINANCEIRO.emprestimoPenalidadePorIdade
+    - (ehTitular ? CONFIG_FINANCEIRO.emprestimoPenalidadeTitular : 0);
   return clampFrac(chance, 0.05, 0.95);
 }
 

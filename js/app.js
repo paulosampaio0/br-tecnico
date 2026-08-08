@@ -6410,7 +6410,6 @@ function renderizarMercado() {
     const marcadorForma = forma === "alta" ? "<span class=\"fase-mercado fase-alta\" title=\"Em alta\">🟢⬆️</span> "
       : forma === "baixa" ? "<span class=\"fase-mercado fase-baixa\" title=\"Em baixa\">🔴⬇️</span> " : "";
     const salarioMensal = calcularSalarioMensal(jogador);
-    const podeEmprestar = jogador.idade <= CONFIG_FINANCEIRO.emprestimoIdadeMaxima;
     const li = document.createElement("li");
     li.className = "item-contrato item-mercado aberto-perfil";
     li.addEventListener("click", function (evento) {
@@ -6433,16 +6432,15 @@ function renderizarMercado() {
         "<span class=\"valor-mercado-destaque\">" + formatarReais(item.preco) + "</span>" +
         "<span class=\"salario-mercado\">Salário: " + formatarSalarioMensal(salarioMensal) + "</span>" +
       "</div>" +
-      "<div class=\"barra-acoes-mercado" + (podeEmprestar ? "" : " acao-unica") + "\">" +
+      "<div class=\"barra-acoes-mercado\">" +
         "<button class=\"btn-renovar-contrato\" type=\"button\">Fazer proposta</button>" +
-        (podeEmprestar ? "<button class=\"btn-renovar-contrato btn-emprestar-mercado\" type=\"button\">Emprestar</button>" : "") +
+        "<button class=\"btn-renovar-contrato btn-emprestar-mercado\" type=\"button\">Emprestar</button>" +
       "</div>";
 
     li.querySelector(".btn-renovar-contrato").addEventListener("click", function () {
       abrirPropostaMercado(item);
     });
-    const btnEmprestar = li.querySelector(".btn-emprestar-mercado");
-    if (btnEmprestar) btnEmprestar.addEventListener("click", function () { abrirPropostaEmprestimo(item); });
+    li.querySelector(".btn-emprestar-mercado").addEventListener("click", function () { abrirPropostaEmprestimo(item); });
     listaEl.appendChild(li);
   });
 }
@@ -6693,7 +6691,8 @@ function fecharContratacaoCompleta(jogadorOriginal, nomeTimeVendedor, divisaoVen
 
 /* ---------- Empréstimos (Fase 17) ---------- */
 
-/** Abre a proposta de empréstimo (só jovens — ver CONFIG_FINANCEIRO.emprestimoIdadeMaxima). */
+/** Abre a proposta de empréstimo — disponível pra qualquer atleta; a idade agora só pesa na
+ *  CHANCE do clube dono aceitar (ver `calcularChanceAceiteEmprestimo`, js/financas.js). */
 function abrirPropostaEmprestimo(item) {
   propostaEmprestimoAberta = { jogador: item.jogador, nomeTime: item.nomeTime, divisaoChave: item.divisaoChave };
 
@@ -6706,6 +6705,7 @@ function abrirPropostaEmprestimo(item) {
   ) / 100;
   document.getElementById("input-opcao-compra-emprestimo").value = valorSugerido;
   document.getElementById("select-percentual-folha-emprestimo").value = "30";
+  document.getElementById("select-duracao-emprestimo").value = "temporada";
 
   const resultadoEl = document.getElementById("emprestimo-resultado");
   resultadoEl.textContent = "";
@@ -6730,8 +6730,20 @@ function enviarPropostaEmprestimo() {
 
   const percentualFolhaOrigem = Number(document.getElementById("select-percentual-folha-emprestimo").value);
   const valorOpcaoCompra = Number(document.getElementById("input-opcao-compra-emprestimo").value) || 0;
+  const duracaoEscolhida = document.getElementById("select-duracao-emprestimo").value;
   const jogador = propostaEmprestimoAberta.jogador;
-  const chance = calcularChanceAceiteEmprestimo(jogador, percentualFolhaOrigem);
+
+  // O clube dono decide olhando o jogador de verdade: se é titular da escalação automática dele
+  // (autoEscalarMelhores, mesmo critério do "Relatório do Auxiliar Técnico"), ele é muito mais
+  // resistente a emprestar — reserva sai com bem mais facilidade.
+  const timeOrigemInfo = buscarTime(dadosParaMercado, propostaEmprestimoAberta.divisaoChave, propostaEmprestimoAberta.nomeTime);
+  let ehTitularNoTimeAtual = false;
+  if (timeOrigemInfo) {
+    const titularesOrigem = autoEscalarMelhores(timeOrigemInfo.jogadores, "4-4-2a");
+    ehTitularNoTimeAtual = Object.values(titularesOrigem).indexOf(jogador._id) !== -1;
+  }
+
+  const chance = calcularChanceAceiteEmprestimo(jogador, percentualFolhaOrigem, ehTitularNoTimeAtual);
 
   if (Math.random() > chance) {
     resultadoEl.textContent = propostaEmprestimoAberta.nomeTime + " recusou o empréstimo — não toparam essas condições.";
@@ -6740,8 +6752,9 @@ function enviarPropostaEmprestimo() {
     return;
   }
 
-  concluirEmprestimo(jogador, propostaEmprestimoAberta.nomeTime, propostaEmprestimoAberta.divisaoChave, percentualFolhaOrigem, valorOpcaoCompra);
-  resultadoEl.textContent = "Empréstimo fechado! " + jogador.nome + " joga no seu time até o fim da temporada.";
+  concluirEmprestimo(jogador, propostaEmprestimoAberta.nomeTime, propostaEmprestimoAberta.divisaoChave, percentualFolhaOrigem, valorOpcaoCompra, duracaoEscolhida);
+  resultadoEl.textContent = "Empréstimo fechado! " + jogador.nome + " joga no seu time " +
+    (duracaoEscolhida === "metade" ? "pelas próximas rodadas." : "até o fim da temporada.");
   resultadoEl.className = "proposta-resultado proposta-resultado-positivo";
   setTimeout(function () {
     fecharPropostaEmprestimo();
@@ -6750,7 +6763,7 @@ function enviarPropostaEmprestimo() {
 }
 
 /** Traz o jogador emprestado pro elenco, com o contrato marcado como empréstimo (não é dono de verdade). */
-function concluirEmprestimo(jogadorOriginal, nomeTimeOrigem, divisaoOrigem, percentualFolhaOrigem, valorOpcaoCompra) {
+function concluirEmprestimo(jogadorOriginal, nomeTimeOrigem, divisaoOrigem, percentualFolhaOrigem, valorOpcaoCompra, duracaoEscolhida) {
   const timeOrigem = buscarTime(dadosParaMercado, divisaoOrigem, nomeTimeOrigem);
   if (timeOrigem) {
     timeOrigem.jogadores = timeOrigem.jogadores.filter(function (j) { return j._id !== jogadorOriginal._id; });
@@ -6760,7 +6773,10 @@ function concluirEmprestimo(jogadorOriginal, nomeTimeOrigem, divisaoOrigem, perc
   const jogadorEmprestado = Object.assign({}, jogadorOriginal, { _id: novoId });
 
   const temporadaDivisao = estado.temporada[estado.timeAtual.divisaoChave];
-  const rodadasRestantes = Math.max(1, temporadaDivisao.calendario.length - estado.temporada.rodadaAtual + 1);
+  const rodadasAteFimTemporada = Math.max(1, temporadaDivisao.calendario.length - estado.temporada.rodadaAtual + 1);
+  const rodadasRestantes = duracaoEscolhida === "metade"
+    ? Math.max(1, Math.ceil(rodadasAteFimTemporada / 2))
+    : rodadasAteFimTemporada;
   const fatorVitrine = CONFIG_FINANCEIRO.emprestimoFatorClausulaVitrineMinima +
     Math.random() * (CONFIG_FINANCEIRO.emprestimoFatorClausulaVitrineMaxima - CONFIG_FINANCEIRO.emprestimoFatorClausulaVitrineMinima);
 
@@ -7148,12 +7164,21 @@ function aceitarPropostaEspontanea(idProposta) {
   if (estado.dashboard) {
     estado.dashboard.vendaAtletasTemporada = Math.round((estado.dashboard.vendaAtletasTemporada + proposta.valor) * 100) / 100;
   }
+  // Reinvestimento total da venda (2026-08-07): 100% do valor recebido soma direto no TETO do
+  // orçamento de contratações — o técnico pode usar o dinheiro da venda pra reforçar o time na
+  // mesma janela, sem esperar a virada de temporada (que recalcula o orçamento do zero).
+  if (estado.diretoria) {
+    estado.diretoria.orcamentoContratacoes =
+      Math.round(((estado.diretoria.orcamentoContratacoes || 0) + proposta.valor) * 100) / 100;
+  }
   removerJogadorDoElenco(proposta.idJogador);
   estado.propostasRecebidas = estado.propostasRecebidas.filter(function (p) { return p.id !== idProposta; });
 
   salvarProgresso();
   renderizarPropostasRecebidas();
   renderizarContratos();
+  renderizarMercado();
+  renderizarDiretoria();
 }
 
 function recusarPropostaEspontanea(idProposta) {
@@ -8943,13 +8968,10 @@ function montarBarraAcoesPerfil() {
     preco: calcularPrecoTransferencia(jogador, anosContratoRestante, perfilAtletaAberto.divisaoChave),
   };
 
-  const podeEmprestar = jogador.idade <= CONFIG_FINANCEIRO.emprestimoIdadeMaxima;
   barraEl.innerHTML =
     "<button class=\"btn-acao-perfil acao-perfil-destaque\" id=\"btn-acao-propor-perfil\" type=\"button\">" +
       "<span class=\"icone-acao-perfil\">🤝</span>Propor compra</button>" +
-    (podeEmprestar
-      ? "<button class=\"btn-acao-perfil\" id=\"btn-acao-emprestimo-perfil\" type=\"button\"><span class=\"icone-acao-perfil\">🔄</span>Empréstimo</button>"
-      : "");
+    "<button class=\"btn-acao-perfil\" id=\"btn-acao-emprestimo-perfil\" type=\"button\"><span class=\"icone-acao-perfil\">🔄</span>Empréstimo</button>";
 
   document.getElementById("btn-acao-propor-perfil").addEventListener("click", function () {
     fecharPerfilAtleta();

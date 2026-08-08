@@ -995,6 +995,12 @@
         <option value="70">70%</option>
       </select>
 
+      <label class="proposta-label-valor" for="select-duracao-emprestimo">Duração do empréstimo</label>
+      <select id="select-duracao-emprestimo" class="proposta-input-valor">
+        <option value="temporada" selected>Até o fim da temporada</option>
+        <option value="metade">Metade das rodadas restantes</option>
+      </select>
+
       <label class="proposta-label-valor" for="input-opcao-compra-emprestimo">Opção de compra ao fim do empréstimo (R$ milhões, 0 = sem opção)</label>
       <input type="number" id="input-opcao-compra-emprestimo" class="proposta-input-valor" min="0" step="0.5" />
 
@@ -1276,6 +1282,8 @@
   </div>
 
   <script src="js/sons.js"></script>
+  <!-- Registro de competições: vem antes de dados/finanças/temporada, que leem dele. -->
+  <script src="js/competicoes.js"></script>
   <script src="js/dados.js"></script>
   <script src="js/financas.js"></script>
   <script src="js/base.js"></script>
